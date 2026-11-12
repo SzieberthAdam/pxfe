@@ -1,0 +1,12 @@
+# 53. After 51 (same pxfe.ini, a new start): the sample text, the zoom and the collapsed state come back from pxfe.ini.
+wait 8
+assert inbrowser 0
+assert stripzoom 5
+assert stripcollapsed 1
+assert striph >= 96
+assert sample H\nH
+assert samplelines 2
+click @Sample_Collapse
+wait 3
+assert stripcollapsed 0
+shot tests/tmp/shots/53_strip_restored.png

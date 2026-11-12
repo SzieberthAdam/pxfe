@@ -1,0 +1,94 @@
+# 28. Export, Overwrite when the backup fails: the folder holds a file that cannot be imported, so the backup cannot be made.
+# Nothing is deleted; a second confirmation offers Cancel or Overwrite Without Backup.  Also Overwrite with the backup switched off.
+waitfor loading = 0 60000
+wait 5
+setdialog folder tests/tmp/xout
+click @File
+wait 3
+click @file.export
+wait 10
+assert modal Export_finished
+key enter
+wait 4
+writefile tests/tmp/xout/pxfm/aa/aa000000000000000000000000000000.pxfm this is not a font\n
+writefile tests/tmp/xout/keep.txt keep me\n
+delete tests/tmp/xout_backup.pxfdb
+setdialog save tests/tmp/xout_backup.pxfdb
+click @File
+wait 3
+click @file.export
+wait 8
+assert xdopen 1
+assert xfound_fonts 5
+click @xd.change
+wait 4
+click @Overwrite
+wait 20
+assert xbackupfailed 1
+assert modal The_backup_failed
+shot tests/tmp/shots/v5_export_backup_failed.png
+assert file tests/tmp/xout_backup.pxfdb missing
+assert file tests/tmp/xout/pxfm/08/0820dc69a21b1cdb3a44d2cff7d884d8.pxfm exists
+assert file tests/tmp/xout/pxfm/aa/aa000000000000000000000000000000.pxfm exists
+# Cancel: nothing is deleted
+click @Cancel
+wait 4
+assert modal none
+assert file tests/tmp/xout/pxfm/08/0820dc69a21b1cdb3a44d2cff7d884d8.pxfm exists
+assert file tests/tmp/xout/pxfm/aa/aa000000000000000000000000000000.pxfm exists
+# again, then Overwrite Without Backup: the old contents go, memory is written, other files stay
+click @File
+wait 3
+click @file.export
+wait 8
+assert xdopen 1
+click @Overwrite
+wait 20
+assert modal The_backup_failed
+click @Overwrite_Without_Backup
+wait 20
+assert modal Export_finished
+assert xd_fonts 5
+assert xw_fonts 4
+key enter
+wait 4
+assert file tests/tmp/xout/pxfm/aa/aa000000000000000000000000000000.pxfm missing
+assert file tests/tmp/xout/pxfm/08/0820dc69a21b1cdb3a44d2cff7d884d8.pxfm exists
+assert file tests/tmp/xout/keep.txt contains keep me
+assert file tests/tmp/xout_backup.pxfdb missing
+# the dialog with the backup switched off: a second confirmation names the loss
+click @File
+wait 3
+click @file.export
+wait 8
+assert xdopen 1
+click @xd.backup
+wait 3
+assert xbackup 0
+click @Overwrite
+wait 5
+assert xdopen 0
+assert modal Overwrite_without_a_backup?
+shot tests/tmp/shots/v5_export_nobackup.png
+click @Cancel
+wait 4
+assert modal none
+assert file tests/tmp/xout/pxfm/08/0820dc69a21b1cdb3a44d2cff7d884d8.pxfm exists
+click @File
+wait 3
+click @file.export
+wait 8
+click @xd.backup
+wait 3
+click @Overwrite
+wait 5
+assert modal Overwrite_without_a_backup?
+click @Overwrite
+wait 20
+assert modal Export_finished
+assert xd_fonts 4
+assert xw_fonts 4
+key enter
+wait 4
+assert file tests/tmp/xout/pxfm/08/0820dc69a21b1cdb3a44d2cff7d884d8.pxfm exists
+assert file tests/tmp/xout/keep.txt contains keep me

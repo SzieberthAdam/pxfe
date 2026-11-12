@@ -1,0 +1,77 @@
+# 29. A duplicate is committed into memory when its font view is left; a later commit of the same duplicate replaces the earlier one
+# (no in-between fonts), and editing back to the original drops the commit.
+wait 5
+assert readonly 0
+assert sql "select count(*) from pxfm" 4
+assert sql "select count(*) from pxtf" 2
+click @ascent.plus
+wait 6
+click @Library
+wait 8
+assert dbmodified 1
+assert sql "select count(*) from pxfm" 5
+assert sql "select count(*) from pxtf" 3
+assert sql "select count(*) from pxfm where ascent = 7" 1
+# back to the font, another change, leave again: the first commit is replaced
+click @tab.font
+wait 6
+assert infont 1
+assert unsaved 1
+click @ascent.plus
+wait 6
+click @Library
+wait 8
+assert sql "select count(*) from pxfm" 5
+assert sql "select count(*) from pxtf" 3
+assert sql "select count(*) from pxfm where ascent = 7" 0
+assert sql "select count(*) from pxfm where ascent = 8" 1
+# leaving without a change commits nothing more
+click @tab.font
+wait 6
+click @Library
+wait 8
+assert sql "select count(*) from pxfm" 5
+# three edits in a row, leaving after each: still one font
+click @tab.font
+wait 6
+click @ascent.plus
+wait 6
+click @Library
+wait 8
+click @tab.font
+wait 6
+click @ascent.plus
+wait 6
+click @Library
+wait 8
+assert sql "select count(*) from pxfm" 5
+assert sql "select count(*) from pxfm where ascent = 10" 1
+assert sql "select count(*) from pxtf" 3
+# leaving through the Glyphs tab commits too
+click @tab.font
+wait 6
+click @ascent.plus
+wait 6
+click @Glyphs
+wait 8
+assert sql "select count(*) from pxfm" 5
+assert sql "select count(*) from pxfm where ascent = 11" 1
+# edited back to the original: the commit goes away, the database is as loaded
+click @tab.font
+wait 6
+click @ascent.minus
+wait 6
+click @ascent.minus
+wait 6
+click @ascent.minus
+wait 6
+click @ascent.minus
+wait 6
+click @ascent.minus
+wait 6
+assert modified 0
+click @Library
+wait 8
+assert sql "select count(*) from pxfm" 4
+assert sql "select count(*) from pxtf" 2
+assert dbmodified 1

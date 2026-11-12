@@ -1,0 +1,104 @@
+# 9. Misc input paths on the testdata copy: spinner hold/wheel, Esc in a metric field inside the editor, hash click, resize.
+wait 5
+# wheel over a spinner steps it
+wheel 1 @ascent.value
+wait 3
+assert m.ascent 7
+wheel -1 @ascent.value
+wait 3
+assert m.ascent 6
+# holding the + button repeats after a delay.  The click comes first on purpose: the first edit of a duplicate adds the
+# "FONT HASH (ORIGINAL)" box to the Font tab, which moves the metric rows down 51 px under a mouse that stays put.
+click @descent.plus
+wait 2
+move @descent.plus
+wait 2
+mousedown
+sleep 900
+mouseup
+wait 3
+assert m.descent >= 8
+click @descent.value
+wait 3
+type 2
+key enter
+wait 3
+assert m.descent 2
+# editing a metric: Esc cancels the edit only (the glyph view has no Font tab: the field is in the font view), typed digits go to the field
+click @ptab_Font
+click @ascent.value
+wait 3
+type 9
+wait 2
+key esc
+wait 4
+assert m.ascent 6
+click @ascent.value
+wait 3
+type 8
+wait 2
+key enter
+wait 4
+assert m.ascent 8
+# an undo inside the glyph view reopens it on the same glyph, the bitmap follows the baseline
+click @cell:U+0041
+key enter
+wait 5
+assert editor 1
+assert eink '0
+assert editor_glyph U+0041
+assert glyph U+0041 top 3
+shot tests/tmp/shots/09_editor_ascent8.png
+key z ctrl
+wait 3
+assert editor 1
+assert m.ascent 6
+assert glyph U+0041 top 1
+key esc
+wait 4
+assert editor 0
+# clicking the hash in the status bar copies it
+click @hash
+wait 3
+assert toast Font hash copied
+# resize: the grid reflows, the panel stays on the right
+resize 1100 700
+wait 6
+shot tests/tmp/shots/09_small.png
+click @cell:U+0078
+wait 3
+assert selected 1
+resize 1500 950
+wait 6
+shot tests/tmp/shots/09_big.png
+# toolbar Undo and Redo buttons
+click @ptab_Font
+click @ascent.plus
+wait 3
+assert m.ascent 7
+click @Undo
+wait 3
+assert m.ascent 6
+assert toast Undo
+click @Redo
+wait 3
+assert m.ascent 7
+assert toast Redo
+click @Undo
+wait 3
+assert m.ascent 6
+# a glyph deleted while its metric stays: capheight is a stated number, not derived from H
+click @cell:U+0048
+key delete
+wait 4
+key enter
+wait 4
+assert glyph U+0048 exists 0
+click @ptab_Font
+click @capheight.value
+wait 3
+type 3
+key enter
+wait 3
+assert m.capheight 3
+assert modified 1

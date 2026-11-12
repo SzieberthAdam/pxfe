@@ -1,0 +1,39 @@
+# 90. Screenshots for the visual review (tests/shots/v3_*.png) on the real library, read-only.
+# Not part of run_all.bat. Run: tests\tmp\pxfe_e2e.exe C:\...\pixelglyphlib\pxfdb.pxfdb --ini tests\tmp\e2e_shots.ini --play tests\e2e\90_shots.txt
+waitfor loading = 0 600000
+wait 10
+click @Fonts
+wait 4
+click @Filter
+type 00fa5b08
+wait 6
+click @card:0
+wait 3
+waitfor similar >= 1 20000
+wait 20
+shot tests/shots/v3_browser_similar.png
+wheel -6 1250 400
+wait 6
+shot tests/shots/v3_browser_similar_scrolled.png
+wheel 20 1250 400
+dblclick @card:0
+wait 10
+sleep 600
+click @cell:U+0041
+waitfor usage >= 0 20000
+wait 40
+panelscroll 700
+wait 8
+shot tests/shots/v3_font_usage_similar.png
+panelscroll 0
+wait 4
+shot tests/shots/v3_font_top.png
+key g ctrl
+wait 10
+click @finder.search
+type A
+wait 40
+shot tests/shots/v3_finder.png
+click @fcell:0
+wait 40
+shot tests/shots/v3_finder_usage.png

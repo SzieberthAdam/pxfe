@@ -1,0 +1,195 @@
+# 14. The browser on tests/tmp/e2e.pxfdb (a copy of testdata/lib.pxfdb): tabs, filters, view settings, opening originals read-only,
+# Back (button and Alt+Left), Duplicate to Edit, the commit into memory, Save.
+wait 8
+assert inbrowser 1
+assert btotal >= 1
+shot tests/tmp/shots/14_browser.png
+snapdir tests/tmp/e2elib
+
+# ---- the two tabs and their counts
+assert btab 0
+assert btotal 3
+assert bvisible 3
+click @Fonts
+wait 4
+assert btab 1
+assert btotal 4
+assert bvisible 4
+click @Typefaces
+wait 4
+assert btab 0
+assert bvisible 3
+
+# ---- the name filter (Typefaces: family, style, ...; Fonts: also the hash)
+click @Filter
+type Italic
+wait 4
+assert bfilter Italic
+assert bvisible 1
+click @Filter_Clear
+wait 4
+assert bfilter -
+assert bvisible 3
+click @Fonts
+wait 4
+click @Filter
+type 03696f
+wait 4
+assert bvisible 1
+click @Filter_Clear
+wait 4
+assert bvisible 4
+click @Filter
+type zzzznothing
+wait 4
+assert bvisible 0
+click @Filter_Clear
+wait 4
+assert bvisible 4
+click @Typefaces
+wait 4
+
+# ---- sample, zoom, columns
+click @Sample
+key a ctrl
+type Hamburg
+wait 4
+assert bsample Hamburg
+click @Zoom_5
+wait 3
+assert bzoom 5
+click @Cols_3
+wait 3
+assert bcols 3
+click @Hamburgefontsiv
+wait 3
+assert bsample Hamburgefontsiv
+click @Zoom_2
+click @Cols_Auto
+wait 3
+assert bzoom 2
+assert bcols 0
+
+# ---- open a card read-only: not modified, its hash is its file name
+click @Filter
+type Test
+wait 4
+assert bvisible 2
+dblclick @card:1
+wait 8
+assert inbrowser 0
+assert readonly 1
+assert modified 0
+assert hascont 1
+assert hashname 1
+assert snapdir unchanged
+# back with the Library button: filter, selection and tab are kept
+click @Library
+wait 6
+assert inbrowser 1
+assert bfilter Test
+assert bsel 1
+assert bselpxfm $OHASH
+assert btab 0
+# open the selected card with Enter and go back with Alt+Left
+key enter
+wait 8
+assert inbrowser 0
+assert readonly 1
+assert hashname 1
+key left alt
+wait 6
+assert inbrowser 1
+assert bfilter Test
+assert bsel 1
+assert bselpxfm $OHASH
+click @Filter_Clear
+wait 4
+assert bvisible 3
+
+# ---- Duplicate to Edit from a card, edit a glyph: leaving the font view commits the duplicate into memory
+click @card:0
+wait 3
+click @Duplicate_to_Edit
+wait 8
+assert inbrowser 0
+assert readonly 0
+assert modified 0
+assert hascont 1
+assert unsaved 0
+click @cell:U+0020
+key enter
+wait 5
+assert editor 1
+click @ecell:1,1
+wait 3
+assert modified 1
+key esc
+wait 3
+assert editor 0
+assert unsaved 1
+assert dbmodified 0
+click @Library
+wait 6
+assert inbrowser 1
+assert dbmodified 1
+assert saved pxfm
+assert saved pxtf
+assert snapdir unchanged
+assert sqlfile tests/tmp/e2e.pxfdb "select count(*) from pxfm" 4
+click @Typefaces
+wait 4
+assert btotal 5
+click @Fonts
+wait 4
+assert btotal 5
+click @Filter
+type $NEWPXFM
+wait 4
+assert bvisible 1
+sleep 600
+click @card:0
+wait 3
+assert bselpxfm $NEWPXFM
+
+# ---- a font without a typeface: Duplicate to Edit from its card, one edit, commit adds a font and no typeface
+click @Filter_Clear
+wait 4
+click @Filter
+type 03696f
+wait 4
+assert bvisible 1
+sleep 600
+click @card:0
+wait 3
+click @Duplicate_to_Edit
+wait 8
+assert readonly 0
+assert hascont 0
+assert modified 0
+assert duppending 0
+click @cell:U+0020
+key enter
+wait 5
+click @ecell:1,1
+wait 3
+key esc
+wait 3
+assert modified 1
+click @Library
+wait 6
+assert inbrowser 1
+assert btotal 6
+assert sql "select count(*) from pxfm" 6
+assert sql "select count(*) from pxtf" 3
+
+# ---- Save writes memory into the database file; the folder it was imported from is never touched
+assert sqlfile tests/tmp/e2e.pxfdb "select count(*) from pxfm" 4
+assert sqlfile tests/tmp/e2e.pxfdb "select count(*) from pxtf" 2
+click @Save
+wait 12
+assert dbmodified 0
+assert unsaved 0
+assert sqlfile tests/tmp/e2e.pxfdb "select count(*) from pxfm" 6
+assert sqlfile tests/tmp/e2e.pxfdb "select count(*) from pxtf" 3
+assert snapdir unchanged

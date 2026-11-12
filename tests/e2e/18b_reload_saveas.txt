@@ -1,0 +1,7 @@
+# 18b. Second process on the copy that 18 saved: it has the two edits; pxfe.ini remembers the last database.
+waitfor loading = 0 60000
+wait 5
+assert wtitle e2e_copy.pxfdb
+assert storefonts 5
+assert sql "SELECT COUNT(*) FROM pxfm WHERE ascent = 8" 1
+assert file tests/tmp/e2e.ini contains lastPxfdb=tests/tmp/e2e_copy.pxfdb

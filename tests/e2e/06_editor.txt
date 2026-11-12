@@ -1,0 +1,299 @@
+# 6. Glyph view on a duplicate of testdata font 98eae9aa: ascent 6, descent 2, so the font box is rows 0..7 and the baseline lies under row 5.
+# @ecell:x,y is the screen centre of the cell (x, y): x = column from the pen, y = row of the font box (0 = its top row).
+wait 5
+# --- opening: double-click, Esc back, Enter
+dblclick @cell:U+0078
+wait 5
+assert editor 1
+assert editor_glyph U+0078
+assert selected 1
+shot tests/tmp/shots/06_editor_x.png
+key esc
+wait 4
+assert editor 0
+assert sel U+0078 1
+sleep 450
+click @cell:U+0048
+key enter
+wait 5
+assert editor 1
+assert editor_glyph U+0048
+click @Back
+wait 4
+assert editor 0
+assert dirty 0
+assert undo 0
+
+# --- paint on the empty glyph U+0020 (advance 4)
+click @cell:U+0020
+key enter
+wait 5
+assert editor_glyph U+0020
+assert glyph U+0020 empty
+assert etool 0
+assert eink '0
+# left drag paints a stroke; the bitmap appears and grows with it
+drag @ecell:1,2 @ecell:4,2
+wait 3
+assert glyph U+0020 size 4x1
+assert glyph U+0020 left 1
+assert glyph U+0020 top 2
+assert glyph U+0020 ink 4
+assert glyph U+0020 pixel 1 2 0
+assert glyph U+0020 pixel 4 2 0
+assert dirty 1
+assert undo 1
+shot tests/tmp/shots/06_editor_stroke.png
+# right drag erases, the bitmap keeps its size
+drag @ecell:2,2 @ecell:3,2 right
+wait 3
+assert glyph U+0020 ink 2
+assert glyph U+0020 size 4x1
+assert glyph U+0020 pixel 2 2 .
+assert undo 2
+# painting outside the old bitmap (left and above the box) grows it
+click @ecell:-2,-1
+wait 3
+assert glyph U+0020 left -2
+assert glyph U+0020 top -1
+assert glyph U+0020 size 7x4
+assert glyph U+0020 ink 3
+assert undo 3
+shot tests/tmp/shots/06_editor_grow.png
+# erasing outside the bitmap does not grow it
+click @ecell:9,6 right
+wait 3
+assert glyph U+0020 size 7x4
+assert undo 3
+# line tool (key L): horizontal on the baseline row and a diagonal
+key l
+wait 2
+assert etool 2
+drag @ecell:0,5 @ecell:3,5
+wait 3
+assert glyph U+0020 pixel 0 5 0
+assert glyph U+0020 pixel 2 5 0
+assert glyph U+0020 pixel 3 5 0
+assert glyph U+0020 ink 7
+assert undo 4
+drag @ecell:0,0 @ecell:3,3
+wait 3
+assert glyph U+0020 pixel 1 1 0
+assert glyph U+0020 pixel 2 2 0
+assert glyph U+0020 ink 11
+assert undo 5
+shot tests/tmp/shots/06_editor_line.png
+# rectangle tool (key R): outline, then filled with shift held
+key r
+wait 2
+assert etool 3
+drag @ecell:5,0 @ecell:7,3
+wait 3
+assert glyph U+0020 pixel 5 1 0
+assert glyph U+0020 pixel 7 2 0
+assert glyph U+0020 pixel 6 1 .
+assert glyph U+0020 pixel 6 2 .
+assert undo 6
+drag @ecell:5,0 @ecell:7,3 shift
+wait 3
+assert glyph U+0020 pixel 6 1 0
+assert undo 7
+shot tests/tmp/shots/06_editor_rect.png
+# eraser (key E) with a left drag, then fill (key F) of the enclosed hole
+key e
+wait 2
+assert etool 1
+drag @ecell:6,1 @ecell:6,2
+wait 3
+assert glyph U+0020 pixel 6 1 .
+assert glyph U+0020 pixel 6 2 .
+assert undo 8
+key f
+wait 2
+assert etool 4
+click @ecell:6,1
+wait 3
+assert glyph U+0020 pixel 6 1 0
+assert glyph U+0020 pixel 6 2 0
+assert undo 9
+# fill of an area that is already that colour does nothing (no undo step)
+click @ecell:6,1
+wait 3
+assert undo 9
+# right click with fill erases a region of ink
+click @ecell:6,1 right
+wait 3
+assert glyph U+0020 pixel 6 1 .
+assert glyph U+0020 pixel 6 2 .
+assert glyph U+0020 pixel 5 1 .
+key b
+wait 2
+assert etool 0
+shot tests/tmp/shots/06_editor_fill.png
+
+# --- move with shift+arrows
+assert glyph U+0020 left -2
+key right shift
+wait 3
+assert glyph U+0020 left -1
+key down shift
+wait 3
+assert glyph U+0020 top 0
+key left shift
+key left shift
+key up shift
+wait 3
+assert glyph U+0020 left -3
+assert glyph U+0020 top -1
+assert undo 15
+# the move buttons
+click @Move_bitmap_right
+click @Move_bitmap_right
+click @Move_bitmap_right
+click @Move_bitmap_down
+wait 3
+assert glyph U+0020 left 0
+assert glyph U+0020 top 0
+
+# --- advance: drag the line, +/- buttons
+# (the centre of a cell is half way between two advance lines: an odd zoom rounds it down, so the zoom is set to 9)
+repeat 70 click @ezoom-
+repeat 8 click @ezoom+
+wait 3
+assert ezoom 9
+assert glyph U+0020 advance 4
+drag @eadvance @ecell:6,3
+wait 3
+assert glyph U+0020 advance 6
+click @+
+wait 3
+assert glyph U+0020 advance 7
+click @-
+click @-
+wait 3
+assert glyph U+0020 advance 5
+shot tests/tmp/shots/06_editor_advance.png
+
+# --- undo / redo inside the editor: one step each, no double handling
+assert undo 23
+key z ctrl
+wait 3
+assert glyph U+0020 advance 6
+assert undo 22
+assert redo 1
+key z ctrl
+wait 3
+assert glyph U+0020 advance 7
+key z ctrl
+wait 3
+assert glyph U+0020 advance 6
+key z ctrl
+wait 3
+assert glyph U+0020 advance 4
+assert editor 1
+assert undo 19
+key y ctrl
+wait 3
+assert glyph U+0020 advance 6
+assert undo 20
+assert redo 3
+key y ctrl
+key y ctrl
+key y ctrl
+wait 3
+assert glyph U+0020 advance 5
+assert redo 0
+# Ctrl+Shift+Z is redo too
+key z ctrl
+key z ctrl shift
+wait 3
+assert glyph U+0020 advance 5
+
+# --- tools and ink via the toolbar and palette
+click @Pencil
+wait 2
+assert etool 0
+click @Line
+wait 2
+assert etool 2
+click @Rectangle
+wait 2
+assert etool 3
+click @Eraser
+wait 2
+assert etool 1
+click @Fill
+wait 2
+assert etool 4
+click @Pencil
+click @ink:.
+wait 2
+assert eink '.
+click @ecell:0,0
+wait 3
+assert glyph U+0020 pixel 0 0 .
+click @ink:0
+wait 2
+assert eink '0
+# digits are not selectable when the font has no palette
+key 3
+wait 2
+assert eink '0
+
+# --- editor zoom with the wheel
+assert ezoom > 4
+wheel -2 @ecell:3,3
+wait 3
+wheel 2 @ecell:3,3
+wait 3
+shot tests/tmp/shots/06_editor_zoomed.png
+
+# --- next / previous glyph (order: U+0020, U+002C, U+0041, U+0048, U+004D, U+0078)
+key pgdn
+wait 4
+assert editor_glyph U+002C
+click @Previous_glyph
+wait 4
+assert editor_glyph U+0020
+# first glyph: PgUp does nothing
+key pgup
+wait 3
+assert editor_glyph U+0020
+click @Next_glyph
+wait 4
+assert editor_glyph U+002C
+key pgdn
+key pgdn
+key pgdn
+key pgdn
+wait 4
+assert editor_glyph U+0078
+# last glyph: PgDn does nothing
+key pgdn
+wait 3
+assert editor_glyph U+0078
+key pgup
+wait 3
+assert editor_glyph U+004D
+
+# --- Esc returns to the grid and the glyph is selected there; Ctrl+Z works in the grid too
+key esc
+wait 4
+assert editor 0
+assert selected 1
+assert sel U+004D 1
+assert undo 24
+key z ctrl
+wait 3
+assert undo 23
+assert glyph U+0020 pixel 0 0 0
+key z ctrl
+wait 3
+assert glyph U+0020 advance 6
+key z ctrl
+key z ctrl
+key z ctrl
+wait 3
+assert glyph U+0020 advance 4
+assert editor 0
+assert undo 19

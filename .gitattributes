@@ -1,0 +1,6 @@
+# cmd needs CRLF batch files; keep them byte for byte
+*.bat -text
+*.a binary
+
+# the hook runs in sh and must keep LF
+.githooks/* eol=lf

@@ -1,0 +1,86 @@
+# 1. Grid: zoom via toolbar and keys, scrolling. Font: a real library font (194 glyphs, box of 13 rows, so the initial zoom is 4), an original (read-only).
+wait 5
+assert glyphs 194
+assert readonly 1
+assert zoom 4
+shot tests/tmp/shots/01_grid_z4.png
+# zoom in with the toolbar button up to the limit and one more (must clamp at 16)
+repeat 13 click @zoom+
+wait 2
+assert zoom 16
+shot tests/tmp/shots/01_grid_z16.png
+click @zoom+
+wait 2
+assert zoom 16
+# zoom out to 1 and one more (clamp at 1)
+repeat 16 click @zoom-
+wait 2
+assert zoom 1
+shot tests/tmp/shots/01_grid_z1.png
+click @zoom-
+wait 2
+assert zoom 1
+# keys: + and - (EQUAL / MINUS) and keypad
+key equal
+wait 2
+assert zoom 2
+key kp_add
+wait 2
+assert zoom 3
+key minus
+key kp_subtract
+wait 2
+assert zoom 1
+# ctrl + wheel zooms the grid around
+wheel 1 500 300 ctrl
+wait 2
+assert zoom 2
+wheel -1 500 300 ctrl
+wait 2
+assert zoom 1
+# plain wheel scrolls the grid (at zoom 4 the 194 glyphs need several rows)
+key equal
+repeat 5 key equal
+wait 2
+assert zoom 7
+assert scroll 0
+wheel -3 500 300
+wait 2
+assert scroll > 0
+shot tests/tmp/shots/01_grid_scrolled.png
+wheel 30 500 300
+wait 2
+assert scroll 0
+# keyboard scrolling
+key pgdn
+wait 2
+assert scroll > 0
+key end
+wait 2
+shot tests/tmp/shots/01_grid_end.png
+key home
+wait 2
+assert scroll 0
+# scrollbar drag
+drag @grid.scrollbar 1000 500
+wait 2
+assert scroll > 0
+shot tests/tmp/shots/01_grid_sbdrag.png
+# selection by arrow keys moves and scrolls the view into reveal
+key home
+click @cell:U+0021
+key down
+key down
+key down
+key down
+wait 2
+assert selected 1
+# toggles: metrics and captions off and on again
+click @Metrics
+click @Captions
+wait 2
+shot tests/tmp/shots/01_grid_nocaptions.png
+click @Metrics
+click @Captions
+wait 2
+shot tests/tmp/shots/01_grid_final.png

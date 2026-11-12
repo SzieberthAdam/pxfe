@@ -1,0 +1,50 @@
+# 7e. No arguments: the empty state. File menu, Load of a missing and of a broken file (errors, nothing changes), then a good one.
+wait 5
+assert glyphs 0
+assert inbrowser 0
+assert hasstore 0
+assert wtitle pxfe
+click @File
+wait 3
+assert filemenu 1
+assert w.file.load 1
+assert w.file.save 1
+shot tests/tmp/shots/v5_filemenu_empty.png
+key esc
+wait 3
+assert filemenu 0
+shot tests/tmp/shots/07e_empty.png
+# Load of a file that does not exist
+setdialog pxfdb tests/tmp/does_not_exist.pxfdb
+key o ctrl
+wait 6
+assert modal Cannot_load_database
+shot tests/tmp/shots/07e_error.png
+key enter
+wait 4
+assert modal none
+assert hasstore 0
+# Load of a file that is not a database
+writefile tests/tmp/broken.pxfdb this is not a database\n
+setdialog pxfdb tests/tmp/broken.pxfdb
+key o ctrl
+wait 10
+assert modal Cannot_load_database
+key enter
+wait 4
+assert modal none
+assert hasstore 0
+# Save with nothing loaded
+key s ctrl
+wait 4
+assert toast No database is loaded
+# a good file
+setdialog pxfdb tests/tmp/e2e.pxfdb
+key o ctrl
+waitfor loading = 0 60000
+wait 8
+assert hasstore 1
+assert inbrowser 1
+assert storefonts 4
+assert wtitle e2e.pxfdb
+assert statusdb saved

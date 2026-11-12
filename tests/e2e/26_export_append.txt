@@ -1,0 +1,41 @@
+# 26. Export, Append: a folder that has some of the files and other files.  The dialog shows what is found; Append writes only what is
+# missing, never changes an existing file, never deletes.  The duplicate being edited is committed first and exported too.
+wait 5
+assert readonly 0
+writefile tests/tmp/xout/pxfm/08/0820dc69a21b1cdb3a44d2cff7d884d8.pxfm SENTINEL\n
+writefile tests/tmp/xout/notes.txt keep me\n
+writefile tests/tmp/xout/other/deep.txt keep me too\n
+click @ascent.plus
+wait 6
+assert unsaved 1
+setdialog folder tests/tmp/xout
+click @File
+wait 3
+click @file.export
+wait 8
+assert xdopen 1
+assert xfound_fonts 1
+assert xfound_typefaces 0
+assert xbackup 1
+shot tests/tmp/shots/v5_export_dialog.png
+click @Append
+wait 12
+assert xdopen 0
+assert modal Export_finished
+assert xw_fonts 4
+assert xw_typefaces 3
+assert xs_fonts 1
+assert xd_fonts 0
+key enter
+wait 4
+assert modal none
+# the existing file is as it was, the others were added, nothing else was touched
+assert file tests/tmp/xout/pxfm/08/0820dc69a21b1cdb3a44d2cff7d884d8.pxfm contains SENTINEL
+assert file tests/tmp/xout/notes.txt contains keep me
+assert file tests/tmp/xout/other/deep.txt contains keep me too
+assert samefile tests/tmp/xout/pxfm/e6/e6109c134eda8d747bac9a3c2a62d204.pxfm tests/tmp/e2elib/pxfm/e6/e6109c134eda8d747bac9a3c2a62d204.pxfm
+assert file $SAVEDPXFM exists
+assert file $SAVEDPXTF exists
+# Append does not make a backup and does not change the database file
+assert samefile tests/tmp/e2e.pxfdb testdata/lib.pxfdb
+assert dbmodified 1

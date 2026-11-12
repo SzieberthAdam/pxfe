@@ -1,0 +1,186 @@
+# 5. Clone to a new code point through the dialog. Font: duplicate of testdata font 98eae9aa (6 glyphs; A = "..0.." on top).
+wait 5
+assert glyphs 6
+# nothing / several selected: error toast, no dialog
+key d ctrl
+wait 3
+assert modal none
+assert toast Select exactly one glyph to clone
+click @cell:U+0041
+click @cell:U+0048 ctrl
+key d ctrl
+wait 3
+assert modal none
+assert selected 2
+# U+ form
+sleep 450
+click @cell:U+0041
+wait 2
+click @Clone
+wait 4
+assert modal Clone_glyph
+shot tests/tmp/shots/05_clone_empty.png
+type U+00E9
+wait 3
+shot tests/tmp/shots/05_clone_typed.png
+key enter
+wait 4
+assert modal none
+assert glyphs 7
+assert glyph U+00E9 exists 1
+assert glyph U+00E9 pixel 2 1 0
+assert glyph U+00E9 advance 6
+assert selected 1
+assert sel U+00E9 1
+assert dirty 1
+assert toast Cloned to U+00E9
+# the original is untouched
+assert glyph U+0041 exists 1
+# bare hex digits (two chars: hex, not two characters)
+click @cell:U+0041
+key d ctrl
+wait 4
+type e8
+wait 2
+key enter
+wait 4
+assert glyphs 8
+assert glyph U+00E8 exists 1
+# a single character
+sleep 450
+click @cell:U+0041
+key d ctrl
+wait 4
+type ü
+wait 2
+shot tests/tmp/shots/05_clone_char.png
+key enter
+wait 4
+assert glyphs 9
+assert glyph U+00FC exists 1
+# 4+ hex digits and 0x prefix
+click @cell:U+0041
+key d ctrl
+wait 4
+type 0x2603
+key enter
+wait 4
+assert glyphs 10
+assert glyph U+2603 exists 1
+# invalid input: no clone, the dialog stays, the primary button is disabled
+sleep 450
+click @cell:U+0041
+key d ctrl
+wait 4
+type zz
+wait 2
+shot tests/tmp/shots/05_clone_invalid.png
+key enter
+wait 3
+assert modal Clone_glyph
+assert glyphs 10
+click @Clone
+wait 3
+assert modal Clone_glyph
+assert glyphs 10
+# backspace edits the text: zz -> z -> (empty) -> 41 is a collision with A
+key backspace
+key backspace
+wait 2
+type 110000
+wait 2
+key enter
+wait 3
+assert modal Clone_glyph
+assert glyphs 10
+key esc
+wait 3
+assert modal none
+assert glyphs 10
+# Cancel button
+sleep 450
+click @cell:U+0041
+click @Clone
+wait 4
+type 1234
+click @Cancel
+wait 3
+assert modal none
+assert glyphs 10
+assert glyph U+1234 exists 0
+
+# collision: clone A onto H -> replace prompt; Cancel keeps H
+sleep 450
+click @cell:U+0041
+key d ctrl
+wait 4
+type U+0048
+wait 2
+shot tests/tmp/shots/05_clone_collision_hint.png
+key enter
+wait 4
+assert modal Replace_glyph
+shot tests/tmp/shots/05_clone_collision.png
+click @Cancel
+wait 3
+assert modal none
+assert glyphs 10
+assert glyph U+0048 pixel 0 1 0
+assert glyph U+0048 pixel 2 1 .
+# again, Esc also cancels
+key d ctrl
+wait 4
+type 48
+key enter
+wait 4
+assert modal Replace_glyph
+key esc
+wait 3
+assert modal none
+assert glyph U+0048 pixel 2 1 .
+# again, Replace: H becomes a copy of A, count unchanged
+key d ctrl
+wait 4
+type 48
+key enter
+wait 4
+click @Replace
+wait 3
+assert modal none
+assert glyphs 10
+assert glyph U+0048 pixel 2 1 0
+assert glyph U+0048 pixel 0 1 .
+assert sel U+0048 1
+assert selected 1
+# the clone of the empty glyph U+0020 is empty; cloning the comma (it lies below the baseline) works too
+click @cell:U+0020
+key d ctrl
+wait 4
+type U+E000
+key enter
+wait 4
+assert glyphs 11
+assert glyph U+E000 empty
+sleep 450
+click @cell:U+002C
+key d ctrl
+wait 4
+type U+E001
+key enter
+wait 4
+assert glyphs 12
+assert glyph U+E001 size 2x2
+# undo the whole thing step by step: one step per clone
+key z ctrl
+wait 3
+assert glyphs 11
+assert glyph U+E001 exists 0
+# top of the code point range
+click @cell:U+0041
+key d ctrl
+wait 4
+type U+10FFFF
+key enter
+wait 4
+assert glyphs 12
+assert glyph U+10FFFF exists 1

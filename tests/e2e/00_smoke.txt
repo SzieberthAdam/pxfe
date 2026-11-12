@@ -1,0 +1,18 @@
+# 0. Smoke: the original font 98eae9aa opens read-only; selection works, deleting does not.
+wait 5
+assert glyphs 6
+assert selected 0
+assert readonly 1
+assert modified 0
+shot tests/tmp/shots/smoke1.png
+click @cell:U+0041
+assert selected 1
+assert sel U+0041 1
+click @Delete
+wait 3
+assert modal none
+key delete
+wait 3
+assert modal none
+assert glyphs 6
+assert glyph U+0041 exists 1

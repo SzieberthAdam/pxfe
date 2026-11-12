@@ -1,0 +1,2 @@
+#!/bin/sh
+cd "$(dirname "$0")/.." && PATH=/c/raylib/w64devkit/bin:$PATH gcc tests/insight_demo.c src/insight.c src/finder.c src/store.c src/store_sim.c src/pxfont.c src/pxtf.c src/theme.c vendor/sqlite3/libsqlite3.a -o tests/insight_demo.exe -O2 -std=gnu99 -Wall -Wextra -Wno-unused-parameter -Wno-missing-field-initializers -I src -I vendor -I vendor/sqlite3 -I /c/raylib/raylib/src -L /c/raylib/raylib/src -lraylib -lopengl32 -lgdi32 -lwinmm -lcomdlg32 -lole32

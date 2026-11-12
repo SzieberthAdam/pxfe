@@ -1,0 +1,91 @@
+# 40. The glyph view's own bar on an original (0820dc69): the font view's second row and the read-only band are gone,
+# the bar has the zoom (Fit, minus, value, plus), the Metrics toggle and the "Read-only - Duplicate to Edit" chip.
+wait 5
+assert readonly 1
+assert hasstore 1
+# in the font view the command row and the band exist
+assert w.Captions 1
+assert w.Clone 1
+assert w.Select_Occurrences 1
+click @cell:U+0041
+key enter
+wait 6
+assert editor 1
+assert readonly 1
+# hidden: the second toolbar row and the band
+assert w.Captions 0
+assert w.Clone 0
+assert w.Set_Default 0
+assert w.Select_Occurrences 0
+assert w.Delete 0
+assert w.zoom+ 0
+assert w.zoom- 0
+assert w.Duplicate_to_Edit 0
+# the editor's own bar
+assert w.Back 1
+assert w.Fit 1
+assert w.ezoom- 1
+assert w.ezoom+ 1
+assert w.Metrics 1
+assert w.ro_chip 1
+shot tests/tmp/shots/40_glyph_bar_original.png
+
+# zoom: minus down to 1x, plus, the wheel, Fit
+assert ezoom > 8
+repeat 60 click @ezoom-
+wait 3
+assert ezoom 1
+repeat 3 click @ezoom+
+wait 3
+assert ezoom 4
+wheel 1 @ecell:3,3
+wait 3
+assert ezoom 5
+wheel -1 @ecell:3,3
+wait 3
+assert ezoom 4
+click @ezoom.fit
+wait 3
+assert ezoom > 8
+# the zoom is a view setting: it never changes the font
+assert modified 0
+assert undo 0
+
+# metric lines on and off
+assert emetrics 1
+click @Metrics
+wait 3
+assert emetrics 0
+shot tests/tmp/shots/40_glyph_bar_nometrics.png
+click @Metrics
+wait 3
+assert emetrics 1
+
+# a stroke on an original changes nothing
+click @ecell:3,3
+wait 3
+assert undo 0
+assert modified 0
+
+# the chip makes the duplicate and stays in the glyph view
+click @ro_chip
+wait 6
+assert readonly 0
+assert editor 1
+assert editor_glyph U+0041
+assert w.ro_chip 0
+assert w.Duplicate_to_Edit 0
+assert modified 0
+assert toast Duplicate created
+# now the tools work
+drag @ecell:0,5 @ecell:1,5
+wait 3
+assert modified 1
+assert undo 1
+shot tests/tmp/shots/40_glyph_bar_duplicate.png
+# Back: the font view has its rows again
+click @Back
+wait 5
+assert editor 0
+assert w.Captions 1
+assert w.Clone 1

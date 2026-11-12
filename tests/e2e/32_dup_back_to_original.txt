@@ -1,0 +1,19 @@
+# 32. A duplicate edited to something new and then back to exactly its original: the commit goes and the original stays.
+wait 5
+assert readonly 0
+click @ascent.plus
+wait 6
+click @Library
+wait 8
+assert sql "select count(*) from pxfm" 5
+click @tab.font
+wait 6
+click @ascent.minus
+wait 6
+assert modified 0
+click @Library
+wait 8
+assert sql "select count(*) from pxfm" 4
+assert sql "select count(*) from pxtf" 2
+assert sql "select count(*) from pxfm where lower(hex(hash)) = '0820dc69a21b1cdb3a44d2cff7d884d8'" 1
+assert sql "select count(*) from pxtf_variant where lower(hex(pxfm)) = '0820dc69a21b1cdb3a44d2cff7d884d8'" 1

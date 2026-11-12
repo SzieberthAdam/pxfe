@@ -1,0 +1,60 @@
+# 6b. Glyph view with a colour palette: testdata font 03696f65 (COLOR 0 FFFFFFFF, 1 808080FF; glyphs U+0020 and U+0041), as a duplicate.
+wait 5
+assert glyphs 2
+assert readonly 0
+shot tests/tmp/shots/06b_palette_grid.png
+click @cell:U+0020
+key enter
+wait 5
+assert editor 1
+shot tests/tmp/shots/06b_palette_editor.png
+assert eink '0
+# the palette strip: pick an ink, paint with it
+click @ink:1
+wait 2
+assert eink '1
+click @ecell:1,2
+wait 3
+assert glyph U+0020 pixel 1 2 1
+# keys 0..9 pick only inks that the palette has
+key 2
+wait 2
+assert eink '1
+key 0
+wait 2
+assert eink '0
+key 1
+wait 2
+assert eink '1
+drag @ecell:2,3 @ecell:3,3
+wait 3
+assert glyph U+0020 pixel 2 3 1
+assert glyph U+0020 pixel 3 3 1
+# the eraser ink: left button paints '.' (erases)
+click @ink:.
+click @ecell:2,3
+wait 3
+assert glyph U+0020 pixel 2 3 .
+# the all-characters popup opens and Esc closes only the popup
+click @All
+wait 3
+shot tests/tmp/shots/06b_palette_popup.png
+key esc
+wait 3
+assert editor 1
+key esc
+wait 3
+assert editor 0
+# Export: COLOR lines in the pxfm, reader accepts it
+setdialog folder tests/tmp/xout
+click @File
+click @file.export
+wait 8
+assert modal Export_finished
+key enter
+wait 3
+assert modal none
+assert saved pxfm
+assert file $SAVEDPXFM contains COLOR\t1\t808080FF
+assert file $SAVEDPXFM contains COLOR\t.\t00000000
+verifylib $SAVEDPXFM tests/tmp/xout 2

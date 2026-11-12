@@ -1,0 +1,117 @@
+# 44. What the layers draw on the canvas, pixel exact: colour, opacity, offset, order against the current glyph, and the hidden
+# current glyph (editing blocked).  Duplicate of 0820dc69, glyph U+0020 (empty, advance 4); the layer is x (its row above the
+# baseline is "0...0": cells (0,5) and (4,5)); the box rows 0..7, the pen at column 0.
+wait 5
+click @cell:U+0020
+key enter
+wait 6
+assert editor_glyph U+0020
+click @gtab_Layers
+wait 3
+click @+_Add_Layer
+wait 3
+click @lay_same
+click @lay_glyph
+type x
+wait 2
+click @Add
+wait 3
+assert l.count 2
+assert l.color.0 0xE5484D
+# opacity 100: the layer's colour, exactly, in the cell and not beside it
+click @lay_opv.value
+type 100
+key enter
+wait 3
+assert l.op.0 100
+assert pixel @ecell:0,5 E5484D
+assert pixel @ecell:0,5 -3 -3 E5484D
+assert pixel @ecell:0,5 3 3 E5484D
+assert pixel @ecell:1,5 FFFFFF
+assert pixel @ecell:4,5 E5484D
+assert pixel @ecell:0,4 FFFFFF
+# opacity 0: nothing
+click @lay_opv.value
+type 0
+key enter
+wait 3
+assert l.op.0 0
+assert pixel @ecell:0,5 FFFFFF
+# a half-transparent black over the white: grey
+click @lay_sw_7
+click @lay_opv.value
+type 50
+key enter
+wait 3
+assert pixel @ecell:0,5 8F8F91
+# the colour of a swatch
+click @lay_sw_1
+click @lay_opv.value
+type 100
+key enter
+wait 3
+assert l.color.0 0x2F6FED
+assert pixel @ecell:0,5 2F6FED
+# offset: one right, one up
+click @lay_x.plus
+click @lay_y.plus
+wait 3
+assert l.dx.0 1
+assert l.dy.0 1
+assert pixel @ecell:0,5 FFFFFF
+assert pixel @ecell:1,4 2F6FED
+assert pixel @ecell:5,4 2F6FED
+shot tests/tmp/shots/44_layer_offset.png
+
+# order against the current glyph: a pixel painted at (1,4) is black, the layer (on top) covers it
+click @ecell:1,4
+wait 3
+assert glyph U+0020 ink 1
+click @gtab_Layers
+wait 3
+assert pixel @ecell:1,4 2F6FED
+click @lay_down_0
+wait 3
+assert l.cur 0
+assert pixel @ecell:1,4 000000
+click @lay_up_1
+wait 3
+assert l.cur 1
+assert pixel @ecell:1,4 2F6FED
+
+# the current glyph hidden: its pixel is gone, the editing tools are off, the canvas says so
+click @lay_eye_1
+wait 3
+assert ehidden 1
+assert pixel @ecell:1,4 2F6FED
+click @lay_down_0
+wait 3
+assert l.cur 0
+# the layer shows, the hidden glyph's black pixel does not
+assert pixel @ecell:1,4 2F6FED
+assert pixel @ecell:2,4 FFFFFF
+shot tests/tmp/shots/44_current_hidden.png
+click @ecell:2,4
+wait 3
+drag @ecell:2,3 @ecell:3,3
+wait 3
+click @ecell:2,3 right
+wait 3
+assert glyph U+0020 ink 1
+assert undo 1
+key l
+wait 2
+assert etool 0
+click @Line
+wait 2
+assert etool 0
+click @gtab_Layers
+click @lay_eye_0
+wait 3
+assert ehidden 0
+assert pixel @ecell:1,4 000000
+# editing works again
+click @ecell:2,4
+wait 3
+assert glyph U+0020 ink 2
+assert undo 2

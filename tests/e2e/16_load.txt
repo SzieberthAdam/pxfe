@@ -1,0 +1,65 @@
+# 16. Load a .pxfdb (File menu and Ctrl+O): the contents are in memory, the file is only read.
+waitfor loading = 0 60000
+wait 5
+assert inbrowser 1
+assert hasstore 1
+assert storeimported 0
+assert storefonts 4
+assert storetypefaces 2
+assert storeglyphs 6
+assert btotal 3
+assert dbmodified 0
+assert unsaved 0
+assert wtitle e2e.pxfdb
+assert statusdb e2e.pxfdb
+assert statusdb saved
+copyfile tests/tmp/e2e.pxfdb tests/tmp/e2e_before.pxfdb
+shot tests/tmp/shots/16_pxfdb.png
+# the File menu
+click @File
+wait 3
+assert filemenu 1
+assert w.file.load 1
+assert w.file.save 1
+assert w.file.saveas 1
+assert w.file.import 1
+assert w.file.export 1
+assert w.file.quit 1
+shot tests/tmp/shots/v5_filemenu.png
+setdialog pxfdb tests/tmp/e2e.pxfdb
+click @file.load
+waitfor loading = 0 60000
+wait 8
+assert filemenu 0
+assert hasstore 1
+assert storefonts 4
+assert inbrowser 1
+# Ctrl+O does the same
+key o ctrl
+waitfor loading = 0 60000
+wait 8
+assert storefonts 4
+assert opentime >= 0
+# the library opens a font as an original
+click @Fonts
+wait 4
+click @Filter
+type 0820dc
+wait 4
+assert bvisible 1
+click @card:0
+wait 3
+dblclick @card:0
+wait 6
+assert infont 1
+assert readonly 1
+assert modified 0
+assert glyphs 6
+assert hashname 1
+assert ohash 0820dc69a21b1cdb3a44d2cff7d884d8
+assert hascont 1
+assert variant 1
+assert sql "SELECT COUNT(*) FROM pxfm" 4
+assert sql "SELECT COUNT(*) FROM pxtf" 2
+# nothing was written
+assert samefile tests/tmp/e2e.pxfdb tests/tmp/e2e_before.pxfdb

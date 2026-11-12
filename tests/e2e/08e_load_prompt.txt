@@ -1,0 +1,108 @@
+# 8e. Unsaved-changes prompt on Load (e2e database), then Save As / Load of another file.
+wait 5
+assert dirty 0
+setdialog pxfdb tests/tmp/e2e.pxfdb
+# clean: Load goes straight to the (overridden) dialog and reloads
+key o ctrl
+waitfor loading = 0 60000
+wait 6
+assert modal none
+assert hasstore 1
+assert inbrowser 1
+# a duplicate with a change; Load asks
+click @Fonts
+wait 4
+click @Filter
+type 0820dc
+wait 4
+sleep 600
+click @card:0
+wait 3
+dblclick @card:0
+wait 8
+assert infont 1
+click @Duplicate_to_Edit
+wait 6
+click @ascent.plus
+wait 6
+assert unsaved 1
+key o ctrl
+wait 4
+assert modal Unsaved_changes
+shot tests/tmp/shots/v5_unsaved_prompt.png
+# Cancel: nothing happens
+click @Cancel
+wait 4
+assert modal none
+assert m.ascent 7
+assert unsaved 1
+# Discard: loads, the changes are gone
+key o ctrl
+wait 4
+click @Discard
+waitfor loading = 0 60000
+wait 8
+assert modal none
+assert unsaved 0
+assert inbrowser 1
+assert storefonts 4
+assert sqlfile tests/tmp/e2e.pxfdb "select count(*) from pxfm" 4
+# again, then Save: the file gets the change, then it loads
+click @Fonts
+wait 4
+click @Filter
+type 0820dc
+wait 4
+sleep 600
+click @card:0
+wait 3
+dblclick @card:0
+wait 8
+click @Duplicate_to_Edit
+wait 6
+click @ascent.plus
+wait 6
+key o ctrl
+wait 4
+assert modal Unsaved_changes
+click @Save
+waitfor loading = 0 60000
+wait 10
+assert modal none
+assert unsaved 0
+assert sqlfile tests/tmp/e2e.pxfdb "select count(*) from pxfm" 5
+assert storefonts 5
+# Esc on the prompt cancels
+click @Fonts
+wait 4
+click @Filter
+type 0820dc
+wait 4
+sleep 600
+click @card:0
+wait 3
+dblclick @card:0
+wait 8
+click @Duplicate_to_Edit
+wait 6
+click @ascent.plus
+wait 6
+click @ascent.plus
+wait 6
+key o ctrl
+wait 4
+key esc
+wait 4
+assert modal none
+assert unsaved 1
+# a file that does not exist: error dialog, the current database stays
+setdialog pxfdb tests/tmp/does_not_exist.pxfdb
+key o ctrl
+wait 4
+click @Discard
+wait 8
+assert modal Cannot_load_database
+key enter
+wait 4
+assert modal none
+assert hasstore 1

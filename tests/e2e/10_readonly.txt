@@ -1,0 +1,60 @@
+# 10. An original (container e5f670ff) is read-only: no edit reaches the font, the library stays untouched; Duplicate to Edit makes the copy.
+wait 5
+assert readonly 1
+assert hascont 1
+assert modified 0
+assert unsaved 0
+assert unsaved 0
+assert glyphs 6
+snapdir tests/tmp/e2elib
+shot tests/tmp/shots/10_readonly.png
+# metric spinners, Delete, clone, shortcuts do nothing
+click @ascent.plus
+wait 3
+assert m.ascent 6
+key delete
+wait 3
+assert glyphs 6
+click @cell:U+0041
+key d ctrl
+wait 4
+assert modal none
+click @Delete
+wait 3
+assert modal none
+assert glyphs 6
+key s ctrl shift
+wait 4
+key s ctrl
+wait 4
+assert modified 0
+assert dbmodified 0
+# the glyph editor opens as a viewer; strokes change nothing
+click @cell:U+0041
+key enter
+wait 5
+assert editor 1
+click @ecell:3,3
+wait 3
+click @ecell:3,3 right
+wait 3
+assert undo 0
+assert modified 0
+click @Back
+wait 4
+assert editor 0
+assert snapdir unchanged
+# Duplicate to Edit: editable copy, still unmodified and unsaved
+click @Duplicate_to_Edit
+wait 5
+assert readonly 0
+assert hascont 1
+assert modified 0
+assert unsaved 0
+assert glyphs 6
+click @ptab_Font
+click @ascent.plus
+wait 3
+assert m.ascent 7
+assert modified 1
+assert snapdir unchanged

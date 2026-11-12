@@ -1,0 +1,209 @@
+# 21. Insight and the glyph finder on testdata/lib (copy in tests/tmp/e2elib).
+# Glyph A (C0FC54C2...) is in 3 fonts (0820dc69, e6109c13, fa96e358), a second A bitmap (3B6F6802...) is in 1 font (03696f65);
+# the bitmap of x (F83AD16C...) is in 0820dc69 and, uncoded, in fa96e358.
+waitfor loading = 0 60000
+wait 5
+assert inbrowser 1
+
+# ---- similar fonts in the browser side panel: select a card, the list fills, a click opens that font read-only
+click @Fonts
+wait 4
+click @Filter
+type 0820dc
+waitfor bvisible = 1 5000
+wait 2
+assert bvisible 1
+click @card:0
+wait 3
+assert bside 0
+click @bside_Similar
+assert bside 1
+waitfor similar >= 1 10000
+assert similar 3
+shot tests/tmp/shots/21_similar.png
+# the first row of the list (best score first: the Uncoded Mono font fa96e358), found by its widget name
+click @similar_row_0
+wait 8
+assert inbrowser 0
+assert infont 1
+assert readonly 1
+assert ohash fa96e3583da8e003fc25404ac00f764e
+assert hashname 1
+key left alt
+wait 4
+assert inbrowser 1
+assert bside 1
+
+# ---- similar typefaces in the Typefaces tab (the list counts for the Similar tab too), then the View tab again
+click @Typefaces
+wait 4
+click @bside_View
+click @Filter_Clear
+wait 3
+click @card:0
+wait 3
+click @bside_Similar
+waitfor similar >= 0 20000
+assert similar 1
+click @Fonts
+wait 4
+
+# ---- glyph usage in the font view
+click @bside_View
+assert bside 0
+click @Filter
+type 0820dc
+wait 4
+sleep 600
+click @card:0
+wait 3
+dblclick @card:0
+wait 6
+assert ohash 0820dc69a21b1cdb3a44d2cff7d884d8
+sleep 600
+click @cell:U+0041
+waitfor usage >= 0 10000
+wait 10
+assert usage 3
+# the numbers against the store: the bitmap of A (as drawn by 0820dc69 for U+0041) is held by 3 fonts under any code, by
+# the typeface variants that name them (usagevar), and drawn for U+0041 by the fonts the finder counts (usagecode)
+assert sql "SELECT COUNT(DISTINCT pxfm) FROM pxfm_glyph WHERE glyph=x'C0FC54C2EC60CB8617B041D991DA1622'" 3
+assert sql "SELECT COUNT(*) FROM pxtf_variant WHERE pxfm IN (SELECT pxfm FROM pxfm_glyph WHERE glyph=x'C0FC54C2EC60CB8617B041D991DA1622')" 3
+assert usagevar 3
+assert sql "SELECT COUNT(DISTINCT pxfm) FROM pxfm_glyph WHERE code=65 AND glyph=x'C0FC54C2EC60CB8617B041D991DA1622'" 3
+assert usagecode 3
+click @ptab_Glyph
+wait 4
+assert ptab 2
+# the tab is remembered in the settings file
+assert file tests/tmp/e2e.ini contains panelTab=2
+shot tests/tmp/shots/21_usage_glyphtab.png
+sleep 450
+click @cell:U+0078
+waitfor usage = 2 5000
+# x: its bitmap is held by 2 fonts (one of them draws it for no code point), but only 1 draws it for U+0078, which is the number the finder shows
+assert sql "SELECT COUNT(DISTINCT pxfm) FROM pxfm_glyph WHERE glyph=x'F83AD16C225C33BC1D6BFE2178677638'" 2
+assert sql "SELECT COUNT(DISTINCT pxfm) FROM pxfm_glyph WHERE code=120 AND glyph=x'F83AD16C225C33BC1D6BFE2178677638'" 1
+assert usagecode 1
+sleep 450
+click @cell:U+002C
+waitfor usage = 2 5000
+# several glyphs (A and x): the fonts that hold all of them (0820dc69, fa96e358)
+sleep 450
+click @cell:U+0041
+click @cell:U+0078 ctrl
+waitfor usage = 2 5000
+assert selected 2
+assert usagecode -1
+shot tests/tmp/shots/21_usage.png
+
+# ---- Find in Library from the font view (Ctrl+Shift+F and the toolbar button): the finder opens on the selected glyph's code
+click @cell:U+0041
+wait 3
+key f ctrl shift
+wait 8
+assert infinder 1
+assert finder_code 65
+waitfor finder_count >= 0 10000
+assert finder_count 2
+assert fcellfonts 3
+key left alt
+wait 4
+assert infont 1
+click @Find_in_Library
+wait 8
+assert infinder 1
+assert finder_code 65
+key left alt
+wait 4
+assert infont 1
+# ... and the link of the Glyph tab of the right panel (it needs a glyph with a code point)
+click @cell:U+0078
+wait 3
+click @ptab_Glyph
+wait 3
+click @glyph_find
+wait 8
+assert infinder 1
+assert finder_code 120
+waitfor finder_count >= 0 10000
+assert finder_count 1
+assert fcellfonts 1
+# the same from inside the glyph view (Ctrl+Shift+F): the editor of x, then the finder
+key left alt
+wait 4
+click @cell:U+0078
+key enter
+wait 6
+assert editor 1
+assert ptab 2
+key f ctrl shift
+wait 8
+assert infinder 1
+assert finder_code 120
+
+# ---- the finder: a typed character, a U+ code
+click @finder.search
+key a ctrl
+type A
+wait 20
+assert finder_code 65
+assert finder_count 2
+shot tests/tmp/shots/21_finder.png
+key a ctrl
+type U+0078
+wait 20
+assert finder_code 120
+assert finder_count 1
+key a ctrl
+type U+0041
+wait 20
+assert finder_code 65
+assert finder_count 2
+key a ctrl
+type U+0F00
+wait 20
+assert finder_count 0
+
+# ---- double-click a result: the font opens read-only with the glyph selected
+key a ctrl
+type A
+wait 20
+assert finder_count 2
+dblclick @fcell:0
+wait 10
+assert infinder 0
+assert infont 1
+assert inbrowser 0
+assert readonly 1
+assert hashname 1
+assert selected 1
+assert sel U+0041 1
+# Alt+Left from a font goes to the library
+key left alt
+wait 4
+assert inbrowser 1
+
+# ---- the usage rows of the finder: a click on a row opens that font read-only with the glyph selected under the finder's code
+key g ctrl
+wait 8
+click @finder.search
+key a ctrl
+type A
+wait 20
+assert finder_count 2
+click @fcell:0
+waitfor usage = 3 10000
+wait 6
+shot tests/tmp/shots/21_finder_usage.png
+click @usage_row_0
+wait 10
+assert infinder 0
+assert infont 1
+assert readonly 1
+assert hashname 1
+assert selected 1
+assert sel U+0041 1
+key left alt
+wait 4
+assert inbrowser 1

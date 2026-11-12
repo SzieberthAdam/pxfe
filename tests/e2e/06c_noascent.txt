@@ -1,0 +1,79 @@
+# 6c. A font with no ASCENT/DESCENT (testdata e6109c13): the font box is taken from the glyphs and is never written.
+wait 5
+assert has.ascent 0
+assert has.descent 0
+assert glyphs 3
+assert boxabove 5
+assert boxbelow 2
+assert modified 0
+shot tests/tmp/shots/06c_noascent_grid.png
+# painting above the highest glyph grows the derived box; the glyph offsets stay as they were
+click @cell:U+0020
+key enter
+wait 5
+assert editor 1
+click @ecell:2,-1
+wait 3
+# a single click makes exactly one pixel: the view must not shift under the cursor while the box grows
+assert glyph U+0020 size 1x1
+assert glyph U+0020 ink 1
+assert glyph U+0020 x 2
+assert glyph U+0020 y 5
+assert boxabove 6
+assert boxbelow 2
+assert modified 1
+shot tests/tmp/shots/06c_noascent_editor.png
+key z ctrl
+wait 3
+assert boxabove 5
+assert modified 0
+assert glyph U+0020 empty
+# a single click left of the glyph's area and one below the box: still exactly one pixel each
+click @ecell:-3,3
+wait 3
+assert glyph U+0020 size 1x1
+assert glyph U+0020 x -3
+key z ctrl
+wait 3
+assert glyph U+0020 empty
+click @ecell:2,7
+wait 3
+assert glyph U+0020 size 1x1
+assert glyph U+0020 ink 1
+assert boxbelow 3
+key z ctrl
+wait 3
+assert glyph U+0020 empty
+assert boxbelow 2
+assert modified 0
+key esc
+wait 3
+# stating ASCENT keeps the box as it was shown (5 above) and moves no glyph
+click @ptab_Font
+click @ascent.on
+wait 3
+assert has.ascent 1
+assert m.ascent 5
+assert glyph U+0041 y 0
+assert glyph U+0041 x -1
+click @ascent.plus
+wait 3
+assert m.ascent 6
+assert boxabove 6
+assert glyph U+0041 y 0
+click @descent.on
+wait 3
+assert m.descent 2
+setdialog folder tests/tmp/xout
+click @File
+click @file.export
+wait 8
+assert modal Export_finished
+key enter
+wait 3
+assert modal none
+assert saved pxfm
+assert file $SAVEDPXFM contains ASCENT\t6
+assert file $SAVEDPXFM contains DESCENT\t2
+assert file $SAVEDPXFM contains GLYPH\t000041\t-1,0
+verifylib $SAVEDPXFM tests/tmp/xout 3

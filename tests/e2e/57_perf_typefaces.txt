@@ -1,0 +1,23 @@
+# 57. Frame time of the Typefaces tab on the real library while scrolling (not part of run_all.bat).
+# Run: tests\tmp\pxfe_e2e.exe C:\...\pixelglyphlib\pxfdb.pxfdb --ini tests\tmp\e2e_shots.ini --play tests\e2e\57_perf_typefaces.txt
+waitfor loading = 0 600000
+wait 10
+assert btab 0
+show btotal bvisible bboxes
+wait 120
+show bupd10 bupdmax10 bfr10 bfrmax10
+fps 1000
+repeat 100 wheel -3 500 400
+show bupd10 bupdmax10 bfr10 bfrmax10
+repeat 100 wheel 3 500 400
+show bupd10 bupdmax10 bfr10 bfrmax10
+# the same with 8 lines of sample at 4x
+click @Zoom_4
+click @Sample
+key a ctrl
+setclip Abc Hxg\nabc hxg\nABC HXG\nabc hxg\nABC HXG\nabc hxg\nABC HXG\nabc hxg
+key v ctrl
+key enter ctrl
+wait 120
+repeat 100 wheel -3 500 400
+show bupd10 bupdmax10 bfr10 bfrmax10

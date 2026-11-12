@@ -1,0 +1,74 @@
+# 55. The browser asks for deletions (BROWSER_DELETE_FONT = 4, BROWSER_DELETE_TYPEFACE = 5): Del on the selection and the context menu
+# on a card, a typeface box header and a variant row.  The confirmation and the deletion itself are main.c's (tested elsewhere):
+# a dialog that opens is dismissed with Escape.
+wait 8
+assert inbrowser 1
+assert blast 0
+
+# ---- Del on a variant row: the font
+click @card:1
+wait 2
+key delete
+wait 3
+assert blast 4
+assert blastpxfm e6109c134eda8d747bac9a3c2a62d204
+key escape
+wait 3
+
+# ---- Del on a box header: the typeface
+click @hdr:1
+wait 2
+key delete
+wait 3
+assert blast 5
+assert blastpxtf b5fbcdd0
+key escape
+wait 3
+
+# ---- the context menu of a variant row: Open, Duplicate to Edit, Delete Font, Delete Typeface
+click @card:0 right
+wait 3
+shot tests/tmp/shots/55_context_menu.png
+click @Ctx_Delete_Font
+wait 3
+assert blast 4
+assert blastpxfm 0820dc69a21b1cdb3a44d2cff7d884d8
+key escape
+wait 3
+click @card:0 right
+wait 3
+click @Ctx_Delete_Typeface
+wait 3
+assert blast 5
+assert blastpxtf b925951b
+key escape
+wait 3
+
+# ---- the context menu of a box header
+click @hdr:0 right
+wait 3
+click @Ctx_Delete_Typeface
+wait 3
+assert blast 5
+assert blastpxtf b925951b
+key escape
+wait 3
+
+# ---- Fonts tab: a card
+click @Fonts
+wait 4
+click @card:0 right
+wait 3
+click @Ctx_Delete_Font
+wait 3
+assert blast 4
+key escape
+wait 3
+
+# ---- the menu's Open
+click @card:0 right
+wait 3
+click @Ctx_Open
+wait 8
+assert inbrowser 0
+assert readonly 1

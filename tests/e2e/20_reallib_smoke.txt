@@ -1,0 +1,180 @@
+# 20. Smoke test on the real library (read-only use): the browser opens on pixelglyphlib (the folder or its pxfdb.pxfdb), 5 different fonts open as originals.
+# Not part of run_all.bat (slow): run tests\e2e\run_reallib.bat.  The database that was loaded is never saved; Save As writes a copy under tests/tmp.
+# The fonts are named by their hashes, so they are fixed points of the library (see README.md).
+waitfor loading = 0 900000
+wait 10
+assert inbrowser 1
+assert hasstore 1
+waitfor btotal >= 1000 60000
+waitfor bpending = 0 60000
+assert btab 0
+shot tests/tmp/shots/20_real_browser.png
+
+# ---- 1. a FON typeface font with RATIO (ProgTinyCo)
+click @Typefaces
+wait 4
+click @Filter
+key a ctrl
+type ProgTinyCo
+wait 6
+assert bvisible >= 1
+click @card:0
+wait 3
+dblclick @card:0
+waitfor inbrowser = 0 120000
+assert readonly 1
+assert modified 0
+assert hashname 1
+assert hasratio 1
+assert hascont 1
+click @Duplicate_to_Edit
+wait 10
+assert readonly 0
+assert modified 0
+assert unsaved 0
+key s ctrl
+wait 4
+assert toast No changes to save
+assert unsaved 0
+assert hashname 1
+shot tests/tmp/shots/20_real_1.png
+click @Library
+wait 6
+assert inbrowser 1
+
+# ---- 2. a font without ASCENT and DESCENT (CaZOOM, 066827597)
+click @Fonts
+wait 4
+click @Filter
+key a ctrl
+type 066827597
+wait 6
+assert bvisible >= 1
+click @card:0
+wait 3
+dblclick @card:0
+waitfor inbrowser = 0 120000
+assert readonly 1
+assert modified 0
+assert hashname 1
+assert has.ascent 0
+assert has.descent 0
+click @Duplicate_to_Edit
+wait 10
+assert readonly 0
+assert modified 0
+assert unsaved 0
+key s ctrl
+wait 4
+assert toast No changes to save
+assert unsaved 0
+assert hashname 1
+shot tests/tmp/shots/20_real_2.png
+click @Library
+wait 6
+assert inbrowser 1
+
+# ---- 3. the biggest font by glyph count (Unifont, 57085 glyphs, 21ad34ef)
+click @Fonts
+wait 4
+click @Filter
+key a ctrl
+type 21ad34ef
+wait 6
+assert bvisible >= 1
+click @card:0
+wait 3
+dblclick @card:0
+waitfor inbrowser = 0 120000
+assert readonly 1
+assert modified 0
+assert hashname 1
+assert glyphs 57085
+assert hasratio 1
+click @Duplicate_to_Edit
+wait 10
+assert readonly 0
+assert modified 0
+assert unsaved 0
+key s ctrl
+wait 4
+assert toast No changes to save
+assert unsaved 0
+assert hashname 1
+shot tests/tmp/shots/20_real_3.png
+click @Library
+wait 6
+assert inbrowser 1
+
+# ---- 4. a FON typeface font (Bm437 IBM CGA)
+click @Typefaces
+wait 4
+click @Filter
+key a ctrl
+type Bm437 IBM CGA
+wait 6
+assert bvisible >= 1
+click @card:0
+wait 3
+dblclick @card:0
+waitfor inbrowser = 0 120000
+assert readonly 1
+assert modified 0
+assert hashname 1
+assert hascont 1
+click @Duplicate_to_Edit
+wait 10
+assert readonly 0
+assert modified 0
+assert unsaved 0
+key s ctrl
+wait 4
+assert toast No changes to save
+assert unsaved 0
+assert hashname 1
+shot tests/tmp/shots/20_real_4.png
+click @Library
+wait 6
+assert inbrowser 1
+
+# ---- 5. a plain font by hash (00fa5b08, 255 glyphs)
+click @Fonts
+wait 4
+click @Filter
+key a ctrl
+type 00fa5b08
+wait 6
+assert bvisible >= 1
+click @card:0
+wait 3
+dblclick @card:0
+waitfor inbrowser = 0 120000
+assert readonly 1
+assert modified 0
+assert hashname 1
+assert glyphs 255
+click @Duplicate_to_Edit
+wait 10
+assert readonly 0
+assert modified 0
+assert unsaved 0
+key s ctrl
+wait 4
+assert toast No changes to save
+assert unsaved 0
+assert hashname 1
+shot tests/tmp/shots/20_real_5.png
+click @Library
+wait 6
+assert inbrowser 1
+
+# nothing was changed: Save has nothing to write; Save As writes a copy of the whole database under tests/tmp (PXFE_TRACE prints its time)
+assert dbmodified 0
+delete tests/tmp/real_saveas.pxfdb
+setdialog save tests/tmp/real_saveas.pxfdb
+key s ctrl shift
+waitfor dbmodified = 0 600000
+wait 10
+assert file tests/tmp/real_saveas.pxfdb exists
+assert toast Saved as real_saveas.pxfdb
+assert wtitle real_saveas.pxfdb

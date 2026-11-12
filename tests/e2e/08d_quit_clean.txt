@@ -1,0 +1,7 @@
+# 8d. Close on an unmodified font exits at once, without a prompt.
+wait 5
+assert dirty 0
+expectquit
+closewindow
+wait 30
+assert glyphs -1

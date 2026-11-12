@@ -1,0 +1,17 @@
+# Build outputs
+*.exe
+*.o
+*.obj
+*.pdb
+
+# Test scratch space and generated screenshots
+tests/tmp/
+tests/shots/
+
+# Local runtime state of the app
+pxfe.ini
+cache/
+drafts/
+
+# Progress archives
+snapshots/

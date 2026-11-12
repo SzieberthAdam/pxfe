@@ -1,0 +1,56 @@
+# 19. Uncoded glyphs (testdata font fa96e358: space, A, H, default H, and two glyphs without a code point, #0 and #1).
+# The grid names them "#n", deleting renumbers the rest, "No Code Point" in the clone dialog adds one at the end.
+wait 5
+assert glyphs 5
+assert uncoded 2
+assert glyph #0 exists 1
+assert glyph #1 exists 1
+assert glyph #2 exists 0
+assert caption #0 #0
+assert caption #1 #1
+assert caption U+0041 U+0041
+shot tests/tmp/shots/19_uncoded.png
+assert readonly 0
+# select #0 and read it in the panel
+click @cell:#0
+wait 3
+assert selected 1
+assert sel #0 1
+# delete #0: the glyph that was #1 becomes #0
+key delete
+wait 4
+assert modal Delete_glyph
+key enter
+wait 4
+assert modal none
+assert glyphs 4
+assert uncoded 1
+assert glyph #0 exists 1
+assert glyph #1 exists 0
+assert caption #0 #0
+assert modified 1
+key z ctrl
+wait 3
+assert uncoded 2
+assert glyphs 5
+assert glyph #1 exists 1
+key y ctrl
+wait 3
+assert uncoded 1
+# clone A without a code point: the dialog has a No Code Point button
+click @cell:U+0041
+wait 2
+click @Clone
+wait 4
+assert modal Clone_glyph
+click @No_Code_Point
+wait 4
+assert modal none
+assert glyphs 5
+assert uncoded 2
+assert glyph #1 exists 1
+assert caption #1 #1
+assert selected 1
+assert sel #1 1
+# the default glyph (H) stays the default: uncoded glyphs cannot be one
+assert default 72

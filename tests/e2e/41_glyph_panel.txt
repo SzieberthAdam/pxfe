@@ -1,0 +1,78 @@
+# 41. The glyph view's right panel: tabs Glyph | Usage | Layers (no Font, Typeface, Similar), the full glyph hashes
+# (click copies), the usage of the glyph (with its code), Find in Library.  Font 0820dc69, glyph A.
+wait 5
+click @cell:U+0041
+key enter
+wait 6
+assert editor 1
+assert gtab 0
+assert w.gtab_Glyph 1
+assert w.gtab_Usage 1
+assert w.gtab_Layers 1
+assert w.ptab_Font 0
+assert w.ptab_Typeface 0
+assert w.ptab_Glyph 0
+assert w.ptab_Similar 0
+# Glyph tab: both hashes in full, the link
+assert w.ghash_orig 1
+assert w.ghash_cur 1
+assert w.glyph_find 1
+shot tests/tmp/shots/41_panel_glyph.png
+click @ghash_cur
+wait 3
+assert clip c0fc54c2ec60cb8617b041d991da1622
+assert toast Current glyph hash copied
+click @ghash_orig
+wait 3
+assert clip c0fc54c2ec60cb8617b041d991da1622
+assert toast Original glyph hash copied
+assert glyph U+0041 hash c0fc54c2ec60cb8617b041d991da1622
+# Usage tab: A is held by 3 fonts, drawn for U+0041 by 3
+click @gtab_Usage
+wait 3
+assert gtab 1
+waitfor usage >= 0 10000
+wait 10
+assert usage 3
+assert usagecode 3
+assert w.usage_row_0 1
+assert w.ghash_cur 0
+shot tests/tmp/shots/41_panel_usage.png
+# Layers tab
+click @gtab_Layers
+wait 3
+assert gtab 2
+assert w.+_Add_Layer 1
+assert w.lay_row_0 1
+assert w.ghash_cur 0
+shot tests/tmp/shots/41_panel_layers.png
+# the glyph view opens on the Glyph tab again
+key esc
+wait 4
+assert editor 0
+sleep 450
+click @cell:U+0048
+key enter
+wait 5
+assert editor 1
+assert gtab 0
+# Duplicate: the current hash follows the edit, the original one stays
+click @ro_chip
+wait 5
+assert readonly 0
+assert glyph U+0048 origchanged 0
+click @ecell:8,2
+wait 3
+assert glyph U+0048 origchanged 1
+click @ghash_orig
+wait 3
+assert clip abe675527c81c31d04cda5e2aed7623a
+click @ghash_cur
+wait 3
+assert toast Current glyph hash copied
+shot tests/tmp/shots/41_panel_changed.png
+# Find in Library from the panel
+click @glyph_find
+wait 8
+assert infinder 1
+assert finder_code U+0048

@@ -1,0 +1,88 @@
+# 15. Import Folder (File menu): the testdata/lib copy in tests/tmp/e2elib becomes a new database file, which is then loaded.
+# A clean database loaded first: no prompt.  The target exists on the second import: Replace? is asked.
+wait 8
+assert hasstore 1
+delete tests/tmp/e2e_imp.pxfdb
+snapdir tests/tmp/e2elib
+setdialog folder tests/tmp/e2elib
+setdialog save tests/tmp/e2e_imp.pxfdb
+click @File
+wait 3
+click @file.import
+wait 3
+waitfor loading = 0 60000
+wait 8
+assert modal none
+assert hasstore 1
+assert storeimported 1
+assert inbrowser 1
+assert storefonts 4
+assert storetypefaces 2
+assert storeglyphs 6
+assert btotal 3
+assert wtitle e2e_imp.pxfdb
+assert statusdb e2e_imp.pxfdb
+assert statusdb saved
+assert file tests/tmp/e2e_imp.pxfdb exists
+assert sqlfile tests/tmp/e2e_imp.pxfdb "select count(*) from pxfm" 4
+assert sqlfile tests/tmp/e2e_imp.pxfdb "select count(*) from glyph" 6
+# the folder is not changed
+assert snapdir unchanged
+# a second import onto the same target asks to replace; Cancel keeps everything
+click @File
+wait 3
+click @file.import
+wait 6
+assert modal Replace_file?
+shot tests/tmp/shots/v5_replace_prompt.png
+click @Cancel
+wait 4
+assert modal none
+assert wtitle e2e_imp.pxfdb
+click @File
+wait 3
+click @file.import
+wait 6
+assert modal Replace_file?
+click @Replace
+waitfor loading = 0 60000
+wait 8
+assert modal none
+assert storeimported 1
+assert storefonts 4
+assert snapdir unchanged
+# an original of the imported database opens read-only and its hash is its file name
+click @Fonts
+wait 4
+click @Filter
+type 0820dc
+wait 4
+assert bvisible 1
+click @card:0
+wait 3
+dblclick @card:0
+wait 6
+assert inbrowser 0
+assert infont 1
+assert readonly 1
+assert modified 0
+assert glyphs 6
+assert hashname 1
+assert ohash 0820dc69a21b1cdb3a44d2cff7d884d8
+# Alt+Left goes back to the library, Ctrl+G opens the glyph finder, Alt+Left again goes back
+key left alt
+wait 4
+assert inbrowser 1
+key g ctrl
+wait 4
+assert infinder 1
+key left alt
+wait 4
+assert infinder 0
+click @Glyphs
+wait 4
+assert infinder 1
+click @Library
+wait 4
+assert inbrowser 1
+assert infinder 0

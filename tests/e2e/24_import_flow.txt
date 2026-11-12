@@ -1,0 +1,73 @@
+# 24. Import with no database loaded (the empty state): folder picker, target file, progress, load.
+# Folders that cannot be imported (no data, a broken file) report an error and write nothing.
+wait 5
+assert hasstore 0
+delete tests/tmp/e2e_imp.pxfdb
+delete tests/tmp/bad_out.pxfdb
+# a folder without pxtf, pxfm and pxgl files
+writefile tests/tmp/emptyf/readme.txt nothing here\n
+setdialog folder tests/tmp/emptyf
+setdialog save tests/tmp/bad_out.pxfdb
+click @File
+wait 3
+click @file.import
+wait 6
+assert modal Cannot_import
+shot tests/tmp/shots/v5_import_nodata.png
+key enter
+wait 4
+assert modal none
+assert hasstore 0
+assert file tests/tmp/bad_out.pxfdb missing
+# a folder with a file that is not a valid pxfm: the import fails, no file is written
+writefile tests/tmp/badlib/pxfm/aa/aa000000000000000000000000000000.pxfm this is not a font\n
+setdialog folder tests/tmp/badlib
+click @File
+wait 3
+click @file.import
+waitfor loading = 0 60000
+wait 8
+assert modal Cannot_import_folder
+shot tests/tmp/shots/v5_import_error.png
+key enter
+wait 4
+assert modal none
+assert hasstore 0
+assert file tests/tmp/bad_out.pxfdb missing
+assert file tests/tmp/bad_out.pxfdb.tmp missing
+# the good folder
+setdialog folder tests/tmp/e2elib
+setdialog save tests/tmp/e2e_imp.pxfdb
+click @File
+wait 3
+click @file.import
+waitfor loading = 0 60000
+wait 8
+assert modal none
+assert hasstore 1
+assert storeimported 1
+assert storefonts 4
+assert storetypefaces 2
+assert storeglyphs 6
+assert inbrowser 1
+assert file tests/tmp/e2e_imp.pxfdb exists
+# a failing import while a database is loaded keeps that database and its target file
+copyfile tests/tmp/e2e_imp.pxfdb tests/tmp/e2e_imp_before.pxfdb
+setdialog folder tests/tmp/badlib
+setdialog save tests/tmp/e2e_imp.pxfdb
+click @File
+wait 3
+click @file.import
+wait 6
+assert modal Replace_file?
+click @Replace
+waitfor loading = 0 60000
+wait 8
+assert modal Cannot_import_folder
+key enter
+wait 4
+assert modal none
+assert hasstore 1
+assert storefonts 4
+assert wtitle e2e_imp.pxfdb
+assert samefile tests/tmp/e2e_imp.pxfdb tests/tmp/e2e_imp_before.pxfdb

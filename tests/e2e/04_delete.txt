@@ -1,0 +1,80 @@
+# 4. Delete with the confirmation dialog. Font: duplicate of testdata font 98eae9aa (6 glyphs).
+wait 5
+assert glyphs 6
+# nothing selected: Del does nothing, the toolbar button is disabled
+key delete
+wait 3
+assert modal none
+click @Delete
+wait 3
+assert modal none
+# select one, Del opens the dialog; Cancel button keeps it
+click @cell:U+0041
+key delete
+wait 4
+assert modal Delete_glyph
+shot tests/tmp/shots/04_delete_dialog.png
+click @Cancel
+wait 3
+assert modal none
+assert glyphs 6
+assert dirty 0
+# Esc cancels as well, and does not clear the selection behind it
+key delete
+wait 4
+key esc
+wait 3
+assert modal none
+assert glyphs 6
+assert selected 1
+# Enter confirms
+key delete
+wait 4
+key enter
+wait 3
+assert modal none
+assert glyphs 5
+assert glyph U+0041 exists 0
+assert selected 0
+assert dirty 1
+# the toolbar Delete button and the dialog's Delete button
+click @cell:U+0048
+click @Delete
+wait 4
+assert modal Delete_glyph
+click @Delete
+wait 3
+assert modal none
+assert glyphs 4
+assert glyph U+0048 exists 0
+# several glyphs: the dialog names the count
+key a ctrl
+key delete
+wait 4
+assert modal Delete_glyphs
+shot tests/tmp/shots/04_delete_many.png
+# clicking the grid behind the dialog does nothing
+click @cell:U+004D
+wait 3
+assert modal Delete_glyphs
+assert selected 4
+click @Delete
+wait 3
+assert glyphs 0
+shot tests/tmp/shots/04_delete_all.png
+# undo brings everything back, in order
+key z ctrl
+wait 4
+assert glyphs 4
+key z ctrl
+wait 4
+assert glyphs 5
+key z ctrl
+wait 4
+assert glyphs 6
+assert glyph U+0041 exists 1
+assert glyph U+0041 pixel 2 1 0
+# redo deletes again
+key y ctrl
+wait 4
+assert glyphs 5

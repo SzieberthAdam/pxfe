@@ -1,0 +1,69 @@
+# 49. Screenshots of the version 4 glyph view (tests/shots/v4_glyph_*.png), on testdata: an original, a duplicate, each tab of the
+# right panel, the Add Layer popover, layers with two references in colours, the current glyph hidden.  Not part of run_all.bat.
+# Run with the original font:  pxfe_e2e.exe <tests\tmp\e2elib\pxfm\08\0820dc69a21b1cdb3a44d2cff7d884d8.pxfm> --play tests\e2e\49_shots_glyph_v4.txt
+wait 5
+click @cell:U+0041
+key enter
+wait 8
+shot tests/shots/v4_glyph_original_glyph.png
+click @gtab_Usage
+waitfor usage >= 0 10000
+wait 12
+shot tests/shots/v4_glyph_original_usage.png
+click @gtab_Layers
+wait 4
+shot tests/shots/v4_glyph_original_layers.png
+# a reference layer over an original is fine: layers do not edit the font
+click @+_Add_Layer
+wait 3
+click @lay_src_Library_font
+wait 3
+click @lay_search
+type Italic
+wait 4
+click @lay_font_0
+wait 3
+shot tests/shots/v4_glyph_addlayer.png
+click @Add
+wait 4
+click @gtab_Glyph
+wait 4
+click @ro_chip
+wait 6
+# the duplicate with a changed bitmap: the current hash differs from the original one
+click @ecell:6,2
+click @ecell:6,3
+wait 3
+click @gtab_Glyph
+wait 3
+shot tests/shots/v4_glyph_duplicate_glyph.png
+click @gtab_Usage
+wait 12
+shot tests/shots/v4_glyph_duplicate_usage.png
+click @gtab_Layers
+wait 3
+# a second reference: Uncoded Mono, another colour, shifted
+click @+_Add_Layer
+wait 3
+click @lay_src_Library_font
+wait 3
+click @lay_search
+type Uncoded
+wait 4
+click @lay_font_0
+wait 3
+click @Add
+wait 4
+click @lay_x.plus
+click @lay_y.plus
+wait 4
+shot tests/shots/v4_glyph_layers.png
+# the current glyph hidden
+click @lay_eye_2
+wait 4
+shot tests/shots/v4_glyph_hidden.png
+click @lay_eye_2
+wait 3
+click @Back
+wait 4
+shot tests/shots/v4_glyph_back_to_grid.png

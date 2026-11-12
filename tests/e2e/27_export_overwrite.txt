@@ -1,0 +1,74 @@
+# 27. Export, Overwrite with a backup: the folder's current data is imported into a backup .pxfdb first, then the contents of
+# pxtf/ pxfm/ pxgl/ are deleted and memory is written there.  Files outside those folders survive.
+waitfor loading = 0 60000
+wait 5
+setdialog folder tests/tmp/xout
+click @File
+wait 3
+click @file.export
+wait 10
+assert modal Export_finished
+key enter
+wait 4
+writefile tests/tmp/xout/keep.txt keep me\n
+writefile tests/tmp/xout/other/keep2.txt keep me too\n
+delete tests/tmp/xout_backup.pxfdb
+# delete a font in memory (the one without a typeface)
+click @Fonts
+wait 4
+click @Filter
+type 03696f
+wait 4
+assert bvisible 1
+sleep 600
+click @card:0
+wait 3
+key delete
+wait 5
+assert modal Delete_font
+click @Delete
+wait 6
+assert modal none
+assert storefonts 3
+assert dbmodified 1
+# the dialog: what is found, the backup option (default on), the backup path through a Save dialog
+click @File
+wait 3
+click @file.export
+wait 8
+assert xdopen 1
+assert xfound_fonts 4
+assert xfound_typefaces 2
+assert xfound_glyphs 6
+assert xbackup 1
+setdialog save tests/tmp/xout_backup.pxfdb
+click @xd.change
+wait 4
+shot tests/tmp/shots/v5_export_overwrite.png
+click @Overwrite
+wait 20
+assert xdopen 0
+assert modal Export_finished
+assert xd_fonts 4
+assert xd_typefaces 2
+assert xd_glyphs 6
+assert xw_fonts 3
+assert xw_typefaces 2
+key enter
+wait 4
+assert modal none
+# the backup holds the old data
+assert file tests/tmp/xout_backup.pxfdb exists
+assert sqlfile tests/tmp/xout_backup.pxfdb "select count(*) from pxfm" 4
+assert sqlfile tests/tmp/xout_backup.pxfdb "select count(*) from pxtf" 2
+assert sqlfile tests/tmp/xout_backup.pxfdb "select count(*) from pxfm where lower(hex(hash)) = '03696f658319e9dfddc2cb6ea2520592'" 1
+# the folder equals memory; other files survive
+assert file tests/tmp/xout/pxfm/03/03696f658319e9dfddc2cb6ea2520592.pxfm missing
+assert file tests/tmp/xout/pxfm/08/0820dc69a21b1cdb3a44d2cff7d884d8.pxfm exists
+assert file tests/tmp/xout/pxfm/e6/e6109c134eda8d747bac9a3c2a62d204.pxfm exists
+assert file tests/tmp/xout/pxtf/b9/b925951bb94de1d15ec27404b3261476.pxtf exists
+assert file tests/tmp/xout/keep.txt contains keep me
+assert file tests/tmp/xout/other/keep2.txt contains keep me too
+# the database file is still as it was loaded; memory still differs from it
+assert samefile tests/tmp/e2e.pxfdb testdata/lib.pxfdb
+assert dbmodified 1

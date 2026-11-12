@@ -1,0 +1,105 @@
+# 50. The shared multi-line sample in the browser (copy of testdata/lib, Typefaces tab): the box, Enter and Ctrl+Enter,
+# caret up and down, Ctrl+V with several lines, the two-line preset, cards that draw every line, the setting in pxfe.ini.
+wait 8
+assert inbrowser 1
+assert btab 0
+assert samplelines 1
+
+# ---- the two-line preset
+click @Two_lines
+wait 4
+assert samplelines 2
+assert sample The quick brown fox jumps over the lazy dog\n0123456789
+assert bsample The quick brown fox jumps over the lazy dog\n0123456789
+
+# ---- typing: Enter makes a new line, Ctrl+Enter applies
+click @Sample
+wait 2
+assert samplefocus 1
+key a ctrl
+type HM
+key enter
+type MH
+assert sample HM\nMH
+assert samplelines 2
+assert samplefocus 1
+key enter ctrl
+wait 2
+assert samplefocus 0
+assert sample HM\nMH
+
+# ---- both lines of the sample are drawn in the cards (the glyphs H and M of the test fonts)
+waitfor bink0 = 2 20000
+assert bink0 2
+shot tests/tmp/shots/50_two_lines.png
+
+# ---- caret up / down, Home, End, Backspace
+click @Sample
+key end ctrl
+key up
+type X
+assert sample HMX\nMH
+key down
+key home
+type >
+assert sample HMX\n>MH
+key end
+key backspace
+assert sample HMX\n>M
+key home ctrl
+key delete
+assert sample MX\n>M
+key enter ctrl
+
+# ---- Ctrl+V pastes several lines (the old text is selected)
+click @Sample
+key a ctrl
+setclip Line one\nLine two\r\nLine three
+key v ctrl
+assert sample Line one\nLine two\nLine three
+assert samplelines 3
+# Escape applies as well
+key escape
+assert samplefocus 0
+assert bsample Line one\nLine two\nLine three
+
+# ---- a click outside applies, the setting is kept in pxfe.ini ([app] sample=, lines escaped)
+click @Sample
+key a ctrl
+type HMH
+click @Filter
+wait 2
+assert samplefocus 0
+assert sample HMH
+sleep 700
+wait 2
+assert file tests/tmp/e2e.ini contains sample=HMH
+click @Two_lines
+sleep 700
+wait 2
+# one line in pxfe.ini: the new line is written escaped
+assert file tests/tmp/e2e.ini contains sample=The quick brown fox
+assert file tests/tmp/e2e.ini lines 3
+
+# ---- the filter field still works next to the multi-line box
+click @Filter
+type Test
+wait 4
+assert bfilter Test
+click @Filter_Clear
+wait 3
+
+# ---- a very long line is clipped with a fade, not wrapped; blank lines are kept
+click @Sample
+key a ctrl
+type HMHMHMHMHMHMHMHMHMHMHMHMHMHMHMHMHMHMHMHMHMHMHMHMHMHMHMHMHMHMHMHMHMHMHMHMHMHMHMHMHMHMHMHMHMHMHMH
+key enter
+key enter
+type M
+key enter ctrl
+assert samplelines 3
+wait 4
+shot tests/tmp/shots/50_blank_line.png
+click @Pangram
+wait 3
+assert samplelines 1

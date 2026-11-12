@@ -1,0 +1,51 @@
+# 30. Deleting a font and a typeface works on memory only; Save writes the deletion to the file; 30b reloads it.
+waitfor loading = 0 60000
+wait 5
+assert storefonts 4
+copyfile tests/tmp/e2e.pxfdb tests/tmp/e2e_before.pxfdb
+click @Fonts
+wait 4
+click @Filter
+type 03696f
+wait 4
+assert bvisible 1
+sleep 600
+click @card:0
+wait 3
+key delete
+wait 5
+assert modal Delete_font
+shot tests/tmp/shots/v5_delete_font.png
+click @Delete
+wait 6
+assert modal none
+assert storefonts 3
+assert dbmodified 1
+assert wtitle modified
+assert statusdb modified
+assert samefile tests/tmp/e2e.pxfdb tests/tmp/e2e_before.pxfdb
+assert sqlfile tests/tmp/e2e.pxfdb "select count(*) from pxfm" 4
+# a typeface (with its variants' fonts)
+click @Filter_Clear
+wait 4
+click @Typefaces
+wait 4
+sleep 600
+click @hdr:0
+wait 3
+key delete
+wait 5
+assert modal Delete_typeface
+click @Delete
+wait 6
+assert modal none
+assert storetypefaces 1
+# Save: the file has what memory has
+key s ctrl
+wait 15
+assert dbmodified 0
+assert statusdb saved
+assert sqlfile tests/tmp/e2e.pxfdb "select count(*) from pxtf" 1
+assert sqlfile tests/tmp/e2e.pxfdb "select count(*) from pxfm" 1
+assert sql "select count(*) from pxfm" 1
+assert file tests/tmp/e2e.pxfdb.tmp missing

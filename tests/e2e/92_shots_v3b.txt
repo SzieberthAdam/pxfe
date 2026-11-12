@@ -1,0 +1,59 @@
+# 92. Screenshots of the tabbed panels (tests/shots/v3b_*.png) on the real library, read-only.
+# Not part of run_all.bat. Run: tests\tmp\pxfe_e2e.exe C:\...\pixelglyphlib\pxfdb.pxfdb --ini tests\tmp\e2e_shots.ini --play tests\e2e\92_shots_v3b.txt
+waitfor loading = 0 600000
+wait 10
+click @Fonts
+wait 4
+# the browser's side panel: the View tab, the Similar tab without and with a selected card
+click @bside_Similar
+wait 6
+shot tests/shots/v3b_browser_similar_empty.png
+click @bside_View
+wait 4
+click @Filter
+type 00fa5b08
+wait 6
+shot tests/shots/v3b_browser_view.png
+click @card:0
+wait 3
+click @bside_Similar
+waitfor similar >= 1 20000
+wait 30
+shot tests/shots/v3b_browser_similar.png
+# the Typefaces tab: similar typefaces
+click @Typefaces
+wait 6
+click @card:0
+waitfor similar >= 1 30000
+wait 30
+shot tests/shots/v3b_browser_similar_typefaces.png
+# the font view of a typeface variant on its four tabs
+dblclick @card:0
+wait 10
+sleep 600
+click @cell:U+0041
+wait 6
+click @ptab_Font
+wait 6
+shot tests/shots/v3b_font_tab_font.png
+click @ptab_Typeface
+wait 6
+shot tests/shots/v3b_font_tab_typeface.png
+click @ptab_Glyph
+waitfor usage >= 0 20000
+wait 30
+shot tests/shots/v3b_font_tab_glyph.png
+click @ptab_Similar
+waitfor similar >= 1 20000
+wait 30
+shot tests/shots/v3b_font_tab_similar.png
+# the finder with the usage of the first bitmap
+key g ctrl
+wait 10
+click @finder.search
+type A
+wait 40
+click @fcell:0
+waitfor usage >= 0 20000
+wait 30
+shot tests/shots/v3b_finder_usage.png

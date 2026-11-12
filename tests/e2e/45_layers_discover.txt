@@ -1,0 +1,49 @@
+# 45. Discoverability of the glyph view and the layers (original 0820dc69, read-only): the font view's Glyph tab has "Open in Glyph View"
+# (Enter), the glyph view's bar has a "Layers" toggle that selects the Layers tab, the empty Layers tab explains itself and has a big
+# "+ Add Layer" button, and the toggle shows the count of extra layers.
+wait 5
+click @cell:U+0041
+wait 4
+click @ptab_Glyph
+wait 4
+assert ptab 2
+assert w.Open_in_Glyph_View 1
+shot tests/tmp/shots/45_open_in_glyph_view.png
+assert editor 0
+click @Open_in_Glyph_View
+wait 6
+assert editor 1
+assert gtab 0
+assert w.Layers 1
+shot tests/tmp/shots/45_bar_layers.png
+# the toggle selects the Layers tab; the tab is empty and says so
+click @Layers
+wait 4
+assert gtab 2
+assert l.count 1
+assert w.+_Add_Layer 1
+shot tests/tmp/shots/45_layers_empty.png
+# the big button opens the popover; adding a layer changes the toggle to "Layers 1" and the empty state goes
+click @+_Add_Layer
+wait 3
+assert l.pop 1
+click @Add
+wait 4
+assert l.count 2
+assert w.Layers_1 1
+assert w.Layers 1
+shot tests/tmp/shots/45_layers_one.png
+# back to the Glyph tab and again with the toggle
+click @gtab_Glyph
+wait 3
+assert gtab 0
+click @Layers
+wait 3
+assert gtab 2
+# the font view: Enter opens the glyph view of the selected glyph
+click @Back
+wait 6
+assert editor 0
+key enter
+wait 6
+assert editor 1

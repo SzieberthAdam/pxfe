@@ -1,0 +1,40 @@
+# 7e. No arguments: the empty state. A hand-made draft without an original and no library open: it opens, Save Draft works,
+# Save to Library is not offered and says why when forced by the shortcut.
+wait 5
+assert glyphs 0
+assert inbrowser 0
+assert hasstore 0
+writefile tests/tmp/nosource.pxfd PXFEDRAFT\t3\nNAME\tHand made\nASCENT\t6\nDESCENT\t2\nCAPHEIGHT\t5\nGLYPH\t000041\t0,1\t5\t3x2\t0\n\t0.0\n\t000\nGLYPH\t000020\t0,0\t4\t0x0\t0\n
+setdialog open tests/tmp/nosource.pxfd
+shot tests/tmp/shots/07e_empty.png
+click @Open_File...
+wait 6
+assert glyphs 2
+assert readonly 0
+assert hascont 0
+assert title Hand made
+assert modified 0
+assert unsaved 0
+assert cansavelib 0
+click @ascent.plus
+wait 3
+assert cansavelib 0
+assert unsaved 1
+key s ctrl shift
+wait 4
+assert modal Cannot_save_to_the_library
+key enter
+wait 3
+assert modal none
+# the draft itself can be saved
+key s ctrl
+wait 5
+assert unsaved 0
+assert toast Draft saved
+# deleting every glyph is possible
+key a ctrl
+key delete
+wait 4
+key enter
+wait 4
+assert glyphs 0

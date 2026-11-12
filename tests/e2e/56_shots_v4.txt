@@ -1,0 +1,70 @@
+# 56. Screenshots of the samples and the typeface boxes (tests/shots/v4_sample_*.png, v4_typefaces_*.png) on the real library, read-only.
+# Not part of run_all.bat. Run: tests\tmp\pxfe_e2e.exe C:\...\pixelglyphlib\pxfdb.pxfdb --ini tests\tmp\e2e_shots.ini --play tests\e2e\56_shots_v4.txt
+waitfor loading = 0 600000
+wait 10
+click @Sample
+key a ctrl
+setclip ÁRVÍZTŰRŐ TÜKÖRFÚRÓGÉP\nárvíztűrő tükörfúrógép 0123
+key v ctrl
+key enter ctrl
+click @Zoom_2
+wait 90
+shot tests/shots/v4_typefaces_top.png
+
+# a typeface with six variants, a bigger zoom
+click @Filter
+type Bradley
+wait 4
+click @Zoom_3
+wait 120
+shot tests/shots/v4_typefaces_bradley.png
+click @hdr:0
+wait 20
+shot tests/shots/v4_typefaces_header_selected.png
+click @card:2
+wait 20
+shot tests/shots/v4_typefaces_variant_selected.png
+click @card:3 right
+wait 6
+shot tests/shots/v4_typefaces_context_menu.png
+key escape
+wait 4
+
+# twelve variants, two columns
+click @Filter_Clear
+click @Filter
+type Dina
+wait 4
+click @Cols_2
+click @Zoom_2
+wait 120
+shot tests/shots/v4_typefaces_dina.png
+
+# the sample box of the panel, the Fonts tab (one card per font, all lines)
+click @Fonts
+wait 4
+click @Cols_Auto
+wait 90
+shot tests/shots/v4_sample_fonts.png
+click @Typefaces
+wait 4
+click @Filter_Clear
+click @Filter
+type Bradley
+wait 20
+
+# the font view of a variant with the strip
+dblclick @card:2
+wait 30
+sleep 800
+wait 30
+shot tests/shots/v4_sample_strip.png
+click @sz_4
+wait 20
+shot tests/shots/v4_sample_strip_4x.png
+drag @Sample_Resize @grid.scrollbar
+wait 20
+shot tests/shots/v4_sample_strip_tall.png
+click @Sample_Collapse
+wait 20
+shot tests/shots/v4_sample_strip_collapsed.png

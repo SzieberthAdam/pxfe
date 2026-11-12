@@ -1,0 +1,272 @@
+# 2. Metrics panel on a duplicate of testdata font 98eae9aa: ASCENT 6, DESCENT 2, CAPHEIGHT 5, XHEIGHT 4, LINEGAP 1 (zoom 7).
+wait 5
+assert readonly 0
+assert has.ascent 1
+assert m.ascent 6
+assert m.descent 2
+assert m.capheight 5
+assert m.xheight 4
+assert m.linegap 1
+assert has.quadwidth 0
+assert has.underlineposition 0
+assert hasratio 0
+assert mono 0
+assert glyph U+0048 top 1
+# projected lines on the U+0020 cell (no ink): baseline at ascent*zoom, cap at (ascent-cap)*zoom, x at (ascent-x)*zoom
+assert pixel @cellorigin:U+0020 2 42 E5484D
+assert pixel @cellorigin:U+0020 2 7 2F9E6E
+assert pixel @cellorigin:U+0020 2 14 D68A00
+shot tests/tmp/shots/02_metrics_start.png
+
+# Ascent + button: the glyphs do not move (y stays), only the box grows; the lines move on the cells
+click @ascent.plus
+wait 3
+assert m.ascent 7
+assert glyph U+0048 y 0
+assert glyph U+0048 top 2
+assert modified 1
+assert pixel @cellorigin:U+0020 2 49 E5484D
+assert pixel @cellorigin:U+0020 2 42 FFFFFF
+assert pixel @cellorigin:U+0020 2 14 2F9E6E
+assert pixel @cellorigin:U+0020 2 21 D68A00
+shot tests/tmp/shots/02_metrics_asc7.png
+# rapid clicks on one spinner coalesce into one undo step
+click @ascent.plus
+wait 3
+assert m.ascent 8
+key z ctrl
+wait 3
+assert m.ascent 6
+assert modified 0
+key y ctrl
+wait 3
+assert m.ascent 8
+assert glyph U+0048 y 0
+# minus button
+click @ascent.minus
+click @ascent.minus
+wait 3
+assert m.ascent 6
+
+# typing: click the value, the text is selected, typing replaces it, Enter commits
+click @ascent.value
+wait 3
+type 9
+wait 2
+key enter
+wait 3
+assert m.ascent 9
+assert pixel @cellorigin:U+0020 2 63 E5484D
+# Esc cancels an edit
+click @ascent.value
+wait 3
+type 3
+wait 2
+key esc
+wait 3
+assert m.ascent 9
+assert modal none
+# back to 6 by typing, with the Tab key committing
+click @ascent.value
+wait 3
+type 6
+wait 2
+key tab
+wait 3
+assert m.ascent 6
+assert modified 0
+# clicking elsewhere commits too
+click @ascent.value
+wait 3
+type 7
+wait 2
+click @grid.empty
+wait 3
+assert m.ascent 7
+click @ascent.minus
+wait 3
+assert m.ascent 6
+
+# Descent, down to 0 and not below
+click @descent.plus
+wait 10
+assert m.descent 3
+click @descent.value
+wait 3
+type 4
+key enter
+wait 3
+assert m.descent 4
+click @descent.minus
+wait 6
+click @descent.minus
+wait 6
+click @descent.minus
+wait 6
+click @descent.minus
+wait 6
+click @descent.minus
+wait 6
+wait 3
+assert m.descent 0
+click @descent.value
+wait 3
+type 2
+key enter
+wait 3
+assert m.descent 2
+
+# Cap height: spinner, typing, checkbox off removes the line
+click @capheight.plus
+wait 3
+assert m.capheight 6
+assert pixel @cellorigin:U+0020 2 0 2F9E6E
+click @capheight.minus
+wait 3
+assert m.capheight 5
+click @capheight.on
+wait 3
+assert has.capheight 0
+assert pixel @cellorigin:U+0020 2 7 FFFFFF
+shot tests/tmp/shots/02_metrics_nocap.png
+# on again: the value is the height of H (5)
+click @capheight.on
+wait 3
+assert has.capheight 1
+assert m.capheight 5
+assert pixel @cellorigin:U+0020 2 7 2F9E6E
+# X-height
+click @xheight.plus
+wait 3
+assert m.xheight 5
+click @xheight.on
+wait 3
+assert has.xheight 0
+assert pixel @cellorigin:U+0020 2 14 FFFFFF
+click @xheight.on
+wait 3
+assert has.xheight 1
+assert m.xheight 4
+# set odd values, then switch off and on: measured again from the glyphs
+click @capheight.value
+wait 3
+type 2
+key enter
+wait 3
+assert m.capheight 2
+click @capheight.on
+click @capheight.on
+wait 3
+assert m.capheight 5
+
+# the other optional rows: line gap, internal leading, quad width (6 = advance of M), underline, strike-out
+click @linegap.plus
+wait 3
+assert m.linegap 2
+click @linegap.on
+wait 3
+assert has.linegap 0
+click @linegap.on
+wait 3
+assert has.linegap 1
+assert m.linegap 0
+click @internalleading.on
+wait 3
+assert has.internalleading 1
+click @quadwidth.on
+wait 3
+assert has.quadwidth 1
+assert m.quadwidth 6
+click @quadwidth.plus
+wait 3
+assert m.quadwidth 7
+click @quadwidth.value
+wait 3
+type 9
+key enter
+wait 3
+assert m.quadwidth 9
+click @underlineposition.on
+click @underlinethickness.on
+wait 3
+assert has.underlineposition 1
+assert m.underlineposition -1
+assert m.underlinethickness 1
+click @underlineposition.minus
+wait 3
+assert m.underlineposition -2
+click @strikeoutposition.on
+click @strikeoutthickness.on
+wait 3
+assert has.strikeoutposition 1
+assert m.strikeoutposition 2
+assert m.strikeoutthickness 1
+shot tests/tmp/shots/02_metrics_all.png
+click @underlineposition.on
+wait 3
+assert has.underlineposition 0
+
+# ratio: two spinners, kept coprime
+click @ratio.on
+wait 3
+assert hasratio 1
+assert ratioa 1
+assert ratiob 1
+click @ratioa.plus
+wait 3
+assert ratioa 2
+assert ratiob 1
+click @ratiob.plus
+wait 3
+assert ratioa 1
+assert ratiob 1
+click @ratiob.value
+wait 3
+type 3
+key enter
+wait 3
+assert ratiob 3
+click @ratioa.value
+wait 3
+type 6
+key enter
+wait 3
+assert ratioa 2
+assert ratiob 1
+click @ratio.on
+wait 3
+assert hasratio 0
+
+# monospaced switch
+click @monospaced
+wait 3
+assert mono 1
+click @monospaced
+wait 3
+assert mono 0
+
+# the metrics edits are in the undo stack as separate steps; the font is modified
+assert modified 1
+assert undo > 5
+
+# Export to a folder with CAPHEIGHT off: the new pxfm has no CAPHEIGHT line, and the glyph offsets are as they were
+click @capheight.on
+wait 3
+assert has.capheight 0
+setdialog folder tests/tmp/xout
+click @File
+click @file.export
+wait 8
+assert modal Export_finished
+key enter
+wait 3
+assert modal none
+assert saved pxfm
+assert file $SAVEDPXFM exists
+assert file $SAVEDPXFM notcontains CAPHEIGHT
+assert file $SAVEDPXFM contains ASCENT\t6
+assert file $SAVEDPXFM contains XHEIGHT\t4
+assert file $SAVEDPXFM contains QUADWIDTH\t9
+assert file $SAVEDPXFM contains STRIKEOUTPOSITION\t2
+assert file $SAVEDPXFM contains GLYPH\t000048\t0,0\t6
+verifylib $SAVEDPXFM tests/tmp/xout 6

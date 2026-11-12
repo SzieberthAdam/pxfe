@@ -1,0 +1,134 @@
+# 3. Selection (works in an original too, here on a duplicate): glyph order is U+0020, U+002C, U+0041, U+0048, U+004D, U+0078 (indices 0..5).
+wait 5
+assert selected 0
+click @cell:U+0041
+wait 2
+assert selected 1
+assert sel U+0041 1
+assert sel U+0048 0
+# ctrl+click adds, ctrl+click again removes
+click @cell:U+004D ctrl
+wait 2
+assert selected 2
+assert sel U+004D 1
+assert sel U+0041 1
+click @cell:U+004D ctrl
+wait 2
+assert selected 1
+assert sel U+004D 0
+# a plain click replaces the selection
+click @cell:U+0078
+wait 2
+assert selected 1
+assert sel U+0041 0
+assert sel U+0078 1
+# shift+click extends a range from the anchor
+click @cell:U+002C
+click @cell:U+004D shift
+wait 2
+assert selected 4
+assert sel U+002C 1
+assert sel U+0041 1
+assert sel U+0048 1
+assert sel U+004D 1
+assert sel U+0078 0
+shot tests/tmp/shots/03_sel_range.png
+# ctrl+shift+click keeps the old selection and adds the range
+click @cell:U+0078 ctrl shift
+wait 2
+assert selected 5
+# Ctrl+A selects all, Esc clears
+key a ctrl
+wait 2
+assert selected 6
+assert sel U+0020
+shot tests/tmp/shots/03_sel_all.png
+key esc
+wait 2
+assert selected 0
+# clicking the empty area clears
+click @cell:U+0048
+click @grid.empty
+wait 2
+assert selected 0
+# arrow keys move the selection, shift+arrow extends it
+click @cell:U+0041
+key right
+wait 2
+assert selected 1
+assert sel U+0048 1
+key right shift
+wait 2
+assert selected 2
+assert sel U+004D 1
+key left
+wait 2
+assert selected 1
+assert sel U+0048 1
+key left
+key left
+key left
+key left
+wait 2
+assert selected 1
+assert sel U+0020 1
+# toolbar summary counts
+assert selected 1
+
+# Select Occurrences: clone A to U+00C1 through the dialog, then select A and add its twin
+sleep 450
+click @cell:U+0041
+key d ctrl
+wait 4
+assert modal Clone_glyph
+type U+00C1
+wait 2
+key enter
+wait 3
+assert modal none
+assert glyphs 7
+assert sel U+00C1 1
+sleep 450
+click @cell:U+0041
+wait 2
+assert selected 1
+click @Select_Occurrences
+wait 3
+assert selected 2
+assert sel U+00C1 1
+assert sel U+0041 1
+assert toast Added 1 matching glyph
+# the shortcut Ctrl+Shift+A from the clone side
+key esc
+click @cell:U+00C1
+key a ctrl shift
+wait 3
+assert selected 2
+assert sel U+0041 1
+# no twin: a toast, selection unchanged
+click @cell:U+004D
+click @Select_Occurrences
+wait 3
+assert selected 1
+assert toast No other glyph has the same shape
+# a clone of the clone also joins
+key esc
+click @cell:U+00C1
+key d ctrl
+wait 4
+type e9
+key enter
+wait 3
+assert glyphs 8
+sleep 450
+click @cell:U+0041
+click @Select_Occurrences
+wait 3
+assert selected 3
+assert sel U+00E9 1
+shot tests/tmp/shots/03_sel_occurrences.png
+# selection is cleared by undo of the structure, not left dangling
+key z ctrl
+wait 3
+assert glyphs 7
+assert selected 0

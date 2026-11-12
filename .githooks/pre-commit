@@ -1,0 +1,8 @@
+#!/bin/sh
+# Brings claude/YYYY-MM-DD-N-adam.md (the Claude Code conversations, a file a session and a day) up to date before every commit.
+# Switched on once per clone:  git config core.hooksPath .githooks
+# It never stops a commit: where Python or the sessions are missing, the files are left as they are.
+root=$(git rev-parse --show-toplevel) || exit 0
+py=$(command -v python || command -v python3 || command -v py) || exit 0
+"$py" "$root/claude/export.py" && git add "$root"/claude/*-adam.md "$root/claude/sessions.txt"
+exit 0

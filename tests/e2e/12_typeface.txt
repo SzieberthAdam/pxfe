@@ -1,0 +1,65 @@
+# 12. A typeface duplicate: only the typeface changed (italic flag) is enough for Save; a new pxtf is written, the pxfm stays.
+wait 5
+click @Duplicate_to_Edit
+wait 5
+assert hascont 1
+assert modified 0
+assert unsaved 0
+assert c.italic 0
+snapdir tests/tmp/e2elib
+click @ptab_Typeface
+wait 3
+click @c.italic
+wait 3
+assert c.italic 1
+assert unsaved 1
+click @c.italic
+wait 3
+assert c.italic 0
+assert unsaved 0
+click @c.italic
+wait 3
+assert unsaved 1
+key s ctrl
+wait 12
+assert saved pxtf
+assert unsaved 0
+assert sqlfile tests/tmp/e2e.pxfdb "select count(*) from pxtf" 3
+assert sqlfile tests/tmp/e2e.pxfdb "select count(*) from pxfm" 4
+assert snapdir unchanged
+# never overwrites: the original typeface is still there unchanged
+assert sqlfile tests/tmp/e2e.pxfdb "select count(*) from pxtf where lower(hex(hash)) = 'b925951bb94de1d15ec27404b3261476'" 1
+# typeface text edits are part of undo/redo, and retyping the original value clears the modified marker
+click @c.family
+type X
+wait 3
+key enter
+wait 3
+assert unsaved 1
+assert unsaved 1
+assert undo >= 1
+key z ctrl
+wait 3
+assert unsaved 0
+assert unsaved 0
+key y ctrl
+wait 3
+assert unsaved 1
+key z ctrl
+wait 3
+assert unsaved 0
+assert snapdir unchanged
+assert ctext FAMILY Test Sans
+# typed and deleted again by hand: same hash, not modified
+click @c.family
+type Y
+wait 3
+assert unsaved 1
+assert ctext FAMILY Test SansY
+key backspace
+wait 3
+assert unsaved 0
+assert ctext FAMILY Test Sans
+key enter
+wait 3
+assert unsaved 0

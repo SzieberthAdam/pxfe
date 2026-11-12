@@ -1,0 +1,99 @@
+# 7a. Duplicate of a typeface font (testdata typeface b925951b, variant 1 = font 0820dc69): edit it, Save writes the database file.
+# The file must stay byte for byte as it was until Save; the rows that existed before stay.
+wait 5
+assert hascont 1
+assert readonly 0
+assert variant 1
+assert modified 0
+assert title Duplicate of Test Sans Regular
+assert unsaved 0
+assert statusdb saved
+copyfile tests/tmp/e2e.pxfdb tests/tmp/e2e_before.pxfdb
+# Save of an unchanged database says so and writes nothing
+key s ctrl
+wait 5
+assert toast No changes to save
+assert samefile tests/tmp/e2e.pxfdb tests/tmp/e2e_before.pxfdb
+# --- edits: ascent, clone, delete, a stroke, the family name
+click @ascent.plus
+wait 6
+click @cell:U+0041
+key d ctrl
+wait 4
+type U+00E9
+key enter
+wait 4
+click @cell:U+004D
+key delete
+wait 4
+key enter
+wait 4
+assert glyphs 6
+assert glyph U+004D exists 0
+click @cell:U+0020
+key enter
+wait 5
+drag @ecell:1,3 @ecell:3,3
+wait 3
+click @ecell:2,3 right
+click @ecell:0,0
+click @ecell:0,0 right
+wait 3
+click @Back
+wait 4
+assert editor 0
+assert glyph U+0020 size 4x4
+assert glyph U+0020 ink 2
+assert modified 1
+assert unsaved 1
+click @ptab_Typeface
+click @c.family
+wait 2
+type  Edited
+key enter
+wait 3
+assert ctext FAMILY Test Sans Edited
+assert wtitle e2e.pxfdb
+assert wtitle modified
+assert statusdb modified
+# memory is not the file: nothing was written yet
+assert samefile tests/tmp/e2e.pxfdb tests/tmp/e2e_before.pxfdb
+assert sqlfile tests/tmp/e2e.pxfdb "select count(*) from pxfm" 4
+
+# --- Save: the duplicate is committed (a new pxfm, a new pxtf, the new pxgl) and the file is replaced
+key s ctrl
+wait 12
+assert saved pxfm
+assert saved pxtf
+assert saved pxfm current
+assert toast Saved e2e.pxfdb
+assert unsaved 0
+assert dbmodified 0
+assert statusdb saved
+assert ohash 0820dc69a21b1cdb3a44d2cff7d884d8
+assert sqlfile tests/tmp/e2e.pxfdb "select count(*) from pxfm" 5
+assert sqlfile tests/tmp/e2e.pxfdb "select count(*) from pxtf" 3
+assert sqlfile tests/tmp/e2e.pxfdb "select count(*) from pxfm where lower(hex(hash)) = '0820dc69a21b1cdb3a44d2cff7d884d8'" 1
+assert sqlfile tests/tmp/e2e.pxfdb "select ascent from pxfm where lower(hex(hash)) = '$NEWPXFM'" 7
+assert sqlfile tests/tmp/e2e.pxfdb "select count(*) from pxfm_glyph where pxfm = (select hash from pxfm where lower(hex(hash)) = '$NEWPXFM') and code = 233" 1
+assert sqlfile tests/tmp/e2e.pxfdb "select count(*) from pxfm_glyph where pxfm = (select hash from pxfm where lower(hex(hash)) = '$NEWPXFM') and code = 77" 0
+assert sqlfile tests/tmp/e2e.pxfdb "select count(*) from pxtf_field where key = 'FAMILY' and value = 'Test Sans Edited'" 1
+shot tests/tmp/shots/07_after_save.png
+# saving again without a change writes nothing
+copyfile tests/tmp/e2e.pxfdb tests/tmp/e2e_saved1.pxfdb
+key s ctrl
+wait 5
+assert toast No changes to save
+assert samefile tests/tmp/e2e.pxfdb tests/tmp/e2e_saved1.pxfdb
+# one more change: the next commit replaces the earlier one (it was never an original), so the file still has 5 fonts
+click @ptab_Font
+click @ascent.plus
+wait 6
+assert unsaved 1
+click @Save
+wait 12
+assert unsaved 0
+assert sqlfile tests/tmp/e2e.pxfdb "select count(*) from pxfm" 5
+assert sqlfile tests/tmp/e2e.pxfdb "select count(*) from pxtf" 3
+assert sqlfile tests/tmp/e2e.pxfdb "select count(*) from pxfm where ascent = 8" 1
+assert sqlfile tests/tmp/e2e.pxfdb "select count(*) from pxfm where ascent = 7" 0

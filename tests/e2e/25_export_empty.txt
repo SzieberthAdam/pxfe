@@ -1,0 +1,30 @@
+# 25. Export to an empty folder: no dialog (nothing to append to or overwrite), every font, typeface and glyph is written, then a summary.
+waitfor loading = 0 60000
+wait 5
+assert hasstore 1
+assert unsaved 0
+snapdir tests/tmp/e2elib
+setdialog folder tests/tmp/xout
+click @File
+wait 3
+click @file.export
+wait 10
+assert xdopen 0
+assert modal Export_finished
+shot tests/tmp/shots/v5_export_summary.png
+assert xw_fonts 4
+assert xw_typefaces 2
+assert xw_glyphs 6
+assert xs_fonts 0
+assert xd_fonts 0
+key enter
+wait 4
+assert modal none
+# the files are the ones of the library the database came from, byte for byte
+assert file tests/tmp/xout/pxfm/08/0820dc69a21b1cdb3a44d2cff7d884d8.pxfm exists
+assert samefile tests/tmp/xout/pxfm/08/0820dc69a21b1cdb3a44d2cff7d884d8.pxfm tests/tmp/e2elib/pxfm/08/0820dc69a21b1cdb3a44d2cff7d884d8.pxfm
+assert samefile tests/tmp/xout/pxfm/e6/e6109c134eda8d747bac9a3c2a62d204.pxfm tests/tmp/e2elib/pxfm/e6/e6109c134eda8d747bac9a3c2a62d204.pxfm
+assert samefile tests/tmp/xout/pxtf/b9/b925951bb94de1d15ec27404b3261476.pxtf tests/tmp/e2elib/pxtf/b9/b925951bb94de1d15ec27404b3261476.pxtf
+# nothing was changed in the database or the source folder
+assert unsaved 0
+assert snapdir unchanged

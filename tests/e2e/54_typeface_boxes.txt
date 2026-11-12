@@ -1,0 +1,130 @@
+# 54. The Typefaces tab: one box per typeface (testdata/lib: typeface b925951b "Test Sans" with two variants, b5fbcdd0 "Uncoded Mono" with one).
+wait 8
+assert inbrowser 1
+assert btab 0
+assert btotal 3
+assert bvisible 3
+assert bboxes 2
+assert bboxvars0 2
+assert bboxvars1 1
+click @Fonts
+wait 4
+assert bboxes 0
+assert bvisible 4
+click @Typefaces
+wait 4
+assert bboxes 2
+shot tests/tmp/shots/54_boxes.png
+
+# ---- filters work on variants: a box shows when any variant matches, the others are hidden
+click @Filter
+type Italic
+wait 4
+assert bvisible 1
+assert bboxes 1
+assert bboxvars0 1
+click @Filter_Clear
+wait 4
+assert bboxes 2
+assert bboxvars0 2
+click @Filter
+type Mono
+wait 4
+assert bboxes 1
+assert bvisible 1
+click @Filter_Clear
+wait 4
+assert bvisible 3
+
+# ---- the header selects the typeface, a variant row selects that font
+click @hdr:0
+wait 2
+assert bselhdr 1
+assert bsel 0
+click @bside_Similar
+wait 3
+assert bside 1
+click @bside_View
+wait 2
+click @card:1
+wait 2
+assert bselhdr 0
+assert bsel 1
+assert bselpxfm e6109c134eda8d747bac9a3c2a62d204
+click @card:0
+wait 2
+assert bsel 0
+assert bselpxfm 0820dc69a21b1cdb3a44d2cff7d884d8
+click @hdr:1
+wait 2
+assert bselhdr 1
+assert bsel 2
+
+# ---- keyboard across rows: header, its variants, the next header, its variant
+click @hdr:0
+wait 2
+key down
+assert bselhdr 0
+assert bsel 0
+key down
+assert bsel 1
+key down
+assert bselhdr 1
+assert bsel 2
+key down
+assert bselhdr 0
+assert bsel 2
+key up
+assert bselhdr 1
+key up
+assert bselhdr 0
+assert bsel 1
+key home
+assert bselhdr 1
+assert bsel 0
+key end
+assert bselhdr 0
+assert bsel 2
+key left
+assert bselhdr 1
+assert bsel 0
+key right
+assert bselhdr 1
+assert bsel 2
+
+# ---- double click on a variant row opens that font read-only
+dblclick @card:1
+wait 8
+assert inbrowser 0
+assert readonly 1
+assert ohash e6109c134eda8d747bac9a3c2a62d204
+click @Library
+wait 6
+assert inbrowser 1
+assert bsel 1
+assert bselpxfm e6109c134eda8d747bac9a3c2a62d204
+
+# ---- Duplicate to Edit on a variant row
+click @card:0
+wait 3
+click @Duplicate_to_Edit
+wait 8
+assert inbrowser 0
+assert readonly 0
+assert hascont 1
+click @Library
+wait 6
+assert inbrowser 1
+
+# ---- Enter on a header opens its first variant
+click @hdr:0
+wait 2
+key enter
+wait 8
+assert inbrowser 0
+assert readonly 1
+assert ohash 0820dc69a21b1cdb3a44d2cff7d884d8
+key left alt
+wait 6
+assert inbrowser 1
+assert bselhdr 1

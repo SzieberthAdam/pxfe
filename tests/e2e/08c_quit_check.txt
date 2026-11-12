@@ -1,0 +1,6 @@
+# 8c. Run after 08b (no font needed): the database file was written before the app exited, with the duplicate's font.
+waitfor loading = 0 60000
+wait 5
+assert storefonts 5
+assert sqlfile tests/tmp/e2e.pxfdb "select count(*) from pxfm" 5
+assert sqlfile tests/tmp/e2e.pxfdb "select count(*) from pxfm where ascent = 7" 1

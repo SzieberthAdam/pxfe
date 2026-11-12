@@ -1,0 +1,20 @@
+# 91. Screenshot of the glyph view (editor) with the usage section on the real library, read-only. Not part of run_all.bat.
+waitfor loading = 0 600000
+wait 10
+click @Fonts
+wait 4
+click @Filter
+type 00fa5b08
+wait 6
+click @card:0
+wait 3
+dblclick @card:0
+wait 10
+sleep 600
+dblclick @cell:U+0041
+wait 10
+waitfor usage >= 0 20000
+wait 40
+panelscroll 900
+wait 10
+shot tests/shots/v3_glyph_usage.png

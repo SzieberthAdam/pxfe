@@ -1,0 +1,77 @@
+# 58. The delete buttons of the browser's side panel (red, under Open and Duplicate to Edit), end to end: confirmation, Cancel,
+# deleting a variant's font (the typeface is rewritten), a whole typeface, and a font of the Fonts tab (testdata/lib: typeface
+# b925951b with two variants, b5fbcdd0 with one; four fonts).
+wait 8
+assert inbrowser 1
+assert w.Delete_Font 0
+assert w.Delete_Typeface 0
+assert btypefaces 2
+assert storefonts 4
+assert storetypefaces 2
+
+# ---- a variant row selected: both buttons; Cancel keeps everything
+click @card:0
+wait 4
+assert w.Delete_Font 1
+assert w.Delete_Typeface 1
+click @Delete_Font
+wait 4
+assert modal Delete_font
+shot tests/tmp/shots/58_confirm_font.png
+click @Cancel
+wait 4
+assert modal none
+assert storefonts 4
+assert dbmodified 0
+assert bvisible 3
+
+# ---- Delete Font: the font goes, the typeface loses the variant (and is rewritten), the browser rescans
+click @Delete_Font
+wait 4
+assert modal Delete_font
+click @Delete
+wait 8
+assert modal none
+assert storefonts 3
+assert storetypefaces 2
+assert bboxes 2
+assert bvisible 2
+assert dbmodified 1
+assert statusdb modified
+assert sql "select count(*) from glyph where hash not in (select glyph from pxfm_glyph)" 0
+
+# ---- a box header selected: only Delete Typeface
+click @hdr:1
+wait 4
+assert bselhdr 1
+assert w.Delete_Font 0
+assert w.Delete_Typeface 1
+click @Delete_Typeface
+wait 4
+assert modal Delete_typeface
+shot tests/tmp/shots/58_confirm_typeface.png
+click @Delete
+wait 8
+assert modal none
+assert storetypefaces 1
+assert storefonts 2
+assert btypefaces 1
+assert bboxes 1
+assert sql "select count(*) from pxtf_variant where pxtf not in (select hash from pxtf)" 0
+
+# ---- the Fonts tab: a card has only Delete Font
+click @Fonts
+wait 6
+click @card:0
+wait 4
+assert w.Delete_Font 1
+assert w.Delete_Typeface 0
+click @Delete_Font
+wait 4
+assert modal Delete_font
+click @Delete
+wait 8
+assert modal none
+assert storefonts 1
+assert sql "select count(*) from glyph where hash not in (select glyph from pxfm_glyph)" 0
+shot tests/tmp/shots/58_after.png

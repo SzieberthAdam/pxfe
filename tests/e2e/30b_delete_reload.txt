@@ -1,0 +1,8 @@
+# 30b. Second process on the database 30 saved after the deletions: they are in the file.
+waitfor loading = 0 60000
+wait 5
+assert storetypefaces 1
+assert sql "select count(*) from pxfm" 1
+assert sql "select count(*) from pxfm where lower(hex(hash)) = '03696f658319e9dfddc2cb6ea2520592'" 0
+assert dbmodified 0
+assert statusdb saved

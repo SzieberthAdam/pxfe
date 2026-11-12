@@ -1,0 +1,43 @@
+# 52. The strip follows the working copy (a duplicate of F1): the shortcuts do not fire while the sample box has the
+# keyboard, and a glyph edited in the glyph view shows in the strip back in the font view.
+wait 8
+assert inbrowser 0
+assert readonly 0
+assert stripcollapsed 0
+click @Sample_Edit
+key a ctrl
+type A
+key enter ctrl
+assert sample A
+wait 3
+shot tests/tmp/shots/52_strip_before.png
+
+# ---- typing in the sample box does not delete glyphs, select all or undo
+assert glyphs 6
+click @Sample_Edit
+key a ctrl
+assert samplefocus 1
+key delete
+wait 2
+assert glyphs 6
+assert sample -
+type M
+assert sample M
+key z ctrl
+assert sample M
+assert modified 0
+key enter ctrl
+
+# ---- edit a glyph in the glyph view: no strip there, the strip back in the font view
+click @cell:U+0041
+key enter
+wait 6
+assert editor 1
+click @ecell:0,0
+wait 3
+assert modified 1
+key esc
+wait 4
+assert editor 0
+assert modified 1
+shot tests/tmp/shots/52_strip_after.png

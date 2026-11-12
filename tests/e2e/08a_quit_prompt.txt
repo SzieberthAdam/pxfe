@@ -1,0 +1,62 @@
+# 8a. Unsaved-changes prompt on window close (testdata copy). Ends with Discard, which must exit the app.
+wait 5
+click @ascent.plus
+wait 3
+assert dirty 1
+closewindow
+wait 4
+assert modal Unsaved_changes
+shot tests/tmp/shots/08_quit_prompt.png
+# Cancel keeps the app and the changes, and does not re-prompt by itself
+click @Cancel
+wait 30
+assert modal none
+assert dirty 1
+assert m.ascent 7
+# Esc cancels too
+closewindow
+wait 4
+assert modal Unsaved_changes
+key esc
+wait 30
+assert modal none
+# a second close request while the prompt is open does not stack or quit
+closewindow
+wait 4
+closewindow
+wait 4
+assert modal Unsaved_changes
+key esc
+wait 4
+assert modal none
+# with the editor open the prompt blocks the editor: keys and clicks do not reach it
+click @cell:U+0020
+key enter
+wait 5
+assert editor 1
+assert undo 1
+closewindow
+wait 4
+assert modal Unsaved_changes
+key l
+wait 2
+assert etool 0
+click @ecell:1,1
+wait 3
+assert undo 1
+assert glyph U+0020 empty
+click @Back
+wait 3
+assert editor 1
+key esc
+wait 4
+assert modal none
+assert editor 1
+# Discard exits without saving
+closewindow
+wait 4
+assert modal Unsaved_changes
+expectquit
+click @Discard
+wait 30
+assert glyphs -1

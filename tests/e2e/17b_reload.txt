@@ -1,0 +1,16 @@
+# 17b. Second process on the .pxfdb that 17 saved: the new rows are there, and the new font opens read-only.
+waitfor loading = 0 60000
+wait 5
+assert storefonts 5
+assert storetypefaces 3
+assert sql "SELECT COUNT(*) FROM pxfm WHERE ascent = 7" 1
+click @Typefaces
+wait 4
+assert btotal 5
+click @Fonts
+wait 4
+assert btotal 5
+click @Filter
+type 0820dc
+wait 4
+assert bvisible 1
