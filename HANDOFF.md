@@ -1,8 +1,9 @@
-# pxfe handoff (2026-11-12)
+# pxfe handoff (2026-11-13)
 
-Version 5 (Load, Save, Import, Export) is implemented.
-The design is in [DESIGN.md](DESIGN.md); its last section, "Version 5: Load, Save, Import, Export", replaces the storage tiers, the save pipeline and the drafts of version 4.
-The glyph view, layers, samples, typeface boxes and hash labels of version 4 stay as they were.
+Versions 5 to 9 are implemented: Load, Save, Import, Export (5), navigation (6), views (7), the design system with Noto Sans and GNU Unifont (8), and font layers (9).
+The design is in [DESIGN.md](DESIGN.md), one section per version; "Version 5: Load, Save, Import, Export" replaces the storage tiers, the save pipeline and the drafts of version 4.
+pxfe is meant to run on Windows, macOS and Linux; today it builds on Windows only (`build.bat`, `vendor/sqlite3/libsqlite3.a`, `src/winfile.c`).
+The files of `handoff/` are the reports of the version 4 agents, kept for history.
 
 ## State
 
@@ -42,7 +43,6 @@ The design is in the last section of [DESIGN.md](DESIGN.md), "Version 6: navigat
 - `src/play.inc`: `nav` (0 Typefaces, 1 Typeface, 2 Fonts, 3 Font, 4 Glyph, 5 Glyphs), `navactive`, `intypeface`, `assert navseg <0-2> <text>`; the segments are `@nav.0` to `@nav.2`, and `@Typefaces`, `@Fonts`, `@Glyphs` in the list views.
 - The scripts use `@Menu` for the menu, `@nav.0` plus `@Typefaces` for the old `@Library`, and `key right alt` for the old `@tab.font`.
 - New scripts: `59_navigation` (all transitions) and `59b_navigation_orphan` (a font without a typeface: "Orphaned").
-- Mixed line endings: `src/browser.c` may hold LF and CRLF lines; the compiler does not mind.
 - `tests\e2e\60_shots_nav.txt` takes the six screenshots (`tests\tmp\nav\1_typefaces.png` to `6_glyphs.png`) on `tests\tmp\nav\real.pxfdb`, a copy of the real library; it is not in `run_all.bat`.
 
 ## Version 7: views
@@ -88,6 +88,22 @@ The rule of the round: one component is one function in `src/theme.c`, and a vie
 - User interface files: 10947 lines in all (10960 before this step, 13 fewer): main.c 2729, panel.inc 344, gpanel.inc 90, browser.c 2206, finder.c 693, editor.c 1109, layers.c 730, insight.c 973, sample.c 768, theme.c 1003, theme.h 302.
 - Tests: `build.bat test` 136 pxfont, 101 pxtf and 162 store checks, 0 failed; `tests\e2e\run_all.bat` 61 scripts (new: 93_menu_keys, 21 asserts), 0 failed; `build.bat` and `build.bat e2e` build without warnings.
 - Final screenshots: `tests\tmp\p3\final` (script 69, run with a copy of the exe from the repo root).
+
+### Fonts
+
+- The interface no longer uses system fonts.
+  Noto Sans v2.015 (`assets/fonts/noto-sans`, OFL 1.1) draws all interface text at three sizes only: heading 18 (SemiBold), body 16 (Regular), caption and small 13.
+- GNU Unifont 18.0.01 (`assets/fonts/unifont`, OFL 1.1 or GPLv2+ with the font exception) draws hashes, codes and glyph captions, always at 16 px (32 px for the Glyphs preview), point-filtered and on whole pixels.
+- Unifont glyphs of any plane are rasterised on demand into a 1024 x 1024 atlas that is flushed and refilled when full, so no glyph is ever dropped (`theme.c`).
+- A glyph caption shows the character in Unifont and switches to `U+XXXX` on hover, both centred; a code point without a visible Unifont image always shows `U+XXXX`.
+- The fonts are looked up in `assets/fonts` beside the exe, then two folders up (for `tests\tmp\pxfe_e2e.exe`), then in the working folder; a missing file raises an error toast and the default font stands in.
+- Script `70_unifont` checks the hover switch and code points of several planes, also after a forced atlas flush.
+
+### Line endings
+
+- Every text file is LF, in the repository and in every checkout; only the `.bat` files are CRLF on disk, because cmd needs it.
+- `.gitattributes` enforces this; fonts, images, the SQLite library and `.pxfdb` are binary, and the hash-named `.pxgl`, `.pxfm` and `.pxtf` files are never converted.
+- An editor or a `sed` that writes CRLF into a source file is undone by Git at the next add; a `.bat` saved as LF breaks `call :label`.
 
 ## Version 9: font layers
 
