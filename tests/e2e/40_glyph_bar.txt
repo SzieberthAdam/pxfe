@@ -20,7 +20,6 @@ assert w.Select_Occurrences 0
 assert w.Delete 0
 assert w.zoom+ 0
 assert w.zoom- 0
-assert w.Duplicate_to_Edit 0
 # the editor's own bar
 assert w.Back 1
 assert w.Fit 1
@@ -28,6 +27,7 @@ assert w.ezoom- 1
 assert w.ezoom+ 1
 assert w.Metrics 1
 assert w.ro_chip 1
+assert w.Duplicate_to_Edit 1
 shot tests/tmp/shots/40_glyph_bar_original.png
 
 # zoom: minus down to 1x, plus, the wheel, Fit

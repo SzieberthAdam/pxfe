@@ -8,7 +8,7 @@ assert stripcollapsed 0
 assert samplelines 1
 
 # ---- two lines of H in the strip; pixels of both lines at 3x (the H of this font: 5x5 px, stem on the left, box 6 + 2 rows, line gap 1)
-click @sz_3
+click @sz+
 wait 2
 assert stripzoom 3
 click @Sample_Edit
@@ -31,14 +31,14 @@ assert pixel @Sample_Origin 1 23 F8F8FA
 shot tests/tmp/shots/51_strip.png
 
 # ---- zoom 1x to 8x
-click @sz_1
+repeat 2 click @sz-
 wait 2
 assert stripzoom 1
 assert pixel @Sample_Origin 0 1 141418
-click @sz_8
+repeat 9 click @sz+
 wait 2
 assert stripzoom 8
-click @sz_5
+repeat 3 click @sz-
 wait 2
 assert stripzoom 5
 
@@ -52,13 +52,13 @@ wait 3
 assert striph >= 96
 
 # ---- collapse and expand with the chevron
-click @Sample_Collapse
+click @Sample_Fold
 wait 3
 assert stripcollapsed 1
-click @Sample_Collapse
+click @Sample_Fold
 wait 3
 assert stripcollapsed 0
-click @Sample_Collapse
+click @Sample_Fold
 wait 3
 assert stripcollapsed 1
 sleep 300

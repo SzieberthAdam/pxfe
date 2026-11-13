@@ -56,7 +56,7 @@ assert has.ascent 1
 assert m.ascent 5
 assert glyph U+0041 y 0
 assert glyph U+0041 x -1
-click @ascent.plus
+click @ascent+
 wait 3
 assert m.ascent 6
 assert boxabove 6
@@ -65,7 +65,7 @@ click @descent.on
 wait 3
 assert m.descent 2
 setdialog folder tests/tmp/xout
-click @File
+click @Menu
 click @file.export
 wait 8
 assert modal Export_finished

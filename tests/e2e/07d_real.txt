@@ -14,7 +14,7 @@ key enter
 wait 4
 assert glyphs 195
 assert modified 1
-click @ascent.plus
+click @ascent+
 wait 6
 key s ctrl
 wait 12
@@ -24,7 +24,7 @@ assert sqlfile tests/tmp/real2.pxfdb "select count(*) from pxfm" 2
 assert sqlfile tests/tmp/real2.pxfdb "select count(*) from pxfm_glyph where code = 57344" 1
 # the clone shares the pxgl of A: the glyph table has the same rows as before
 setdialog folder tests/tmp/xout
-click @File
+click @Menu
 click @file.export
 wait 10
 assert modal Export_finished

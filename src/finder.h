@@ -23,11 +23,12 @@ int32_t Finder_ParseQuery(const char *text);
  * Returns true and fills *target when the user wants to open a font (INSIGHT_OPEN_FONT / _TYPEFACE). */
 bool    Finder_UpdateDraw(Finder *f, Rectangle area, InsightTarget *target);
 
-/* Additions: the zoom (0 = auto, 1..8) and the sort order (0 count, 1 height, 2 width), also set by the toolbar. */
-void    Finder_SetZoom(Finder *f, int zoom);
-void    Finder_SetSort(Finder *f, int mode);
+/* The pxgl hash of the selected bitmap (false when none is selected). */
+bool    Finder_SelectedGlyph(const Finder *f, char out[33]);
 
 /* Test hooks for scripted input. */
+int     Finder_SideTab(const Finder *f);                   /* 0 View, 1 Usage */
+int     Finder_Zoom(const Finder *f);
 int     Finder_ResultCount(const Finder *f);              /* -1 while loading */
 int     Finder_CellFonts(const Finder *f, int index);      /* the "N fonts" of a cell (in the display order); -1 when out of range */
 bool    Finder_CellCenter(const Finder *f, int index, Vector2 *out);

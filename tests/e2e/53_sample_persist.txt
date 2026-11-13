@@ -6,7 +6,7 @@ assert stripcollapsed 1
 assert striph >= 96
 assert sample H\nH
 assert samplelines 2
-click @Sample_Collapse
+click @Sample_Fold
 wait 3
 assert stripcollapsed 0
 shot tests/tmp/shots/53_strip_restored.png

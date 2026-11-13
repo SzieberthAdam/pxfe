@@ -47,7 +47,7 @@ wait 3
 assert editor 0
 # Export: COLOR lines in the pxfm, reader accepts it
 setdialog folder tests/tmp/xout
-click @File
+click @Menu
 click @file.export
 wait 8
 assert modal Export_finished

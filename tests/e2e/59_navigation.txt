@@ -1,0 +1,201 @@
+# 59. The navigation bar (version 6): Typefaces | Fonts | Glyphs, and inside a typeface, a font and a glyph (testdata/lib).
+# nav: 0 Typefaces, 1 Typeface, 2 Fonts, 3 Font, 4 Glyph, 5 Glyphs; navactive: the blue segment.
+wait 16
+
+# ---- 1. the Menu button replaces File
+assert w.Menu 1
+assert w.File 0
+click @Menu
+wait 3
+assert filemenu 1
+key escape
+wait 3
+assert filemenu 0
+
+# ---- 2. the Typefaces view
+assert nav 0
+assert navactive 0
+assert navseg 0 Typefaces
+assert navseg 1 Fonts
+assert navseg 2 Glyphs
+assert inbrowser 1
+assert intypeface 0
+assert bboxes 2
+shot tests/tmp/shots/59_typefaces.png
+
+# ---- 3. a box header opens the Typeface view: the first segment takes the typeface's name, blue
+dblclick @hdr:0
+wait 16
+assert nav 1
+assert intypeface 1
+assert navactive 0
+assert navseg 0 Test Sans
+assert navseg 1 Fonts
+assert navseg 2 Glyphs
+assert bvisible 2
+assert bselhdr 0
+assert w.tv.open.0 1
+assert w.tv.dup.1 1
+assert w.tv.delete.1 1
+assert w.Delete_Typeface 1
+shot tests/tmp/shots/59_typeface.png
+sleep 600
+
+# the blue segment leads back to the list; the selection of the box is remembered
+click @nav.0
+wait 16
+assert nav 0
+assert intypeface 0
+assert navseg 0 Typefaces
+assert bselhdr 1
+
+# Enter on a header opens it as well; Alt+Left goes one level up
+key enter
+wait 16
+assert nav 1
+key left alt
+wait 16
+assert nav 0
+
+# the Open button of the panel on a header
+click @hdr:0
+wait 3
+click @Open
+wait 16
+assert nav 1
+assert blast 6
+
+# ---- 4. a font of the Typeface view: first segment typeface, second style, only the second is blue
+click @tv.open.1
+wait 10
+assert nav 3
+assert infont 1
+assert navactive 1
+assert navseg 0 Test Sans
+assert navseg 1 Italic
+assert navseg 2 Glyphs
+assert modified 0
+shot tests/tmp/shots/59_font.png
+
+# the typeface segment leads to the Typeface view, Alt+Right returns to the font
+click @nav.0
+wait 16
+assert nav 1
+assert navseg 0 Test Sans
+key right alt
+wait 16
+assert nav 3
+
+# ---- 5. a glyph: the third segment shows its caption, blue
+dblclick @cell:U+0041
+wait 12
+assert editor 1
+assert nav 4
+assert navactive 2
+assert navseg 0 Test Sans
+assert navseg 1 Italic
+assert navseg 2 A U+0041
+shot tests/tmp/shots/59_glyph.png
+
+# next glyph: the caption follows
+key pgup
+wait 14
+assert navseg 2 , U+002C
+key pgdn
+wait 14
+assert navseg 2 A U+0041
+
+# the style segment returns to the font, the typeface segment to the Typeface view
+click @nav.1
+wait 16
+assert nav 3
+assert editor 0
+dblclick @cell:U+0041
+wait 12
+assert nav 4
+click @nav.0
+wait 16
+assert nav 1
+key right alt
+wait 16
+assert nav 4
+key left alt
+wait 16
+assert nav 3
+key left alt
+wait 16
+assert nav 1
+key left alt
+wait 16
+assert nav 0
+
+# ---- 6. Fonts: the flat list
+click @Fonts
+wait 16
+assert nav 2
+assert navactive 1
+assert navseg 0 Typefaces
+assert navseg 1 Fonts
+assert navseg 2 Glyphs
+assert btab 1
+assert bvisible 4
+assert bboxes 0
+shot tests/tmp/shots/59_fonts.png
+dblclick @card:0
+wait 10
+assert nav 3
+assert navactive 1
+
+# the font's typeface segment from a font opened in the Fonts view
+click @nav.0
+wait 16
+assert nav 1
+
+# ---- 7. Glyphs: the glyph finder, from the Typeface view, the Fonts view and the font view
+click @Glyphs
+wait 12
+assert nav 5
+assert navactive 2
+assert navseg 0 Typefaces
+assert navseg 1 Fonts
+assert navseg 2 Glyphs
+assert infinder 1
+shot tests/tmp/shots/59_glyphs.png
+click @Typefaces
+wait 16
+assert nav 0
+assert btab 0
+click @Fonts
+wait 6
+click @Glyphs
+wait 16
+assert nav 5
+click @Fonts
+wait 16
+assert nav 2
+key left alt
+wait 4
+assert nav 2
+click @Typefaces
+wait 6
+assert nav 0
+
+# ---- Alt+Left from the Glyphs view returns to where it came from
+dblclick @hdr:0
+wait 16
+assert nav 1
+click @tv.open.0
+wait 10
+assert nav 3
+click @Glyphs
+wait 12
+assert nav 5
+key left alt
+wait 16
+assert nav 3
+key left alt
+wait 16
+assert nav 1
+click @Typefaces
+wait 16
+assert nav 0

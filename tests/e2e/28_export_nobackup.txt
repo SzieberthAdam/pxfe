@@ -3,7 +3,7 @@
 waitfor loading = 0 60000
 wait 5
 setdialog folder tests/tmp/xout
-click @File
+click @Menu
 wait 3
 click @file.export
 wait 10
@@ -14,7 +14,7 @@ writefile tests/tmp/xout/pxfm/aa/aa000000000000000000000000000000.pxfm this is n
 writefile tests/tmp/xout/keep.txt keep me\n
 delete tests/tmp/xout_backup.pxfdb
 setdialog save tests/tmp/xout_backup.pxfdb
-click @File
+click @Menu
 wait 3
 click @file.export
 wait 8
@@ -37,7 +37,7 @@ assert modal none
 assert file tests/tmp/xout/pxfm/08/0820dc69a21b1cdb3a44d2cff7d884d8.pxfm exists
 assert file tests/tmp/xout/pxfm/aa/aa000000000000000000000000000000.pxfm exists
 # again, then Overwrite Without Backup: the old contents go, memory is written, other files stay
-click @File
+click @Menu
 wait 3
 click @file.export
 wait 8
@@ -57,7 +57,7 @@ assert file tests/tmp/xout/pxfm/08/0820dc69a21b1cdb3a44d2cff7d884d8.pxfm exists
 assert file tests/tmp/xout/keep.txt contains keep me
 assert file tests/tmp/xout_backup.pxfdb missing
 # the dialog with the backup switched off: a second confirmation names the loss
-click @File
+click @Menu
 wait 3
 click @file.export
 wait 8
@@ -74,7 +74,7 @@ click @Cancel
 wait 4
 assert modal none
 assert file tests/tmp/xout/pxfm/08/0820dc69a21b1cdb3a44d2cff7d884d8.pxfm exists
-click @File
+click @Menu
 wait 3
 click @file.export
 wait 8

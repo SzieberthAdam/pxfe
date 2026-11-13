@@ -1,6 +1,6 @@
 # 8a. Unsaved-changes prompt on window close (testdata copy). Ends with Discard, which must exit the app.
 wait 5
-click @ascent.plus
+click @ascent+
 wait 3
 assert dirty 1
 closewindow

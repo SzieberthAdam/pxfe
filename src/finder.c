@@ -19,8 +19,7 @@
 
 #define FD_PANEL_MAX 360
 #define FD_PANEL_MIN 300
-#define FD_HEADER_H 64
-#define FD_TOOLBAR_H 36
+#define FD_PAD_P 16             /* inside the side panel (the same as the library browser's) */
 #define FD_PAD 8                /* inside a cell, around the box */
 #define FD_GAP 8                /* between cells */
 #define FD_LABEL_H 18
@@ -44,13 +43,14 @@ struct Finder {
     StoreCodeGlyphList pend; unsigned pendGen; bool hasPend;
     /* query */
     int32_t code;               /* -1 empty */
-    char text[96]; int cursor; bool focus, selAll;
+    char text[96];
     /* results */
     StoreCodeGlyphList list;
     bool loading;
     int *order; int nOrder;
     SortMode sort;
-    int zoom;                   /* 0 auto, 1..8 */
+    int zoom;                   /* 1..8 */
+    int sideTab;                /* the side panel: 0 View, 1 Usage */
     int sel;                    /* display index, -1 */
     char selHash[33];
     float scroll;
@@ -197,7 +197,7 @@ Finder *Finder_Create(Store *store, Insight *insight)
     if (!f) return NULL;
     f->store = store; f->insight = insight;
     f->conn = store_conn_open(store);
-    f->code = -1; f->sel = -1; f->reveal = -1; f->lastClickIdx = -1;
+    f->code = -1; f->zoom = 3; f->sel = -1; f->reveal = -1; f->lastClickIdx = -1;
     InitializeCriticalSection(&f->cs);
     InitializeConditionVariable(&f->cv);
     f->th = CreateThread(NULL, 0, worker_main, f, 0, NULL);
@@ -251,8 +251,6 @@ static void set_code(Finder *f, int32_t code, bool rewriteText)
         if (code < 0) f->text[0] = 0;
         else if (printable(code) && code <= 0x17F) { int n = 0; const char *u = CodepointToUTF8(code, &n); memcpy(f->text, u, (size_t)n); f->text[n] = 0; }
         else snprintf(f->text, sizeof f->text, "U+%04X", (unsigned)code);
-        f->cursor = (int)strlen(f->text);
-        f->selAll = false;
     }
     if (code == f->code) return;
     f->code = code;
@@ -349,8 +347,15 @@ bool Finder_CellCenter(const Finder *f, int index, Vector2 *out)
     return true;
 }
 
-void Finder_SetZoom(Finder *f, int zoom) { if (f && zoom >= 0 && zoom <= 8) f->zoom = zoom; }
-void Finder_SetSort(Finder *f, int mode) { if (f && mode >= 0 && mode <= 2 && (int)f->sort != mode) { f->sort = (SortMode)mode; resort(f); f->scroll = 0; } }
+int Finder_SideTab(const Finder *f) { return f ? f->sideTab : -1; }
+int Finder_Zoom(const Finder *f) { return f ? f->zoom : -1; }
+
+bool Finder_SelectedGlyph(const Finder *f, char out[33])
+{
+    if (!f || f->sel < 0 || f->sel >= f->nOrder) return false;
+    memcpy(out, f->list.g[f->order[f->sel]].glyph, 33);
+    return true;
+}
 
 /* ------------------------------------------------------------------ bitmaps */
 
@@ -378,75 +383,11 @@ static bool load_cell_texture(Finder *f, int li)
 
 /* ------------------------------------------------------------------ text box */
 
-static void box_insert(Finder *f, const char *s)
-{
-    if (f->selAll) { f->text[0] = 0; f->cursor = 0; f->selAll = false; }
-    size_t n = strlen(s), len = strlen(f->text);
-    if (len + n + 1 >= sizeof f->text) return;
-    memmove(f->text + f->cursor + n, f->text + f->cursor, len - (size_t)f->cursor + 1);
-    memcpy(f->text + f->cursor, s, n);
-    f->cursor += (int)n;
-}
-
-static int utf8_prev(const char *s, int i) { if (i > 0) i--; while (i > 0 && ((unsigned char)s[i] & 0xC0) == 0x80) i--; return i; }
-static int utf8_next(const char *s, int i) { if (s[i]) i++; while (s[i] && ((unsigned char)s[i] & 0xC0) == 0x80) i++; return i; }
-
 static void box_apply(Finder *f)
 {
     if (f->text[0] == 0) { set_code(f, -1, false); return; }
     int32_t c = Finder_ParseQuery(f->text);
     if (c >= 0) set_code(f, c, false);
-}
-
-static void box_keys(Finder *f)
-{
-    bool ctrl = IsKeyDown(KEY_LEFT_CONTROL) || IsKeyDown(KEY_RIGHT_CONTROL);
-    bool alt = IsKeyDown(KEY_LEFT_ALT) || IsKeyDown(KEY_RIGHT_ALT);
-    bool changed = false;
-    int ch;
-    while ((ch = GetCharPressed()) != 0) {
-        if (ctrl || alt || ch < 0x20 || ch == 0x7F) continue;
-        int n = 0;
-        const char *u = CodepointToUTF8(ch, &n);
-        char tmp[8];
-        memcpy(tmp, u, (size_t)n); tmp[n] = 0;
-        box_insert(f, tmp);
-        changed = true;
-    }
-    if (ctrl && IsKeyPressed(KEY_V)) {
-        const char *cb = GetClipboardText();
-        if (cb) {
-            char one[96]; size_t k = 0;
-            while (cb[k] && cb[k] != '\r' && cb[k] != '\n' && k + 1 < sizeof one) { one[k] = cb[k]; k++; }
-            one[k] = 0;
-            if (k) { box_insert(f, one); changed = true; }
-        }
-    }
-    if (ctrl && IsKeyPressed(KEY_A)) f->selAll = true;
-    if (ctrl && IsKeyPressed(KEY_C) && f->text[0]) SetClipboardText(f->text);
-    if (IsKeyPressed(KEY_BACKSPACE) || IsKeyPressedRepeat(KEY_BACKSPACE)) {
-        if (f->selAll) { f->text[0] = 0; f->cursor = 0; f->selAll = false; changed = true; }
-        else if (f->cursor > 0) {
-            int p = utf8_prev(f->text, f->cursor);
-            memmove(f->text + p, f->text + f->cursor, strlen(f->text + f->cursor) + 1);
-            f->cursor = p; changed = true;
-        }
-    }
-    if (IsKeyPressed(KEY_DELETE) || IsKeyPressedRepeat(KEY_DELETE)) {
-        if (f->selAll) { f->text[0] = 0; f->cursor = 0; f->selAll = false; changed = true; }
-        else if (f->text[f->cursor]) {
-            int nx = utf8_next(f->text, f->cursor);
-            memmove(f->text + f->cursor, f->text + nx, strlen(f->text + nx) + 1);
-            changed = true;
-        }
-    }
-    if (!alt && (IsKeyPressed(KEY_LEFT) || IsKeyPressedRepeat(KEY_LEFT))) { f->cursor = f->selAll ? 0 : utf8_prev(f->text, f->cursor); f->selAll = false; }
-    if (!alt && (IsKeyPressed(KEY_RIGHT) || IsKeyPressedRepeat(KEY_RIGHT))) { f->cursor = f->selAll ? (int)strlen(f->text) : utf8_next(f->text, f->cursor); f->selAll = false; }
-    if (IsKeyPressed(KEY_HOME)) { f->cursor = 0; f->selAll = false; }
-    if (IsKeyPressed(KEY_END)) { f->cursor = (int)strlen(f->text); f->selAll = false; }
-    if (IsKeyPressed(KEY_ENTER) || IsKeyPressed(KEY_KP_ENTER)) { box_apply(f); f->focus = false; }
-    else if (changed) box_apply(f);
-    if (IsKeyPressed(KEY_ESCAPE)) f->focus = false;
 }
 
 /* ------------------------------------------------------------------ drawing */
@@ -463,7 +404,7 @@ static void load_big(Finder *f)
         for (int c = ranges[i][0]; c <= ranges[i][1] && n < 1024; c++) cps[n++] = c;
     f->bigLoaded = true;
     if (FileExists("C:/Windows/Fonts/segoeui.ttf")) {
-        f->big = LoadFontEx("C:/Windows/Fonts/segoeui.ttf", 34, cps, n);
+        f->big = LoadFontEx("C:/Windows/Fonts/segoeui.ttf", TH_SIZE_PREVIEW, cps, n);
         if (f->big.texture.id && f->big.glyphCount > 0) { SetTextureFilter(f->big.texture, TEXTURE_FILTER_BILINEAR); return; }
     }
     f->big = GetFontDefault();
@@ -477,85 +418,41 @@ static bool big_has(int32_t c)
 
 static bool in_input_ok(void) { return !Th_InputBlocked(); }
 
-static void draw_search_box(Finder *f, Rectangle r)
+/* The View tab of the side panel: the character to look for (search box, Previous / Next, its preview), the zoom and the sort order. */
+static void draw_view_tab(Finder *f, Rectangle P)
 {
-    Vector2 m = GetMousePosition();
-    bool hov = in_input_ok() && CheckCollisionPointRec(m, r);
-    Th_Reg("finder.search", r);
-    if (IsMouseButtonPressed(MOUSE_BUTTON_LEFT) && in_input_ok()) {
-        if (hov) {
-            if (!f->focus) { f->focus = true; f->selAll = f->text[0] != 0; }
-            else {
-                f->selAll = false;
-                /* caret at the click */
-                int best = (int)strlen(f->text);
-                for (int i = 0; ; i = utf8_next(f->text, i)) {
-                    char save = f->text[i]; f->text[i] = 0;
-                    float w = Th_Measure(f->text).x;
-                    f->text[i] = save;
-                    if (r.x + 28 + w >= m.x) { best = i; break; }
-                    if (!f->text[i]) break;
-                }
-                f->cursor = best;
-            }
-        } else f->focus = false;
+    float x = P.x + FD_PAD_P, w = P.width - 2 * FD_PAD_P, y = P.y + 44 + 16;
+    char s[96] = "";
+    if (f->code >= 0 && !f->loading && f->list.count > 0) {
+        long fonts = 0;
+        for (int i = 0; i < f->list.count; i++) fonts += f->list.g[i].nFonts;
+        snprintf(s, sizeof s, "%d bitmap%s, %ld font%s", f->list.count, f->list.count == 1 ? "" : "s", fonts, fonts == 1 ? "" : "s");
     }
-    DrawRectangleRounded(r, 0.18f, 8, TH_PANEL);
-    DrawRectangleRoundedLinesEx(r, 0.18f, 8, 1.0f, f->focus ? TH_ACCENT : (hov ? (Color){ 0xA9, 0xC2, 0xF5, 0xFF } : TH_LINE));
-    /* magnifier */
-    DrawCircleLines((int)(r.x + 15), (int)(r.y + r.height / 2 - 1), 5, TH_TEXT_DIM);
-    DrawLineEx((Vector2){ r.x + 19, r.y + r.height / 2 + 3 }, (Vector2){ r.x + 23, r.y + r.height / 2 + 7 }, 1.5f, TH_TEXT_DIM);
-    float tx = r.x + 30, ty = r.y + (r.height - Th_Measure("A").y) / 2;
-    float maxw = r.width - 38;
-    if (f->text[0] == 0 && !f->focus) Th_Text("Character or U+XXXX", tx, ty, (Color){ 0xA0, 0xA0, 0xAA, 0xFF });
-    else {
-        BeginScissorMode((int)(r.x + 28), (int)r.y + 1, (int)(r.width - 34), (int)r.height - 2);
-        float tw = Th_Measure(f->text).x;
-        if (f->selAll && f->text[0]) DrawRectangle((int)tx, (int)(ty - 1), (int)tw, (int)Th_Measure("A").y + 2, TH_ACCENT_TINT);
-        Th_Text(f->text, tx, ty, TH_TEXT);
-        if (f->focus && !f->selAll && ((int)(GetTime() * 2.0) % 2 == 0 || IsKeyDown(KEY_LEFT) || IsKeyDown(KEY_RIGHT))) {
-            char save = f->text[f->cursor]; f->text[f->cursor] = 0;
-            float cw = Th_Measure(f->text).x;
-            f->text[f->cursor] = save;
-            if (cw > maxw) cw = maxw;
-            DrawRectangle((int)(tx + cw), (int)(ty - 1), 1, (int)Th_Measure("A").y + 2, TH_TEXT);
-        }
-        EndScissorMode();
-    }
-}
-
-static void draw_header(Finder *f, Rectangle r)
-{
-    DrawRectangleRec(r, TH_PANEL_ALT);
-    Th_HLine(r.x, r.x + r.width, r.y + r.height - 1, TH_LINE);
-    Rectangle sb = { r.x + 16, r.y + 16, 230, 32 };
-    draw_search_box(f, sb);
+    Th_Section("RESULTS", x, &y, w, 0, s);
+    y += TH_GAP;
+    Th_Section("CHARACTER", x, &y, w, 0, NULL);
+    Rectangle sb = { x, y, w - 80, TH_ROW_H };
+    int tf = Th_TextField(sb, "finder.search", f->text, (int)sizeof f->text, TH_TF_SEARCH | TH_TF_SELECT, "Character or U+XXXX");
+    if (tf & TH_TF_CHANGED) snprintf(f->text, sizeof f->text, "%s", Th_TextValue());
+    if (tf & (TH_TF_CHANGED | TH_TF_ENTER)) box_apply(f);
     int32_t step = 0;
-    if (Th_Button((Rectangle){ sb.x + sb.width + 8, sb.y, 32, 32 }, "<")) step = -1;
-    if (Th_Button((Rectangle){ sb.x + sb.width + 44, sb.y, 32, 32 }, ">")) step = 1;
+    if (Th_Button((Rectangle){ sb.x + sb.width + TH_GAP, sb.y, TH_ROW_H, TH_ROW_H }, "finder.prev", TH_BTN_ICON(TH_IC_LEFT), "Previous code point")) step = -1;
+    if (Th_Button((Rectangle){ sb.x + sb.width + 2 * TH_GAP + TH_ROW_H, sb.y, TH_ROW_H, TH_ROW_H }, "finder.next", TH_BTN_ICON(TH_IC_RIGHT), "Next code point")) step = 1;
     if (step && f->code >= 0) {
         int32_t c = f->code + step;
         if (c >= 0 && c <= PX_CODE_MAX_CODEPOINT) set_code(f, c, true);
     } else if (step && f->code < 0) set_code(f, step > 0 ? 0x20 : 0x7E, true);
-    Vector2 m = GetMousePosition();
-    if (CheckCollisionPointRec(m, (Rectangle){ sb.x + sb.width + 8, sb.y, 68, 32 })) {
-        const char *tip = "Previous  [      Next  ]";
-        Vector2 ts = Th_MeasureSmall(tip);
-        DrawRectangleRounded((Rectangle){ m.x + 12, m.y + 18, ts.x + 14, ts.y + 8 }, 0.2f, 6, (Color){ 0x2A, 0x2A, 0x30, 0xF2 });
-        Th_TextSmall(tip, m.x + 19, m.y + 22, WHITE);
-    }
-    float x = sb.x + sb.width + 96;
+    y += 44;
     if (f->code >= 0) {
-        Rectangle cb = { x, r.y + 10, 44, 44 };
-        DrawRectangleRounded(cb, 0.12f, 6, TH_PANEL);
-        DrawRectangleRoundedLinesEx(cb, 0.12f, 6, 1.0f, TH_LINE);
+        Rectangle cb = { x, y, 44, 44 };
+        Th_Card(cb, 0);
         load_big(f);
         if (printable(f->code) && big_has(f->code)) {
             int n = 0;
             const char *u = CodepointToUTF8(f->code, &n);
             char t[8]; memcpy(t, u, (size_t)n); t[n] = 0;
-            Vector2 ms = MeasureTextEx(f->big, t, 34, 0);
-            DrawTextEx(f->big, t, (Vector2){ floorf(cb.x + (cb.width - ms.x) / 2), floorf(cb.y + (cb.height - ms.y) / 2) }, 34, 0, TH_TEXT);
+            Vector2 ms = MeasureTextEx(f->big, t, TH_SIZE_PREVIEW, 0);
+            DrawTextEx(f->big, t, (Vector2){ floorf(cb.x + (cb.width - ms.x) / 2), floorf(cb.y + (cb.height - ms.y) / 2) }, TH_SIZE_PREVIEW, 0, TH_TEXT);
         } else {
             Rectangle bx = { cb.x + 12, cb.y + 8, 20, 28 };
             Th_DashedHLine(bx.x, bx.x + bx.width, bx.y, 3, TH_TEXT_DIM);
@@ -565,51 +462,19 @@ static void draw_header(Finder *f, Rectangle r)
         }
         char code[24];
         snprintf(code, sizeof code, "U+%04X", (unsigned)f->code);
-        float cw = Th_MeasureMono(code).x;
-        Th_TextMono(code, x + 56, r.y + 14, TH_TEXT);
-        Th_Text(block_name(f->code), x + 56, r.y + 32, TH_TEXT_DIM);
-        (void)cw;
-        /* summary at the right */
-        if (!f->loading && f->list.count > 0) {
-            long fonts = 0;
-            for (int i = 0; i < f->list.count; i++) fonts += f->list.g[i].nFonts;
-            char s[96];
-            snprintf(s, sizeof s, "%d distinct bitmap%s \xC2\xB7 %ld font%s", f->list.count, f->list.count == 1 ? "" : "s", fonts, fonts == 1 ? "" : "s");
-            Vector2 sm = Th_Measure(s);
-            Th_Text(s, r.x + r.width - 16 - sm.x, r.y + 24, TH_TEXT_DIM);
-        }
+        Th_TextMono(code, x + 56, y + 4, TH_TEXT);
+        Th_Text(block_name(f->code), x + 56, y + 22, TH_TEXT_DIM);
     }
-}
-
-static void draw_toolbar(Finder *f, Rectangle r)
-{
-    DrawRectangleRec(r, TH_PANEL);
-    Th_HLine(r.x, r.x + r.width, r.y + r.height - 1, TH_LINE);
-    BeginScissorMode((int)r.x, (int)r.y, (int)r.width, (int)r.height);
-    float x = r.x + 16, y = r.y + 5, h = r.height - 11;
-    Th_Text("Zoom", x, y + 4, TH_TEXT_DIM);
-    x += 42;
-    for (int z = 0; z <= 8; z++) {
-        char lab[8];
-        if (z == 0) snprintf(lab, sizeof lab, "Auto"); else snprintf(lab, sizeof lab, "%dx", z);
-        float bw = z == 0 ? 44 : 32;
-        bool on = f->zoom == z;
-        if (Th_Toggle((Rectangle){ x, y, bw, h }, lab, &on) ) { f->zoom = z; }
-        x += bw + 4;
-    }
-    x += 24;
-    Th_Text("Sort by", x, y + 4, TH_TEXT_DIM);
-    x += 56;
+    y += 62;
+    Th_Section("VIEW", x, &y, w, 0, NULL);
+    char zt[8];
+    snprintf(zt, sizeof zt, "%dx", f->zoom);
+    Rectangle zr = Th_Row(x, &y, w, "Zoom", NULL, 0);
+    int zs = Th_Stepper((Rectangle){ zr.x, zr.y, TH_STEP_W, TH_ROW_H }, zt, "fzoom", (f->zoom <= 1 ? TH_STEP_NO_MINUS : 0) | (f->zoom >= 8 ? TH_STEP_NO_PLUS : 0));
+    if (zs) f->zoom += zs;
     static const char *const names[] = { "Count", "Height", "Width" };
-    for (int s = 0; s < 3; s++) {
-        bool on = (int)f->sort == s;
-        float bw = 56;
-        if (Th_Toggle((Rectangle){ x, y, bw, h }, names[s], &on)) {
-            if ((int)f->sort != s) { f->sort = (SortMode)s; resort(f); f->scroll = 0; }
-        }
-        x += bw + 4;
-    }
-    EndScissorMode();
+    int c = Th_Segmented(Th_Row(x, &y, w, "Sort by", NULL, 0), &(ThSeg){ names, 3, (int)f->sort, 0u, "fsort" });
+    if (c >= 0 && (int)f->sort != c) { f->sort = (SortMode)c; resort(f); f->scroll = 0; }
 }
 
 static void draw_center_msg(Rectangle r, const char *msg, bool spinner)
@@ -620,8 +485,6 @@ static void draw_center_msg(Rectangle r, const char *msg, bool spinner)
     Th_Text(msg, floorf(x), floorf(y), TH_TEXT_DIM);
 }
 
-static int cmpi(const void *a, const void *b) { return *(const int *)a - *(const int *)b; }
-
 static void free_layout(Finder *f)
 {
     free(f->rowFirst); free(f->rowY); free(f->rowH); free(f->rowAbove); free(f->rowBelow); free(f->cellX); free(f->cellW);
@@ -629,32 +492,11 @@ static void free_layout(Finder *f)
     f->nRows = 0;
 }
 
-/* The automatic zoom: the typical (median) bitmap fills about 96 px, and the 90th percentile stays under 200 px tall. */
-static int auto_zoom(const Finder *f)
-{
-    int n = f->list.count;
-    if (n == 0) return 1;
-    int *vh = (int *)malloc((size_t)n * sizeof(int)), *vw = (int *)malloc((size_t)n * sizeof(int));
-    for (int i = 0; i < n; i++) {
-        const StoreCodeGlyph *e = &f->list.g[i];
-        int top = e->yTypical + e->height, bot = e->yTypical < 0 ? -e->yTypical : 0;
-        vh[i] = (top > 0 ? top : 0) + bot; vw[i] = e->width;
-    }
-    qsort(vh, (size_t)n, sizeof(int), cmpi); qsort(vw, (size_t)n, sizeof(int), cmpi);
-    int mh = vh[n / 2], mw = vw[n / 2], ph = vh[(int)(0.9f * (float)(n - 1))];
-    free(vh); free(vw);
-    if (mh < 1) mh = 1;
-    if (mw < 1) mw = 1;
-    int z = 1;
-    for (int k = 8; k >= 1; k--) if (mh * k <= 96 && mw * k <= 96 && ph * k <= 200) { z = k; break; }
-    return z;
-}
-
 /* Flow layout: cells of their own width left to right, a new row when the next does not fit; a row's cells share the
  * baseline, the row is as tall as its tallest cell. */
 static void layout(Finder *f, float gridW)
 {
-    int z = f->zoom ? f->zoom : auto_zoom(f);
+    int z = f->zoom;
     if (f->cellX && f->layoutW == gridW && f->layoutZ == z && f->layoutN == f->nOrder && f->layoutVer == f->ver) { f->z = z; return; }
     free_layout(f);
     int n = f->nOrder;
@@ -708,11 +550,7 @@ static void draw_grid(Finder *f, Rectangle g)
     layout(f, g.width);
     int n = f->nOrder;
     float content = f->rowY[f->nRows - 1] + f->rowH[f->nRows - 1] + FD_GAP;
-    float maxScroll = content - g.height;
-    if (maxScroll < 0) maxScroll = 0;
     Vector2 m = GetMousePosition();
-    bool inGrid = in_input_ok() && CheckCollisionPointRec(m, g);
-    if (inGrid) f->scroll -= GetMouseWheelMove() * 64.0f;
     if (f->reveal >= 0 && f->reveal < n) {
         int rr = 0;
         while (rr + 1 < f->nRows && f->rowFirst[rr + 1] <= f->reveal) rr++;
@@ -720,8 +558,8 @@ static void draw_grid(Finder *f, Rectangle g)
         else if (f->rowY[rr] + f->rowH[rr] > f->scroll + g.height) f->scroll = f->rowY[rr] + f->rowH[rr] - g.height + FD_GAP;
         f->reveal = -1;
     }
-    if (f->scroll > maxScroll) f->scroll = maxScroll;
-    if (f->scroll < 0) f->scroll = 0;
+    bool onBar = Th_ScrollBar(g, &f->scroll, content, 64, in_input_ok());
+    bool inGrid = in_input_ok() && !onBar && CheckCollisionPointRec(m, g);
 
     f->frame++;
     int firstRow = 0;
@@ -737,13 +575,10 @@ static void draw_grid(Finder *f, Rectangle g)
             Rectangle cr = { floorf(g.x + f->cellX[di]), floorf(g.y + f->rowY[row] - f->scroll), f->cellW[di], f->rowH[row] };
             bool sel = di == f->sel;
             bool hov = inGrid && CheckCollisionPointRec(m, cr);
-            DrawRectangleRounded(cr, 0.06f, 6, TH_PANEL);
-            if (hov && !sel) DrawRectangleRounded(cr, 0.06f, 6, TH_HOVER);
-            if (sel) { DrawRectangleRounded(cr, 0.06f, 6, TH_ACCENT_TINT); DrawRectangleRoundedLinesEx(cr, 0.06f, 6, 1.5f, TH_ACCENT); }
-            else DrawRectangleRoundedLinesEx(cr, 0.06f, 6, 1.0f, hov ? (Color){ 0xA9, 0xC2, 0xF5, 0xFF } : TH_LINE);
+            Th_Card(cr, (sel ? TH_LR_SELECTED : 0) | (hov ? TH_LR_HOVER : 0));
             Rectangle box = { cr.x + FD_PAD, cr.y + FD_PAD, cr.width - 2 * FD_PAD, boxH };
             float baseY = box.y + box.height - (float)(f->rowBelow[row] * f->z);
-            Th_HLine(box.x, box.x + box.width, floorf(baseY), (Color){ 0xE5, 0x48, 0x4D, 0x50 });
+            Th_HLine(box.x, box.x + box.width, floorf(baseY), Fade(TH_M_BASELINE, 0.315f));
             if (!f->tex[li].id && f->used[li] != 0xFFFFFFFFu && budget > 0) {
                 budget--;
                 if (!load_cell_texture(f, li)) f->used[li] = 0xFFFFFFFFu;   /* unreadable: do not retry */
@@ -766,6 +601,8 @@ static void draw_grid(Finder *f, Rectangle g)
                 if (f->lastClickIdx == di && now - f->lastClickT < 0.4) {
                     memcpy(f->dblHash, e->glyph, 33);
                     f->dblT = now;
+                    f->sideTab = 1;   /* the usage is asked for to find the font to open */
+                    f->sideTab = 1;   /* the usage must be asked for to find the font to open */
                     f->lastClickIdx = -1;
                 } else { f->lastClickIdx = di; f->lastClickT = now; }
             }
@@ -778,11 +615,6 @@ static void draw_grid(Finder *f, Rectangle g)
     if (have > FD_TEX_KEEP)
         for (int i = 0; i < f->list.count; i++)
             if (f->tex[i].id && f->used[i] + 2 < f->frame) { UnloadTexture(f->tex[i]); memset(&f->tex[i], 0, sizeof f->tex[i]); }
-    if (maxScroll > 0) {
-        float th = fmaxf(24.0f, g.height * g.height / content);
-        float ty = g.y + (g.height - th) * (f->scroll / maxScroll);
-        DrawRectangleRounded((Rectangle){ g.x + g.width - 8, ty, 5, th }, 1.0f, 4, (Color){ 0, 0, 0, 0x30 });
-    }
 }
 
 bool Finder_UpdateDraw(Finder *f, Rectangle area, InsightTarget *target)
@@ -793,9 +625,8 @@ bool Finder_UpdateDraw(Finder *f, Rectangle area, InsightTarget *target)
     bool blocked = Th_InputBlocked();
     bool ctrl = IsKeyDown(KEY_LEFT_CONTROL) || IsKeyDown(KEY_RIGHT_CONTROL);
     if (!blocked) {
-        if (ctrl && (IsKeyPressed(KEY_G) || IsKeyPressed(KEY_F))) { f->focus = true; f->selAll = f->text[0] != 0; }
-        if (f->focus) box_keys(f);
-        else {
+        if (ctrl && (IsKeyPressed(KEY_G) || IsKeyPressed(KEY_F))) { f->sideTab = 0; Th_TextFocus("finder.search", f->text, true); }
+        if (!Th_TextIs("finder.search")) {
             int ch;
             while ((ch = GetCharPressed()) != 0) {
                 if (ch == '[' && f->code > 0) set_code(f, f->code - 1, true);
@@ -808,18 +639,21 @@ bool Finder_UpdateDraw(Finder *f, Rectangle area, InsightTarget *target)
     if (panelW > FD_PANEL_MAX) panelW = FD_PANEL_MAX;
     if (panelW < FD_PANEL_MIN) panelW = FD_PANEL_MIN;
     if (panelW > area.width * 0.5f) panelW = floorf(area.width * 0.5f);
-    Rectangle header = { area.x, area.y, area.width, FD_HEADER_H };
-    Rectangle tool = { area.x, area.y + FD_HEADER_H, area.width - panelW, FD_TOOLBAR_H };
-    Rectangle grid = { area.x, tool.y + FD_TOOLBAR_H, area.width - panelW, area.height - FD_HEADER_H - FD_TOOLBAR_H };
-    Rectangle panel = { area.x + area.width - panelW, area.y + FD_HEADER_H, panelW, area.height - FD_HEADER_H };
+    Rectangle grid = { area.x, area.y, area.width - panelW, area.height };
+    Rectangle panel = { area.x + area.width - panelW, area.y, panelW, area.height };
 
     draw_grid(f, grid);
-    draw_toolbar(f, tool);
-    draw_header(f, header);
 
-    /* the usage of the selected bitmap, through the shared Insight */
+    /* the side panel: View | Usage (the usage of the selected bitmap comes from the shared Insight) */
     DrawRectangleRec(panel, TH_PANEL);
     Th_VLine(panel.x, panel.y, panel.y + panel.height, TH_LINE);
+    {
+        static const char *labels[2] = { "View", "Usage" };
+        int c = Th_Segmented((Rectangle){ panel.x + FD_PAD_P - 8, panel.y + 8, panel.width - 2 * FD_PAD_P + 16, TH_ROW_H }, &(ThSeg){ labels, 2, f->sideTab, 0u, "fside" });
+        if (c >= 0) f->sideTab = c;
+        Th_HLine(panel.x + 1, panel.x + panel.width, panel.y + 43, TH_LINE);
+    }
+    if (f->sideTab == 0) draw_view_tab(f, panel);
     bool clicked = false;
     if (f->insight) {
         Insight_SetPreferredCode(f->insight, f->code);
@@ -828,19 +662,23 @@ bool Finder_UpdateDraw(Finder *f, Rectangle area, InsightTarget *target)
             memcpy(h[0], f->list.g[f->order[f->sel]].glyph, 33);
             Insight_SetGlyphs(f->insight, (const char (*)[33])h, 1);
         } else Insight_SetGlyphs(f->insight, NULL, 0);
-        Vector2 m = GetMousePosition();
-        if (!blocked && CheckCollisionPointRec(m, panel)) f->usageScroll -= GetMouseWheelMove() * 48.0f;
-        if (f->usageScroll > 0) f->usageScroll = 0;
-        Rectangle ia = { panel.x, panel.y - (-f->usageScroll), panel.width, panel.height };
-        BeginScissorMode((int)panel.x + 1, (int)panel.y, (int)panel.width - 1, (int)panel.height);
-        Insight_SetVisible(f->insight, panel);
-        InsightTarget t = { 0 };
-        float used = Insight_Draw(f->insight, ia, INSIGHT_SECTION_USAGE, &clicked, &t);
-        EndScissorMode();
-        float over = used - panel.height;
-        if (over < 0) over = 0;
-        if (-f->usageScroll > over) f->usageScroll = -over;
-        if (clicked && target) { *target = t; opened = true; }
+        if (f->sideTab == 1) {
+            Rectangle body = { panel.x, panel.y + 44, panel.width, panel.height - 44 };
+            Rectangle ia = { body.x, body.y + f->usageScroll + 8, body.width, body.height };
+            BeginScissorMode((int)body.x + 1, (int)body.y, (int)body.width - 1, (int)body.height);
+            Insight_SetVisible(f->insight, body);
+            InsightTarget t = { 0 };
+            float used = Insight_Draw(f->insight, ia, INSIGHT_SECTION_USAGE, &clicked, &t);
+            EndScissorMode();
+            float us = -f->usageScroll;
+            Th_ScrollBar(body, &us, used + 8, 48, !blocked);
+            f->usageScroll = -us;
+            if (clicked && target) { *target = t; opened = true; }
+        } else {
+            bool cl = false;
+            InsightTarget t0 = { 0 };
+            Insight_Draw(f->insight, (Rectangle){ panel.x, panel.y, panel.width, 0 }, 0, &cl, &t0);   /* nothing wanted: the queries stop */
+        }
         /* a double click on a cell opens its most used font once the usage has arrived */
         if (f->dblHash[0]) {
             InsightTarget bt;

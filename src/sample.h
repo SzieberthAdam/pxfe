@@ -87,7 +87,7 @@ float Sample_Draw(SampleCache *cache, const PxFont *f, const char *text, float x
 
 /* ---------------------------------------------------------------------------------------- the editor widget */
 
-typedef struct SampleEdit { int cur, anchor; bool hasSel, drag; float pxCol; float scroll; } SampleEdit;   /* zero-initialise */
+typedef struct SampleEdit { int cur, anchor; bool hasSel, drag; float pxCol; float scroll; int seen; } SampleEdit;   /* zero-initialise */
 
 /* A multi-line text box on the shared text in `r`; registers `regName` for scripts.  blocked: a modal is open.  mouseClip (may be NULL):
  * the mouse only counts inside it (a scrolled panel).  Returns true when the text changed.

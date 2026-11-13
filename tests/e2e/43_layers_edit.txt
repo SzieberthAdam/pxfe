@@ -62,7 +62,7 @@ click @lay_op
 wait 3
 assert l.op.1 >= 49
 assert l.op.1 <= 51
-click @lay_opv.plus
+click @lay_opv+
 wait 2
 assert l.op.1 >= 50
 click @lay_opv.value
@@ -71,9 +71,9 @@ key enter
 wait 3
 assert l.op.1 100
 # offsets: the spinners and typed values
-click @lay_x.plus
-click @lay_x.plus
-click @lay_y.minus
+click @lay_x+
+click @lay_x+
+click @lay_y-
 wait 3
 assert l.dx.1 2
 assert l.dy.1 -1

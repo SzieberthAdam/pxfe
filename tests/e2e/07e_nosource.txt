@@ -16,7 +16,7 @@ assert title Hand made
 assert modified 0
 assert unsaved 0
 assert cansavelib 0
-click @ascent.plus
+click @ascent+
 wait 3
 assert cansavelib 0
 assert unsaved 1

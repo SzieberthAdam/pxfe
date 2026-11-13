@@ -257,7 +257,7 @@ static bool LayerStat(const char *k, long *v)
     else if (!strcmp(k, "cur")) *v = Layers_CurrentIndex(L);
     else if (!strcmp(k, "sel")) *v = Layers_Selected(L);
     else if (!strcmp(k, "pop")) *v = Layers_PopoverOpen(L);
-    else if (!strcmp(k, "focus")) *v = Layers_TextFocus(L);
+    else if (!strcmp(k, "focus")) *v = Th_TextIs(NULL);
     else if (!strcmp(k, "fonts")) *v = Layers_CachedFonts(L);
     else {
         const char *dot = strchr(k, '.');
@@ -319,6 +319,9 @@ static bool GetInt(const char *name, long *v)
     else if (!strcmp(name, "redo")) *v = redoN;
     else if (!strcmp(name, "editor")) *v = inEditor;
     else if (!strcmp(name, "inbrowser")) *v = inBrowser && !inFinder;
+    else if (!strcmp(name, "nav")) *v = navView;                  /* 0 Typefaces, 1 Typeface, 2 Fonts, 3 Font, 4 Glyph, 5 Glyphs */
+    else if (!strcmp(name, "navactive")) *v = navActive;          /* the blue segment: 0, 1 or 2 */
+    else if (!strcmp(name, "intypeface")) *v = browser && Browser_InTypeface(browser);
     else if (!strcmp(name, "infinder")) *v = inFinder;
     else if (!strcmp(name, "infont")) *v = hasFont && !inBrowser && !inFinder;
     else if (!strcmp(name, "loading")) *v = job.active;
@@ -333,7 +336,9 @@ static bool GetInt(const char *name, long *v)
     else if (!strcmp(name, "usage")) *v = insight ? Insight_UsageFontCount(insight) : -2;        /* fonts holding the selected glyphs; -1 loading */
     else if (!strcmp(name, "usagevar")) *v = insight ? Insight_UsageVariantCount(insight) : -2;     /* typeface variants naming those fonts; -1 loading */
     else if (!strcmp(name, "usagecode")) *v = insight ? Insight_UsageCodeFonts(insight) : -2;       /* fonts that hold the glyph under the code of the selected glyph / the finder; -1 none */
-    else if (!strcmp(name, "ptab")) *v = panelTab;                                                   /* tab of the font view's right panel: 0 Font, 1 Typeface, 2 Glyph, 3 Similar */
+    else if (!strcmp(name, "ptab")) *v = panelTab;                                                   /* tab of the font view's right panel: 0 Font, 1 Glyph, 2 Similar */
+    else if (!strcmp(name, "fside")) *v = finder ? Finder_SideTab(finder) : -2;                        /* side panel of the Glyphs view: 0 View, 1 Usage */
+    else if (!strcmp(name, "fzoom")) *v = finder ? Finder_Zoom(finder) : -2;
     else if (!strcmp(name, "fcellfonts")) *v = finder ? Finder_CellFonts(finder, 0) : -2;           /* the "N fonts" of the first finder cell */
     else if (!strcmp(name, "similar")) *v = insight ? Insight_SimilarCount(insight) : -2;        /* entries of the similar list; -1 loading */
     else if (!strcmp(name, "insightbusy")) *v = insight ? Insight_Busy(insight) : 0;
@@ -341,7 +346,7 @@ static bool GetInt(const char *name, long *v)
     else if (!strcmp(name, "opentime")) *v = (long)(job.seconds * 1000);                           /* ms of the last library open */
     else if (!strcmp(name, "bvisible")) *v = browser ? Browser_VisibleCount(browser) : -1;
     else if (!strcmp(name, "btotal")) *v = browser ? Browser_TotalCount(browser) : -1;
-    else if (!strcmp(name, "bside")) *v = browser ? Browser_SideTab(browser) : -1;                  /* side panel of the browser: 0 View, 1 Similar */
+    else if (!strcmp(name, "bside")) *v = browser ? Browser_SideTab(browser) : -1;                  /* side panel of the browser: 0 View, 1 Similar, 2 Typeface */
     else if (!strcmp(name, "btab")) *v = browser ? Browser_Tab(browser) : -1;
     else if (!strcmp(name, "bzoom")) *v = browser ? Browser_Zoom(browser) : -1;
     else if (!strcmp(name, "bcols")) *v = browser ? Browser_Columns(browser) : -1;
@@ -374,7 +379,8 @@ static bool GetInt(const char *name, long *v)
     else if (!strcmp(name, "ezoom")) *v = ed ? Editor_Zoom(ed) : -1;
     else if (!strcmp(name, "scroll")) *v = (long)scrollY;
     else if (!strcmp(name, "panelscroll")) *v = (long)panelScroll;
-    else if (!strcmp(name, "toasts")) *v = toastCount;
+    else if (!strcmp(name, "toasts")) *v = Th_ToastCount();
+    else if (!strcmp(name, "menuhi")) *v = Th_MenuHi();
     else if (!strcmp(name, "hashlen")) *v = (long)strlen(curHash);
     else if (!strncmp(name, "m.", 2) || !strncmp(name, "has.", 4)) {
         const char *k = name[0] == 'm' ? name + 2 : name + 4;
@@ -554,6 +560,13 @@ static void DoAssert(char **t, int n)
         for (int q = 0; cv && q < PXTF_TEXT_COUNT; q++) if (!strcmp(pxtf_text_key((PxtfText)q), t[2])) have = cv->text[q] ? cv->text[q] : "-";
         ok = have && !strcmp(have, want);
         if (!ok) PlayLog("  actual text '%s'", have ? have : "(none)");
+    } else if (!strcmp(k, "navseg")) {
+        /* assert navseg <0|1|2> <text>: the full text of a segment of the navigation bar */
+        char want[300] = "";
+        for (int i = 3; i < n; i++) { if (i > 3) strcat(want, " "); strncat(want, t[i], 200); }
+        int sg = n > 2 ? atoi(t[2]) : -1;
+        ok = sg >= 0 && sg < 3 && !strcmp(navText[sg], want);
+        if (!ok) PlayLog("  actual segment '%s'", sg >= 0 && sg < 3 ? navText[sg] : "(none)");
     } else if (!strcmp(k, "kern")) {
         int32_t a, b;
         ok = n >= 5 && ParseCodepoint(t[2], &a) && ParseCodepoint(t[3], &b) && px_font_kern(&font, a, b) == atoi(t[4]);
@@ -598,6 +611,11 @@ static void DoAssert(char **t, int n)
         const char *have = !browser ? "" : (k[8] == 'm' ? Browser_LastPxfm(browser) : Browser_LastPxtf(browser));
         ok = !strncmp(have, t[2], strlen(t[2])) && have[0];
         if (!ok) PlayLog("  actual '%s'", have);
+    } else if (!strcmp(k, "tabhash")) {
+        /* assert tabhash <hash>: the hash in the Typeface tab's boxed field (a prefix is enough; a leading ! negates) */
+        bool not = t[2][0] == '!';   /* "!<hash>": it is another hash */
+        ok = tabHash[0] && (!strncmp(tabHash, t[2] + not, strlen(t[2] + not)) != not);
+        if (!ok) PlayLog("  actual '%s'", tabHash);
     } else if (!strcmp(k, "bselpxfm")) {
         /* assert bselpxfm <hash>: the selected browser entry names this pxfm */
         char h[33];
@@ -657,7 +675,7 @@ static void DoAssert(char **t, int n)
     } else if (!strcmp(k, "toast")) {
         char want[200] = "";
         for (int i = 2; i < n; i++) { if (i > 2) strcat(want, " "); strncat(want, t[i], 150); }
-        for (int i = 0; i < toastCount; i++) if (strstr(toasts[i].text, want)) ok = true;
+        ok = Th_ToastHas(want);
         if (!ok) PlayLog("  no toast containing '%s'", want);
     } else if (!strcmp(k, "statusdb") || !strcmp(k, "statusdoc") || !strcmp(k, "wtitle")) {
         /* assert statusdb <text>: the file part of the status bar (path, modified / saved) contains the text; statusdoc: the

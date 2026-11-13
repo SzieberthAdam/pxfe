@@ -5,11 +5,11 @@ assert readonly 0
 writefile tests/tmp/xout/pxfm/08/0820dc69a21b1cdb3a44d2cff7d884d8.pxfm SENTINEL\n
 writefile tests/tmp/xout/notes.txt keep me\n
 writefile tests/tmp/xout/other/deep.txt keep me too\n
-click @ascent.plus
+click @ascent+
 wait 6
 assert unsaved 1
 setdialog folder tests/tmp/xout
-click @File
+click @Menu
 wait 3
 click @file.export
 wait 8

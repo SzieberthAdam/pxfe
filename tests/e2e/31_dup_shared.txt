@@ -3,9 +3,11 @@
 wait 5
 assert readonly 0
 assert sql "select count(*) from pxfm" 4
-click @ascent.plus
+click @ascent+
 wait 6
-click @Library
+click @nav.0
+wait 8
+click @Typefaces
 wait 8
 assert sql "select count(*) from pxfm" 5
 assert sql "select count(*) from pxfm where ascent = 7" 1
@@ -16,18 +18,22 @@ click @Ctx_Duplicate_to_Edit
 wait 8
 assert blastpxfm 0820dc69a21b1cdb3a44d2cff7d884d8
 assert readonly 0
-click @ascent.plus
+click @ascent+
 wait 6
-click @Library
+click @nav.0
+wait 8
+click @Typefaces
 wait 8
 assert sql "select count(*) from pxfm" 5
 assert sql "select count(*) from pxfm where ascent = 7" 1
 # the second one edited further: the shared font stays, the second one's own result is added
-click @tab.font
+key right alt
 wait 6
-click @ascent.plus
+click @ascent+
 wait 6
-click @Library
+click @nav.0
+wait 8
+click @Typefaces
 wait 8
 assert sql "select count(*) from pxfm" 6
 assert sql "select count(*) from pxfm where ascent = 7" 1

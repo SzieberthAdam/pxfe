@@ -157,6 +157,8 @@ assert hash $OHASH
 # the layers stay while another font is opened (Uncoded Mono, an original)
 key left alt
 wait 6
+key left alt
+wait 6
 assert inbrowser 1
 click @Fonts
 wait 4

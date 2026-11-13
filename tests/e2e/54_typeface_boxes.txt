@@ -98,7 +98,9 @@ wait 8
 assert inbrowser 0
 assert readonly 1
 assert ohash e6109c134eda8d747bac9a3c2a62d204
-click @Library
+click @nav.0
+wait 8
+click @Typefaces
 wait 6
 assert inbrowser 1
 assert bsel 1
@@ -112,13 +114,19 @@ wait 8
 assert inbrowser 0
 assert readonly 0
 assert hascont 1
-click @Library
+click @nav.0
+wait 8
+click @Typefaces
 wait 6
 assert inbrowser 1
 
-# ---- Enter on a header opens its first variant
+# ---- Enter on a header opens the Typeface view; Enter on its selected font opens the font (the first variant)
 click @hdr:0
 wait 2
+key enter
+wait 8
+assert nav 1
+assert bselpxfm 0820dc69a21b1cdb3a44d2cff7d884d8
 key enter
 wait 8
 assert inbrowser 0
@@ -126,5 +134,9 @@ assert readonly 1
 assert ohash 0820dc69a21b1cdb3a44d2cff7d884d8
 key left alt
 wait 6
+assert nav 1
+assert bselpxfm 0820dc69a21b1cdb3a44d2cff7d884d8
+click @nav.0
+wait 8
 assert inbrowser 1
 assert bselhdr 1

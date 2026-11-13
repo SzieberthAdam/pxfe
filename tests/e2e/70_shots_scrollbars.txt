@@ -1,0 +1,43 @@
+# 70. Scroll bar: screenshots of every view that has one, on a copy of the real library (tests/tmp/p2/c5/sb_*.png); not part of run_all.bat.
+# Run (with a copy of tests\tmp\pxfe_e2e.exe): <exe> tests\tmp\p2\real.pxfdb --size 1400x900 (or 1110x600) --ini tests\tmp\p2\c5.ini --play tests\e2e\70_shots_scrollbars.txt
+waitfor loading = 0 600000
+sleep 3500
+wait 30
+click @Fonts
+wait 40
+click @card:0
+wait 20
+click @Open
+wait 80
+click @Sample_Edit
+type Line one
+key enter
+type Line two
+key enter
+type Line three
+key enter
+type Line four
+key enter
+type Line five
+key enter
+type Line six
+key enter
+type Line seven
+wait 10
+shot tests/tmp/p2/c5/sb_font_sample.png
+click @ptab_Glyph
+wait 10
+reveal U+0041
+click @cell:U+0041
+wait 10
+shot tests/tmp/p2/c5/sb_font_glyph_tab.png
+reveal U+0041
+dblclick @cell:U+0041
+wait 60
+click @gtab_Layers
+wait 10
+click @+_Add_Layer
+wait 10
+click @lay_src_Library_font
+wait 40
+shot tests/tmp/p2/c5/sb_add_layer_list.png

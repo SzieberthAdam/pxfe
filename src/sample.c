@@ -329,7 +329,7 @@ float Sample_Draw(SampleCache *c, const PxFont *f, const char *text, float x, fl
     memset(&def, 0, sizeof def);
     def.lineGap = -1;
     if (!st) st = &def;
-    Color ink = st->ink.a ? st->ink : (Color){ 0x14, 0x14, 0x18, 0xFF };
+    Color ink = st->ink.a ? st->ink : TH_INK;
     if (zoom < 1) zoom = 1;
     SampleLayout L;
     Sample_Layout(f, text, st->boxAbove, st->boxBelow, st->lineGap, maxLines, &L);
@@ -381,8 +381,8 @@ float Sample_Draw(SampleCache *c, const PxFont *f, const char *text, float x, fl
 
 /* ------------------------------------------------------------------------------------------------ the editor widget */
 
-#define LH 18          /* line height of the box */
-#define EPAD 6
+#define LH 22          /* line height of the box */
+#define EPAD 4
 
 static SampleEdit *g_focus;
 
@@ -501,13 +501,12 @@ bool SampleEdit_Do(SampleEdit *e, Rectangle r, const char *placeholder, const ch
 
     float textX = r.x + 8;
     int nlines = Sample_LineCount(g_text);
-    float maxScroll = (float)(nlines * LH + 2 * EPAD) - r.height;
-    if (maxScroll < 0) maxScroll = 0;
+    bool onBar = nlines * LH + 2 * EPAD > r.height && CheckCollisionPointRec(m, (Rectangle){ r.x + r.width - TH_SB_W - 4, r.y, TH_SB_W + 4, r.height });
     bool shift = IsKeyDown(KEY_LEFT_SHIFT) || IsKeyDown(KEY_RIGHT_SHIFT);
     bool ctrl = IsKeyDown(KEY_LEFT_CONTROL) || IsKeyDown(KEY_RIGHT_CONTROL);
 
     /* focus and mouse */
-    if (!blocked && IsMouseButtonPressed(MOUSE_BUTTON_LEFT)) {
+    if (!blocked && !onBar && IsMouseButtonPressed(MOUSE_BUTTON_LEFT)) {
         if (over) {
             g_focus = e; focused = true;
             int line = (int)floorf((m.y - (r.y + EPAD) + e->scroll) / LH);
@@ -596,30 +595,23 @@ bool SampleEdit_Do(SampleEdit *e, Rectangle r, const char *placeholder, const ch
         else if (enter) { e_sel_range(e, &a, &b); changed |= e_replace(e, a, b, "\n"); }
         if (IsKeyPressed(KEY_ESCAPE)) { SampleEdit_SetFocus(e, false); focused = false; }
     }
-    if (over && !blocked) {
-        float w = GetMouseWheelMove();
-        if (w != 0 && maxScroll > 0) e->scroll -= w * LH * 2;
-    }
     len = (int)strlen(g_text);
     nlines = Sample_LineCount(g_text);
-    maxScroll = (float)(nlines * LH + 2 * EPAD) - r.height;
-    if (maxScroll < 0) maxScroll = 0;
 
     /* keep the caret in view */
     int cline = e_line_of(e->cur);
-    if (focused) {
+    if (focused && e->cur != e->seen) {   /* only when the caret moved: the bar and the wheel may scroll it out of view */
         float cy = (float)(cline * LH);
         if (cy - e->scroll < 0) e->scroll = cy;
         if (cy + LH - e->scroll > r.height - 2 * EPAD) e->scroll = cy + LH - (r.height - 2 * EPAD);
     }
-    if (e->scroll > maxScroll) e->scroll = maxScroll;
-    if (e->scroll < 0) e->scroll = 0;
-    e->scroll = floorf(e->scroll);
+    e->seen = e->cur;
 
     /* draw */
-    Color border = focused ? TH_ACCENT : (over ? (Color){ 0xA9, 0xC2, 0xF5, 0xFF } : TH_LINE);
+    Color border = focused ? TH_ACCENT : (over ? TH_HOVER_BORDER : TH_LINE);
     rr_fill((int)r.x, (int)r.y, (int)r.width, (int)r.height, TH_RADIUS, border);
     rr_fill((int)r.x + 1, (int)r.y + 1, (int)r.width - 2, (int)r.height - 2, TH_RADIUS - 1, TH_PANEL);
+    Th_ScrollBar(r, &e->scroll, nlines * LH + 2 * EPAD, LH * 2, !blocked && (!mouseClip || CheckCollisionPointRec(m, *mouseClip)));
     BeginScissorMode((int)r.x + 2, (int)r.y + 2, (int)r.width - 4, (int)r.height - 4);
     float th = Th_Measure("Ag").y;
     if (len == 0) Th_Text(placeholder, textX, r.y + EPAD + (LH - th) / 2, TH_TEXT_DIM);
@@ -633,7 +625,7 @@ bool SampleEdit_Do(SampleEdit *e, Rectangle r, const char *placeholder, const ch
             if (e->hasSel && sb > ls && sa <= le) {
                 int a2 = sa > ls ? sa : ls, b2 = sb < le ? sb : le;
                 float x0 = e_mx(ls, a2), x1 = e_mx(ls, b2) + (sb > le ? 5 : 0);
-                DrawRectangle((int)(textX + x0), (int)ly, (int)(x1 - x0) + 1, LH, (Color){ 0x2F, 0x6F, 0xED, 70 });
+                DrawRectangle((int)(textX + x0), (int)ly, (int)(x1 - x0) + 1, LH, TH_SELECTION);
             }
             if (le > ls) {
                 char tmp[SAMPLE_MAX + 2];
@@ -647,11 +639,6 @@ bool SampleEdit_Do(SampleEdit *e, Rectangle r, const char *placeholder, const ch
         ls = le + 1;
     }
     EndScissorMode();
-    if (maxScroll > 0) {
-        float tr = r.height - 8, thh = fmaxf(16, tr * r.height / (r.height + maxScroll));
-        float ty = r.y + 4 + (tr - thh) * (e->scroll / maxScroll);
-        DrawRectangle((int)(r.x + r.width - 6), (int)ty, 3, (int)thh, (Color){ 0x7A, 0x7A, 0x85, 110 });
-    }
     return changed;
 }
 
@@ -659,7 +646,7 @@ bool SampleEdit_Do(SampleEdit *e, Rectangle r, const char *placeholder, const ch
 
 #define STRIP_HDR 32
 #define STRIP_MIN 96
-#define STRIP_EDIT_W 250
+#define STRIP_EDIT_W 330
 
 static int s_zoom = 2;
 static int s_h = 140;
@@ -739,35 +726,17 @@ void SampleStrip_Draw(Rectangle r, const PxFont *f, bool blocked)
         if (over || s_resizing) Th_HLine(r.x, r.x + r.width, r.y, TH_ACCENT);
     }
 
-    /* header: chevron, title, zoom */
-    Rectangle chev = { r.x + 8, r.y + 6, 20, 20 };
-    Th_Reg("Sample_Collapse", chev);
-    bool hc = inp && CheckCollisionPointRec(m, chev);
-    if (hc) DrawRectangle((int)chev.x, (int)chev.y, 20, 20, TH_HOVER);
+    /* header: the fold caption, zoom */
     {
-        float cx = chev.x + 10, cy = chev.y + 10;
-        Color cc = hc ? TH_TEXT : TH_TEXT_DIM;
-        if (s_collapsed) {
-            DrawLineEx((Vector2){ cx - 2, cy - 4 }, (Vector2){ cx + 2, cy }, 1.4f, cc);
-            DrawLineEx((Vector2){ cx + 2, cy }, (Vector2){ cx - 2, cy + 4 }, 1.4f, cc);
-        } else {
-            DrawLineEx((Vector2){ cx - 4, cy - 2 }, (Vector2){ cx, cy + 2 }, 1.4f, cc);
-            DrawLineEx((Vector2){ cx, cy + 2 }, (Vector2){ cx + 4, cy - 2 }, 1.4f, cc);
-        }
-    }
-    if (hc && IsMouseButtonPressed(MOUSE_BUTTON_LEFT)) { s_collapsed = !s_collapsed; strip_save(); }
-    Th_Text("Sample", r.x + 34, r.y + (STRIP_HDR - Th_Measure("Ag").y) / 2, TH_TEXT);
-    {
-        static const char *zl[8] = { "1", "2", "3", "4", "5", "6", "7", "8" };
-        float sw = 8 * 26;
-        Rectangle zr = { r.x + r.width - 12 - sw, r.y + 5, sw, 22 };
-        Th_Text("Zoom", zr.x - 8 - Th_Measure("Zoom").x, r.y + (STRIP_HDR - Th_Measure("Ag").y) / 2, TH_TEXT_DIM);
-        int c = Th_Segmented(zr, zl, 8, s_zoom - 1, 0, "sz");
-        if (c >= 0) SampleStrip_SetZoom(c + 1);
-        if (s_edit.hasSel || g_focus == &s_edit) {
-            const char *hint = "Ctrl+Enter applies";
-            Th_TextSmall(hint, zr.x - 70 - Th_MeasureSmall(hint).x, r.y + (STRIP_HDR - Th_MeasureSmall("Ag").y) / 2 + 1, TH_TEXT_DIM);
-        }
+        Rectangle zr = { r.x + r.width - 12 - TH_STEP_W, r.y + (STRIP_HDR - TH_ROW_H) / 2, TH_STEP_W, TH_ROW_H };
+        float zx = zr.x - 8 - Th_Measure("Zoom").x, hy = zr.y + (TH_ROW_H - 24) / 2;
+        const char *hint = s_edit.hasSel || g_focus == &s_edit ? "Ctrl+Enter applies" : NULL;
+        if (Th_Section("SAMPLE", r.x + 12, &hy, zx - TH_GAP - r.x - 12, s_collapsed ? TH_SEC_CLOSED : TH_SEC_OPEN, hint)) { s_collapsed = !s_collapsed; strip_save(); }
+        Th_Text("Zoom", zx, r.y + (STRIP_HDR - Th_Measure("Ag").y) / 2, TH_TEXT_DIM);
+        char zt[8];
+        snprintf(zt, sizeof zt, "%dx", s_zoom);
+        int zs = Th_Stepper(zr, zt, "sz", (s_zoom <= 1 ? TH_STEP_NO_MINUS : 0) | (s_zoom >= 8 ? TH_STEP_NO_PLUS : 0));
+        if (zs) SampleStrip_SetZoom(s_zoom + zs);
     }
 
     if (!s_collapsed) {
@@ -781,15 +750,6 @@ void SampleStrip_Draw(Rectangle r, const PxFont *f, bool blocked)
         DrawRectangle((int)pr.x, (int)pr.y, (int)pr.width, (int)pr.height, TH_PANEL_ALT);
         Th_RectLines(pr, TH_LINE);
         Rectangle inner = { pr.x + 1, pr.y + 1, pr.width - 2, pr.height - 2 };
-        if (inp && CheckCollisionPointRec(m, pr)) {
-            float w = GetMouseWheelMove();
-            if (w != 0) s_scroll -= w * 24;
-        }
-        float maxS = s_drawnH + 16 - pr.height;
-        if (maxS < 0) maxS = 0;
-        if (s_scroll > maxS) s_scroll = maxS;
-        if (s_scroll < 0) s_scroll = 0;
-        s_scroll = floorf(s_scroll);
         if (f && Sample_Get()[0]) {
             SampleStyle st;
             memset(&st, 0, sizeof st);
@@ -797,11 +757,12 @@ void SampleStrip_Draw(Rectangle r, const PxFont *f, bool blocked)
             st.lineGap = -1;
             st.useClip = true;
             st.clip = inner;
-            s_drawnH = Sample_Draw(&s_cache, f, Sample_Get(), pr.x + 10, pr.y + 8 - s_scroll, s_zoom, pr.width - 20, 0, &st, NULL);
+            s_drawnH = Sample_Draw(&s_cache, f, Sample_Get(), pr.x + 10, pr.y + 8 - s_scroll, s_zoom, pr.width - 10 - TH_SB_W, 0, &st, NULL);
         } else if (f) {
             Th_Text("The sample is empty", pr.x + 10, pr.y + 8, TH_TEXT_DIM);
             s_drawnH = 0;
         }
+        Th_ScrollBar(pr, &s_scroll, s_drawnH + 16, 24, inp);
     }
     Th_SetInputBlocked(prevBlocked);
 }

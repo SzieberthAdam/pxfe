@@ -13,7 +13,7 @@ dblclick @card:0
 wait 6
 click @Duplicate_to_Edit
 wait 8
-click @ascent.plus
+click @ascent+
 wait 6
 assert unsaved 1
 # Save As to a new name (Ctrl+Shift+S, the dialog is overridden)
@@ -32,7 +32,7 @@ assert sqlfile tests/tmp/e2e_copy.pxfdb "SELECT COUNT(*) FROM pxfm WHERE ascent 
 assert sqlfile tests/tmp/e2e.pxfdb "SELECT COUNT(*) FROM pxfm" 4
 # another change, plain Save: goes to the copy
 click @ptab_Font
-click @ascent.plus
+click @ascent+
 wait 6
 assert unsaved 1
 key s ctrl

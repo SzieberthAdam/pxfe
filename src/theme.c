@@ -1,21 +1,19 @@
-/* theme.c - shared look of pxfe: fonts, raygui style, crisp drawing helpers (see DESIGN.md). */
+/* theme.c - shared look of pxfe: fonts, crisp drawing helpers (see DESIGN.md). */
 #include "theme.h"
-#include "raygui.h"
 
 #include <ctype.h>
+#include <string.h>
 #include <math.h>
 #include <stdio.h>
+#include <stdlib.h>
 #include <stddef.h>
 
 #define TH_FONT_UI_PATH    "C:/Windows/Fonts/segoeui.ttf"
 #define TH_FONT_MONO_PATH  "C:/Windows/Fonts/consola.ttf"
-#define TH_FONT_UI_SIZE    13
-#define TH_FONT_SMALL_SIZE 11
-#define TH_FONT_MONO_SIZE  12
+#define TH_FONT_SEMI_PATH  "C:/Windows/Fonts/seguisb.ttf"
+#define TH_SEGOE_RATIO     1.33f
 
 #define TH_BUTTON_SEGMENTS 8
-#define TH_PRESSED_FILL    (Color){0xDC, 0xE6, 0xFC, 0xFF}  /* accent tint, opaque (pressed button) */
-#define TH_HOVER_BORDER    (Color){0xA9, 0xC2, 0xF5, 0xFF}  /* light accent border on hover */
 
 Theme theme = { 0 };
 
@@ -48,10 +46,13 @@ static void th_build_codepoints(void)
 }
 
 /* Load a font from a file with the theme code points and bilinear filtering;
- * falls back to raylib's default font when the file is missing or fails. */
-static Font th_load_font(const char *path, int size)
+ * falls back to raylib's default font when the file is missing or fails.
+ * `em` is the type size in px (the em of the face); raylib's size is the height from ascent to descent, so it is em * `lineRatio`
+ * (Segoe UI: (2210 + 514) / 2048 = 1.33, Consolas: 1.0). */
+static Font th_load_font(const char *path, int em, float lineRatio)
 {
     Font font = { 0 };
+    int size = (int)((float)em * lineRatio + 0.5f);
 
     if (FileExists(path)) font = LoadFontEx(path, size, th_codepoints, th_codepoint_count);
 
@@ -72,60 +73,26 @@ static Vector2 th_snap_pos(float x, float y)
     return (Vector2){ roundf(x), roundf(y) };
 }
 
-static void th_apply_raygui_style(void)
-{
-    GuiSetFont(theme.ui);
-
-    GuiSetStyle(DEFAULT, TEXT_SIZE, TH_FONT_UI_SIZE);
-    GuiSetStyle(DEFAULT, TEXT_SPACING, 0);
-    GuiSetStyle(DEFAULT, BORDER_WIDTH, 1);
-
-    /* Normal */
-    GuiSetStyle(DEFAULT, BORDER_COLOR_NORMAL, ColorToInt(TH_LINE));
-    GuiSetStyle(DEFAULT, BASE_COLOR_NORMAL, ColorToInt(TH_PANEL));
-    GuiSetStyle(DEFAULT, TEXT_COLOR_NORMAL, ColorToInt(TH_TEXT));
-
-    /* Focused */
-    GuiSetStyle(DEFAULT, BORDER_COLOR_FOCUSED, ColorToInt(TH_ACCENT));
-    GuiSetStyle(DEFAULT, BASE_COLOR_FOCUSED, ColorToInt((Color){0xF0, 0xF4, 0xFE, 0xFF}));
-    GuiSetStyle(DEFAULT, TEXT_COLOR_FOCUSED, ColorToInt(TH_TEXT));
-
-    /* Pressed */
-    GuiSetStyle(DEFAULT, BORDER_COLOR_PRESSED, ColorToInt(TH_ACCENT));
-    GuiSetStyle(DEFAULT, BASE_COLOR_PRESSED, ColorToInt(TH_PRESSED_FILL));
-    GuiSetStyle(DEFAULT, TEXT_COLOR_PRESSED, ColorToInt(TH_ACCENT));
-
-    /* Disabled */
-    GuiSetStyle(DEFAULT, BORDER_COLOR_DISABLED, ColorToInt(TH_LINE_SOFT));
-    GuiSetStyle(DEFAULT, BASE_COLOR_DISABLED, ColorToInt(TH_PANEL_ALT));
-    GuiSetStyle(DEFAULT, TEXT_COLOR_DISABLED, ColorToInt(TH_TEXT_DIM));
-
-    GuiSetStyle(DEFAULT, BACKGROUND_COLOR, ColorToInt(TH_BG));
-    GuiSetStyle(DEFAULT, LINE_COLOR, ColorToInt(TH_LINE));
-
-    /* Per-control padding (set after the DEFAULT broadcast above). */
-    GuiSetStyle(TEXTBOX, TEXT_PADDING, 4);
-    GuiSetStyle(VALUEBOX, TEXT_PADDING, 4);
-}
-
 void Theme_Load(void)
 {
     if (theme.loaded) Theme_Unload();
 
     th_build_codepoints();
 
-    theme.ui = th_load_font(TH_FONT_UI_PATH, TH_FONT_UI_SIZE);
-    theme.small = th_load_font(TH_FONT_UI_PATH, TH_FONT_SMALL_SIZE);
-    theme.mono = th_load_font(TH_FONT_MONO_PATH, TH_FONT_MONO_SIZE);
+    theme.ui = th_load_font(TH_FONT_UI_PATH, TH_SIZE_BODY, TH_SEGOE_RATIO);
+    theme.head = th_load_font(TH_FONT_SEMI_PATH, TH_SIZE_HEAD, TH_SEGOE_RATIO);
+    theme.cap = th_load_font(TH_FONT_SEMI_PATH, TH_SIZE_CAP, TH_SEGOE_RATIO);
+    theme.small = th_load_font(TH_FONT_UI_PATH, TH_SIZE_SMALL, TH_SEGOE_RATIO);
+    theme.mono = th_load_font(TH_FONT_MONO_PATH, TH_SIZE_MONO, 1.0f);
+    theme.monos = th_load_font(TH_FONT_MONO_PATH, TH_SIZE_MONO_SMALL, 1.0f);
     theme.loaded = true;
 
-    th_apply_raygui_style();
 }
 
 void Theme_Unload(void)
 {
     Font def = GetFontDefault();
-    Font *fonts[] = { &theme.ui, &theme.small, &theme.mono };
+    Font *fonts[] = { &theme.ui, &theme.head, &theme.cap, &theme.small, &theme.mono, &theme.monos };
 
     /* Only fonts loaded from files are unloaded; the default font is shared. */
     for (size_t i = 0; i < sizeof(fonts) / sizeof(fonts[0]); i++) {
@@ -138,35 +105,17 @@ void Theme_Unload(void)
 
 /* Text helpers */
 
-void Th_Text(const char *text, float x, float y, Color c)
-{
-    DrawTextEx(theme.ui, text, th_snap_pos(x, y), (float)theme.ui.baseSize, 0, c);
-}
+static void th_draw(const Font *f, const char *text, float x, float y, Color c) { DrawTextEx(*f, text, th_snap_pos(x, y), (float)f->baseSize, 0, c); }
+static Vector2 th_measure(const Font *f, const char *text) { return MeasureTextEx(*f, text, (float)f->baseSize, 0); }
 
-void Th_TextSmall(const char *text, float x, float y, Color c)
-{
-    DrawTextEx(theme.small, text, th_snap_pos(x, y), (float)theme.small.baseSize, 0, c);
-}
-
-void Th_TextMono(const char *text, float x, float y, Color c)
-{
-    DrawTextEx(theme.mono, text, th_snap_pos(x, y), (float)theme.mono.baseSize, 0, c);
-}
-
-Vector2 Th_Measure(const char *text)
-{
-    return MeasureTextEx(theme.ui, text, (float)theme.ui.baseSize, 0);
-}
-
-Vector2 Th_MeasureSmall(const char *text)
-{
-    return MeasureTextEx(theme.small, text, (float)theme.small.baseSize, 0);
-}
-
-Vector2 Th_MeasureMono(const char *text)
-{
-    return MeasureTextEx(theme.mono, text, (float)theme.mono.baseSize, 0);
-}
+void Th_Text(const char *text, float x, float y, Color c) { th_draw(&theme.ui, text, x, y, c); }
+void Th_TextHead(const char *text, float x, float y, Color c) { th_draw(&theme.head, text, x, y, c); }
+void Th_TextSmall(const char *text, float x, float y, Color c) { th_draw(&theme.small, text, x, y, c); }
+void Th_TextMono(const char *text, float x, float y, Color c) { th_draw(&theme.mono, text, x, y, c); }
+Vector2 Th_Measure(const char *text) { return th_measure(&theme.ui, text); }
+Vector2 Th_MeasureHead(const char *text) { return th_measure(&theme.head, text); }
+Vector2 Th_MeasureSmall(const char *text) { return th_measure(&theme.small, text); }
+Vector2 Th_MeasureMono(const char *text) { return th_measure(&theme.mono, text); }
 
 /* Crisp lines */
 
@@ -237,16 +186,6 @@ void Th_RectLines(Rectangle r, Color c)
     DrawRectangle(x1 - 1, y0, 1, y1 - y0, c);         /* right */
 }
 
-void Th_Panel(Rectangle r)
-{
-    Rectangle s = th_snap(r);
-
-    if (s.width < 1 || s.height < 1) return;
-
-    DrawRectangle((int)s.x, (int)s.y, (int)s.width, (int)s.height, TH_PANEL);
-    Th_RectLines(s, TH_LINE);
-}
-
 /* Buttons */
 
 static float th_roundness(Rectangle r)
@@ -273,14 +212,22 @@ static void th_draw_label(Rectangle r, const char *label, Color c)
 }
 
 static bool th_blocked = false;
+static const char *th_tip;
+static Rectangle th_tip_r;
 void Th_SetInputBlocked(bool b) { th_blocked = b; }
 bool Th_InputBlocked(void) { return th_blocked; }
 
 #define TH_REG_MAX 384
-static struct { char name[48]; Rectangle r; } th_reg[TH_REG_MAX];
+static struct { char name[64]; Rectangle r; } th_reg[TH_REG_MAX];
 static int th_reg_n = 0;
 
-void Th_RegClear(void) { th_reg_n = 0; }
+static struct { char name[64], buf[4096], old[4096]; int cur, start; bool sel, seen; } th_ed;   /* the text field that has the keyboard */
+
+static bool th_wheel_used;
+bool Th_WheelUsed(void) { return th_wheel_used; }
+
+static bool th_menu_prev, th_menu_cur;   /* a menu was open at the end of the last frame / is open this frame (Th_MenuKeys) */
+void Th_RegClear(void) { th_menu_prev = th_menu_cur; th_menu_cur = false; th_reg_n = 0; th_tip = NULL; th_wheel_used = false; if (!th_ed.seen) th_ed.name[0] = 0; th_ed.seen = false; }
 
 void Th_Reg(const char *name, Rectangle r)
 {
@@ -292,8 +239,10 @@ void Th_Reg(const char *name, Rectangle r)
 
 void Th_RegLabel(const char *label, Rectangle r)
 {
-    char n[48];
+    char n[64];
     snprintf(n, sizeof n, "%s", label);
+    char *cut = strstr(n, "  ");   /* a hint after two spaces ("Undo  (Ctrl+Z)") is not part of the name */
+    if (cut) *cut = 0;
     for (char *p = n; *p; p++) if (*p == ' ') *p = '_';
     Th_Reg(n, r);
 }
@@ -308,97 +257,221 @@ bool Th_RegFind(const char *name, Rectangle *r)
     return false;
 }
 
-bool Th_Button(Rectangle r, const char *label)
+static Color th_mix(Color a, Color b, float t)
 {
-    Rectangle s = th_snap(r);
-    Th_RegLabel(label, s);
-    bool hover = !th_blocked && CheckCollisionPointRec(GetMousePosition(), s);
-    bool down = hover && IsMouseButtonDown(MOUSE_BUTTON_LEFT);
-    bool clicked = hover && IsMouseButtonReleased(MOUSE_BUTTON_LEFT);
-
-    if (down) {
-        th_draw_rounded_button(s, TH_PRESSED_FILL, TH_ACCENT);
-        th_draw_label(s, label, TH_ACCENT);
-    } else if (hover) {
-        th_draw_rounded_button(s, TH_PANEL, TH_HOVER_BORDER);
-        th_draw_label(s, label, TH_TEXT);
-    } else {
-        th_draw_rounded_button(s, TH_PANEL_ALT, TH_LINE);
-        th_draw_label(s, label, TH_TEXT);
-    }
-
-    return clicked;
+    return (Color){ (unsigned char)(a.r + (b.r - a.r) * t), (unsigned char)(a.g + (b.g - a.g) * t), (unsigned char)(a.b + (b.b - a.b) * t), (unsigned char)(a.a + (b.a - a.a) * t) };
 }
 
-bool Th_ButtonDanger(Rectangle r, const char *label)
+static bool th_hover(Rectangle r) { return !th_blocked && (Th_HoverFn ? Th_HoverFn(r) : CheckCollisionPointRec(GetMousePosition(), r)); }
+
+/* Hint of the hovered button (set by Th_Button, read by the view's hint line or tooltip); cleared by Th_RegClear. */
+const char *Th_Tip(Rectangle *r) { if (r) *r = th_tip_r; return th_tip; }
+
+static void th_tri(Vector2 a, Vector2 b, Vector2 c, Color col) { DrawTriangle(a, c, b, col); DrawTriangle(a, b, c, col); }
+
+/* The icons of the icon buttons, centred in r. */
+static void th_icon(int ic, Rectangle r, Color c)
 {
-    Rectangle s = th_snap(r);
-    Th_RegLabel(label, s);
-    bool hover = !th_blocked && CheckCollisionPointRec(GetMousePosition(), s);
-    bool down = hover && IsMouseButtonDown(MOUSE_BUTTON_LEFT);
-    bool clicked = hover && IsMouseButtonReleased(MOUSE_BUTTON_LEFT);
-    Color red = TH_DANGER;
-    if (down) {
-        th_draw_rounded_button(s, (Color){0xFB, 0xE4, 0xE5, 0xFF}, red);
-    } else if (hover) {
-        th_draw_rounded_button(s, (Color){0xFD, 0xF1, 0xF1, 0xFF}, red);
-    } else {
-        th_draw_rounded_button(s, TH_PANEL_ALT, (Color){0xE9, 0xB6, 0xB8, 0xFF});
+    float x = (float)(int)(r.x + r.width / 2), y = (float)(int)(r.y + r.height / 2);
+    switch (ic) {
+    case TH_IC_PENCIL: DrawLineEx((Vector2){x - 5, y + 5}, (Vector2){x + 4, y - 4}, 2.5f, c); DrawRectangle((int)x + 4, (int)y - 7, 3, 3, c); DrawRectangle((int)x - 7, (int)y + 5, 3, 2, c); break;
+    case TH_IC_ERASER: DrawRectangleLinesEx((Rectangle){x - 6, y - 4, 12, 9}, 1, c); DrawRectangle((int)x - 6, (int)y + 1, 12, 4, c); break;
+    case TH_IC_LINE: DrawLineEx((Vector2){x - 6, y + 6}, (Vector2){x + 6, y - 6}, 1.5f, c); DrawRectangle((int)x - 8, (int)y + 4, 3, 3, c); DrawRectangle((int)x + 5, (int)y - 7, 3, 3, c); break;
+    case TH_IC_RECT: DrawRectangleLinesEx((Rectangle){x - 6, y - 5, 12, 10}, 1.5f, c); break;
+    case TH_IC_FILL: DrawRectangleLinesEx((Rectangle){x - 6, y - 3, 11, 9}, 1.5f, c); DrawRectangle((int)x - 5, (int)y + 1, 9, 4, c); DrawLineEx((Vector2){x - 2, y - 3}, (Vector2){x + 2, y - 7}, 1.5f, c); DrawCircle((int)x + 7, (int)y + 4, 1.8f, c); break;
+    case TH_IC_PREV: th_tri((Vector2){x + 3, y - 5}, (Vector2){x - 3, y}, (Vector2){x + 3, y + 5}, c); break;
+    case TH_IC_NEXT: th_tri((Vector2){x - 3, y - 5}, (Vector2){x + 3, y}, (Vector2){x - 3, y + 5}, c); break;
+    case TH_IC_LEFT: th_tri((Vector2){x + 3, y - 4}, (Vector2){x - 3, y}, (Vector2){x + 3, y + 4}, c); break;
+    case TH_IC_RIGHT: th_tri((Vector2){x - 3, y - 4}, (Vector2){x + 3, y}, (Vector2){x - 3, y + 4}, c); break;
+    case TH_IC_UP: th_tri((Vector2){x - 4, y + 3}, (Vector2){x, y - 3}, (Vector2){x + 4, y + 3}, c); break;
+    case TH_IC_DOWN: th_tri((Vector2){x - 4, y - 3}, (Vector2){x, y + 3}, (Vector2){x + 4, y - 3}, c); break;
+    case TH_IC_CLOSE: DrawLineEx((Vector2){x - 4, y - 4}, (Vector2){x + 4, y + 4}, 1.6f, c); DrawLineEx((Vector2){x + 4, y - 4}, (Vector2){x - 4, y + 4}, 1.6f, c); break;
+    case TH_IC_EYE: case TH_IC_EYE_OFF:
+        DrawEllipseLines((int)x, (int)y, 7, 4, c); DrawCircle((int)x, (int)y, 2.2f, c);
+        if (ic == TH_IC_EYE_OFF) DrawLineEx((Vector2){x - 7, y + 6}, (Vector2){x + 7, y - 6}, 1.5f, c);
+        break;
+    case TH_IC_CHEV_DOWN: DrawLineEx((Vector2){x - 4, y - 2}, (Vector2){x, y + 2}, 1.4f, c); DrawLineEx((Vector2){x, y + 2}, (Vector2){x + 4, y - 2}, 1.4f, c); break;
+    case TH_IC_SEARCH: DrawCircleLines((int)x - 1, (int)y - 1, 5, c); DrawLineEx((Vector2){x + 3, y + 3}, (Vector2){x + 7, y + 7}, 1.5f, c); break;
+    case TH_IC_CHEV_RIGHT: DrawLineEx((Vector2){x - 2, y - 4}, (Vector2){x + 2, y}, 1.4f, c); DrawLineEx((Vector2){x + 2, y}, (Vector2){x - 2, y + 4}, 1.4f, c); break;
     }
-    th_draw_label(s, label, red);
-    return clicked;
 }
 
-bool Th_Toggle(Rectangle r, const char *label, bool *active)
+float Th_ButtonW(const char *label) { return floorf(Th_Measure(label).x) + 2 * TH_PAD; }
+
+bool Th_Button(Rectangle r, const char *label, int flags, const char *hint)
 {
     Rectangle s = th_snap(r);
-    bool isActive = (active != NULL) && *active;
+    int icon = flags >> 8;
+    bool off = flags & TH_BTN_DISABLED, danger = flags & TH_BTN_DANGER, act = flags & TH_BTN_ACTIVE;
+    bool over = th_hover(s), hover = over && !off, down = hover && IsMouseButtonDown(MOUSE_BUTTON_LEFT);
+    Color hue = danger ? TH_DANGER : TH_ACCENT, tint = th_mix(TH_PANEL, hue, danger ? 0.08f : 0.15f);
+    Color fill = icon ? BLANK : TH_PANEL_ALT, line = icon ? BLANK : TH_LINE, ink = off ? TH_TEXT_OFF : danger ? TH_DANGER : TH_TEXT;
     Th_RegLabel(label, s);
-    bool hover = !th_blocked && CheckCollisionPointRec(GetMousePosition(), s);
-    bool clicked = hover && IsMouseButtonReleased(MOUSE_BUTTON_LEFT);
-
-    if (isActive) {
-        DrawRectangleRounded(s, th_roundness(s), TH_BUTTON_SEGMENTS, TH_PANEL);
-        DrawRectangleRounded(s, th_roundness(s), TH_BUTTON_SEGMENTS, TH_ACCENT_TINT);
-        DrawRectangleRoundedLinesEx(s, th_roundness(s), TH_BUTTON_SEGMENTS, 1.0f, TH_ACCENT);
-        th_draw_label(s, label, TH_ACCENT);
-    } else if (hover) {
-        th_draw_rounded_button(s, TH_PANEL, TH_HOVER_BORDER);
-        th_draw_label(s, label, TH_TEXT);
-    } else {
-        th_draw_rounded_button(s, TH_PANEL_ALT, TH_LINE);
-        th_draw_label(s, label, TH_TEXT);
-    }
-
-    if (clicked && (active != NULL)) *active = !*active;
-
-    return clicked;
+    if (flags & TH_BTN_PRIMARY) { fill = line = th_mix(hue, off ? TH_PANEL : BLACK, off ? 0.6f : down ? 0.22f : hover ? 0.1f : 0); ink = TH_TEXT_ON; }
+    else if (act) { th_draw_rounded_button(s, TH_PANEL, BLANK); fill = tint; line = hue; ink = hue; }
+    else if (down) { fill = danger ? tint : TH_PRESSED_FILL; line = hue; ink = hue; }
+    else if (hover) { fill = icon ? TH_HOVER : TH_PANEL; line = icon ? BLANK : danger ? hue : TH_HOVER_BORDER; }
+    else if (danger && !off && !icon) line = th_mix(TH_PANEL, hue, 0.4f);
+    th_draw_rounded_button(s, fill, line);
+    if (icon) th_icon(icon - 1, s, ink); else th_draw_label(s, label, ink);
+    if (over && hint) { th_tip = hint ? hint : label; th_tip_r = s; }
+    return hover && IsMouseButtonReleased(MOUSE_BUTTON_LEFT);
 }
 
-int Th_Segmented(Rectangle r, const char *const *labels, int n, int sel, unsigned disabledMask, const char *prefix)
+bool Th_Toggle(Rectangle r, const char *label, bool *on, int flags, const char *hint)
+{
+    bool c = Th_Button(r, label, flags | (*on ? TH_BTN_ACTIVE : 0), hint);
+    if (c) *on = !*on;
+    return c;
+}
+
+int Th_Segmented(Rectangle r, const ThSeg *g)
 {
     Rectangle s = th_snap(r);
-    th_draw_rounded_button(s, (Color){ 0xE8, 0xE8, 0xEC, 0xFF }, (Color){ 0xE8, 0xE8, 0xEC, 0xFF });
+    th_draw_rounded_button(s, TH_TRACK, TH_TRACK);
+    float total = 0, x = s.x, acc = 0;
+    for (int i = 0; i < g->n; i++) total += g->weights ? g->weights[i] : 1.0f;
     int clicked = -1;
-    float x = s.x;
-    for (int i = 0; i < n; i++) {
-        float x1 = floorf(s.x + s.width * (float)(i + 1) / (float)n);
+    for (int i = 0; i < g->n; i++) {
+        acc += g->weights ? g->weights[i] : 1.0f;
+        float x1 = floorf(s.x + s.width * acc / total);
         Rectangle seg = { x, s.y, x1 - x, s.height };
         x = x1;
         char nm[64];
-        snprintf(nm, sizeof nm, "%s_%s", prefix ? prefix : "seg", labels[i]);
+        snprintf(nm, sizeof nm, "%s_%s", g->prefix, g->labels[i]);
         Th_RegLabel(nm, seg);
-        bool dis = (disabledMask >> i) & 1u;
-        bool hover = !dis && !th_blocked && CheckCollisionPointRec(GetMousePosition(), seg);
+        snprintf(nm, sizeof nm, "%s.%d", g->prefix, i);
+        Th_Reg(nm, seg);
+        bool dis = (g->disabled >> i) & 1u, over = th_hover(seg), hover = !dis && over;
         Rectangle in = { seg.x + 2, seg.y + 2, seg.width - 4, seg.height - 4 };
-        Color tc = TH_TEXT_DIM;
-        if (dis) tc = (Color){ 0xB5, 0xB5, 0xBD, 0xFF };
-        else if (i == sel) { th_draw_rounded_button(in, TH_PANEL, TH_LINE); tc = TH_ACCENT; }
-        else if (hover) { DrawRectangleRounded(in, th_roundness(in), TH_BUTTON_SEGMENTS, (Color){ 0xFF, 0xFF, 0xFF, 0x96 }); tc = TH_TEXT; }
-        th_draw_label(seg, labels[i], tc);
+        Color tc = dis ? TH_TEXT_OFF : TH_TEXT_DIM;
+        if (!dis && i == g->sel) { th_draw_rounded_button(in, TH_PANEL, TH_LINE); tc = TH_ACCENT; }
+        else if (hover) { th_draw_rounded_button(in, th_mix(TH_TRACK, WHITE, 0.6f), BLANK); tc = TH_TEXT; }
+        th_draw_label(seg, g->labels[i], tc);
+        if (over && g->hints && g->hints[i]) { th_tip = g->hints[i]; th_tip_r = seg; }
         if (hover && IsMouseButtonReleased(MOUSE_BUTTON_LEFT)) clicked = i;
     }
     return clicked;
+}
+
+/* A caption: semibold, dim, upper case. */
+static const char *th_upper(const char *t, char *out, size_t n)
+{
+    size_t i = 0;
+    for (; t[i] && i + 1 < n; i++) out[i] = (char)toupper((unsigned char)t[i]);
+    out[i] = 0;
+    return out;
+}
+
+void Th_TextCap(const char *text, float x, float y, Color c) { char up[96]; th_draw(&theme.cap, th_upper(text, up, sizeof up), x, y, c); }
+Vector2 Th_MeasureCap(const char *text) { char up[96]; return th_measure(&theme.cap, th_upper(text, up, sizeof up)); }
+
+/* Surfaces of lists: a row (plate) and a card (bordered).  The caller draws the content and takes the hover from its own geometry (scrolled lists). */
+Color Th_ListRow(Rectangle r, int f)
+{
+    r = th_snap(r);
+    if (f & TH_LR_DISABLED) return TH_PANEL;
+    if (f & TH_LR_SELECTED) {
+        DrawRectangleRec(r, TH_SELECTED_FILL);
+        DrawRectangle((int)r.x, (int)r.y, 3, (int)r.height, TH_ACCENT);
+        return TH_SELECTED_FILL;
+    }
+    if (f & TH_LR_HOVER) DrawRectangleRec(r, TH_HOVER);
+    return TH_PANEL;
+}
+
+Color Th_Card(Rectangle r, int f)
+{
+    Color fill = f & TH_LR_SELECTED ? TH_SELECTED_FILL : f & TH_LR_DISABLED ? TH_PANEL_ALT : TH_PANEL;
+    Color line = f & TH_LR_SELECTED ? TH_ACCENT : f & TH_LR_DISABLED ? TH_LINE_SOFT : f & TH_LR_HOVER ? TH_HOVER_BORDER : f & TH_LR_WITHIN ? Fade(TH_ACCENT, 0.47f) : TH_LINE;
+    th_draw_rounded_button(th_snap(r), fill, line);
+    return fill;
+}
+
+bool Th_Section(const char *title, float x, float *y, float w, int flags, const char *right)
+{
+    Rectangle r = { x, *y, w, 24 };
+    bool fold = flags & (TH_SEC_OPEN | TH_SEC_CLOSED), hv = fold && th_hover(r);
+    float tx = x;
+    if (fold) {
+        char n[64];
+        snprintf(n, sizeof n, "%s Fold", title);
+        Th_RegLabel(n, r);
+        Th_ListRow(r, hv ? TH_LR_HOVER : 0);
+        th_icon(flags & TH_SEC_OPEN ? TH_IC_CHEV_DOWN : TH_IC_CHEV_RIGHT, (Rectangle){ x, *y, 20, r.height }, TH_TEXT_DIM);
+        tx += 20;
+    }
+    Vector2 m = Th_MeasureCap(title);
+    Th_TextCap(title, tx, *y + 2, TH_TEXT_DIM);
+    float x1 = x + w;
+    if (right && right[0]) {
+        Vector2 sm = Th_MeasureSmall(right);
+        Th_TextSmall(right, x1 - sm.x, *y + 2 + (m.y - sm.y) / 2, TH_TEXT_DIM);
+        x1 -= sm.x + TH_GAP;
+    }
+    Th_HLine(tx + m.x + TH_GAP, x1, *y + 2 + m.y / 2, TH_LINE_SOFT);
+    *y += r.height;
+    return hv && IsMouseButtonReleased(MOUSE_BUTTON_LEFT);
+}
+
+Rectangle Th_Row(float x, float *y, float w, const char *label, const char *value, int flags)
+{
+    Rectangle v = { x + TH_ROW_LABEL_W, *y, w - TH_ROW_LABEL_W, TH_ROW_H };
+    Th_Text(label, x, *y + (TH_ROW_H - Th_Measure("A").y) / 2, TH_TEXT_DIM);
+    if (value) {
+        char fit[200];
+        bool mono = flags & TH_ROW_MONO;
+        Th_FitText(value, mono ? TH_F_MONO : TH_F_BODY, v.width, fit, sizeof fit);
+        if (mono) Th_TextMono(fit, x + w - Th_MeasureMono(fit).x, *y + (TH_ROW_H - Th_MeasureMono("A").y) / 2 + 1, TH_TEXT);
+        else Th_Text(fit, x + w - Th_Measure(fit).x, *y + (TH_ROW_H - Th_Measure("A").y) / 2, TH_TEXT);
+    }
+    *y += value ? TH_ROW_H : TH_ROW_H + TH_GAP / 2;
+    return v;
+}
+
+/* The stepper of pxfe: [-] 3x [+] (the zoom, and the number fields); a held button repeats. */
+static int th_stepper_hover = 0;
+int Th_StepperHover(void) { return th_stepper_hover; }
+Rectangle Th_StepperValue(Rectangle r)
+{
+    float bw = r.width < 96 ? 20 : 24;
+    return (Rectangle){ r.x + bw, r.y, r.width - 2 * bw, r.height };
+}
+
+int Th_Stepper(Rectangle r, const char *value, const char *prefix, int flags)
+{
+    static char hold[48];
+    static int holdDir;
+    static double holdT;
+    Rectangle s = th_snap(r);
+    float bw = Th_StepperValue(s).x - s.x;
+    Rectangle b[2] = { { s.x, s.y, bw, s.height }, { s.x + s.width - bw, s.y, bw, s.height } };
+    bool edit = flags & TH_STEP_EDIT, both = (flags & 3) == 3;
+    th_draw_rounded_button(s, both ? TH_PANEL_ALT : TH_PANEL, edit ? TH_ACCENT : TH_LINE);
+    int step = 0;
+    th_stepper_hover = 0;
+    for (int k = 0; k < 2; k++) {
+        int dir = k ? 1 : -1;
+        char nm[48];
+        snprintf(nm, sizeof nm, "%s%c", prefix, k ? '+' : '-');
+        Th_Reg(nm, b[k]);
+        bool off = flags & (1 << k), over = th_hover(b[k]), hover = over && !off && !edit, down = hover && IsMouseButtonDown(MOUSE_BUTTON_LEFT);
+        if (over) th_stepper_hover = dir;
+        if (hover) DrawRectangle((int)b[k].x + k, (int)b[k].y + 1, (int)b[k].width - 1, (int)b[k].height - 2, down ? TH_PRESSED_FILL : TH_HOVER);
+        Th_VLine(k ? b[k].x : b[k].x + bw, s.y + 1, s.y + s.height - 1, TH_LINE);
+        Color ink = off ? TH_TEXT_OFF : TH_TEXT;
+        int cy = (int)(s.y + s.height / 2);
+        DrawRectangle((int)(b[k].x + bw / 2 - 4), cy, 8, 1, ink);
+        if (k) DrawRectangle((int)(b[k].x + bw / 2 - 0.5f), cy - 4, 1, 9, ink);
+        if (hover && IsMouseButtonPressed(MOUSE_BUTTON_LEFT)) { step = dir; snprintf(hold, sizeof hold, "%s", prefix); holdDir = dir; holdT = GetTime() + 0.45; }
+        else if (hover && holdDir == dir && !strcmp(hold, prefix) && IsMouseButtonDown(MOUSE_BUTTON_LEFT) && GetTime() > holdT) { step = dir; holdT += 0.05; }
+    }
+    if (!IsMouseButtonDown(MOUSE_BUTTON_LEFT)) holdDir = 0;
+    if (value) {
+        Vector2 tm = Th_Measure(value);
+        Th_Text(value, s.x + (s.width - tm.x) / 2, s.y + (s.height - tm.y) / 2, both ? TH_TEXT_OFF : TH_TEXT);
+    }
+    return step;
 }
 
 Color Th_FromRGBA(unsigned int rrggbbaa)
@@ -446,4 +519,485 @@ void Th_Spinner(Vector2 c, float radius, Color col)
         k.a = (unsigned char)(255 - age * 28);
         DrawCircleV((Vector2){ c.x + cosf(a) * radius, c.y + sinf(a) * radius }, 1.6f, k);
     }
+}
+
+/* Hash display */
+
+bool (*Th_HoverFn)(Rectangle r);
+void (*Th_NoticeFn)(const char *what, bool copied);
+
+
+/* Hover of a copyable hash: the notice (hint), and on a click the clipboard and the toast. */
+static bool th_hash_copy(Rectangle r, const char *name, const char *hash, const char *what)
+{
+    Th_Reg(name, r);
+    if (!hash || !hash[0] || !th_hover(r)) return false;
+    if (Th_NoticeFn) Th_NoticeFn(what, false);
+    DrawRectangleRounded(r, 0.3f, 6, TH_HOVER);
+    if (!IsMouseButtonReleased(MOUSE_BUTTON_LEFT)) return true;
+    SetClipboardText(hash);
+    if (Th_NoticeFn) Th_NoticeFn(what, true);
+    return true;
+}
+
+float Th_HashShort(const char *kind, const char *hash, float x, float y, int flags, const char *copyName)
+{
+    char h8[10];
+    snprintf(h8, sizeof h8, "%.8s", hash && hash[0] ? hash : "no ink");
+    bool sm = flags & TH_HASH_SMALL;
+    const Font *kf = sm ? &theme.small : &theme.ui, *mf = sm ? &theme.monos : &theme.mono;
+    float kh = th_measure(kf, "M").y, kw = kind && kind[0] ? th_measure(kf, kind).x + 6 : 0, w = kw + th_measure(mf, h8).x;
+    if (flags & TH_HASH_RIGHT) x -= w;
+    if (flags & TH_HASH_MEASURE) return w;
+    if (copyName) th_hash_copy((Rectangle){ x - 4, y - 3, w + 8, kh + 6 }, copyName, hash, kind);
+    if (kw) th_draw(kf, kind, x, y, TH_TEXT_DIM);
+    th_draw(mf, h8, x + kw, y + (kh - th_measure(mf, "M").y) / 2 + (sm ? 1 : 2), hash && hash[0] ? (flags & TH_HASH_ACCENT ? TH_ACCENT : TH_TEXT) : TH_TEXT_DIM);
+    return w;
+}
+
+void Th_HashField(float x, float *y, float w, const char *caption, const char *hash, const char *name, const char *what, int flags)
+{
+    Th_Section(caption, x + 16, y, w - 32, 0, NULL);
+    Rectangle r = { x + 12, *y, w - 24, TH_ROW_H };
+    bool hv = th_hash_copy(r, name, hash, what);
+    th_draw_rounded_button(th_snap(r), TH_PANEL_ALT, hv ? TH_ACCENT : TH_LINE);
+    const char *t = hash ? (hash[0] ? hash : "no ink") : "not known";
+    Vector2 m = Th_MeasureMono(t);
+    Th_TextMono(t, r.x + (r.width - m.x) / 2, r.y + (r.height - m.y) / 2 + 1, hash && hash[0] ? (flags & TH_HASH_ACCENT ? TH_ACCENT : TH_TEXT) : TH_TEXT_DIM);
+    *y += TH_ROW_H + TH_GAP;
+}
+
+/* Copy of s shortened with an ellipsis to fit maxW in the face. */
+static const Font *th_face(int face) { return face == TH_F_SMALL ? &theme.small : face == TH_F_MONO ? &theme.mono : face == TH_F_HEAD ? &theme.head : &theme.ui; }
+
+void Th_FitText(const char *s, int face, float maxW, char *out, size_t cap)
+{
+    const Font *f = th_face(face & 0xFF);
+    snprintf(out, cap, "%s", s);
+    if (th_measure(f, out).x <= maxW) return;
+    size_t len = strlen(s);
+    for (size_t n = 1; n < len; n++) {
+        if (face & TH_F_TAIL) {   /* the ellipsis and the end of s */
+            if (((unsigned char)s[n] & 0xC0) == 0x80) continue;
+            snprintf(out, cap, "\xE2\x80\xA6%s", s + n);
+        } else {
+            size_t k = len - n;
+            while (k > 0 && ((unsigned char)s[k] & 0xC0) == 0x80) k--;   /* not inside a UTF-8 sequence */
+            if (k + 4 > cap) continue;
+            memcpy(out, s, k);
+            memcpy(out + k, "\xE2\x80\xA6", 4);
+        }
+        if (th_measure(f, out).x <= maxW) return;
+    }
+}
+
+void Th_TextClip(const char *s, float x, float y, float maxW, Color c, int face)
+{
+    char buf[512];
+    Th_FitText(s, face, maxW, buf, sizeof buf);
+    th_draw(th_face(face & 0xFF), buf, x, y, c);
+}
+
+/* Text field and search field.  One field has the keyboard (th_ed); its text is edited in th_ed.buf and handed out by Th_TextValue. */
+static int th_prev(const char *s, int i) { if (i > 0) i--; while (i > 0 && ((unsigned char)s[i] & 0xC0) == 0x80) i--; return i; }
+static int th_next(const char *s, int i) { if (s[i]) i++; while (s[i] && ((unsigned char)s[i] & 0xC0) == 0x80) i++; return i; }
+static bool th_key(int k) { return IsKeyPressed(k) || IsKeyPressedRepeat(k); }
+static bool th_ctrl(void) { return IsKeyDown(KEY_LEFT_CONTROL) || IsKeyDown(KEY_RIGHT_CONTROL); }
+
+/* Width of the bytes [a, b) of s. */
+static float th_w(const char *s, int a, int b)
+{
+    char t[sizeof th_ed.buf];
+    memcpy(t, s + a, (size_t)(b - a));
+    t[b - a] = 0;
+    return Th_Measure(t).x;
+}
+
+static bool th_accepts(int c, int flags)
+{
+    if (c < 32 || c == 127) return false;
+    if (flags & TH_TF_NUM) return (c >= '0' && c <= '9') || c == '-';
+    if (flags & TH_TF_HEX) return (c >= '0' && c <= '9') || (c >= 'a' && c <= 'f') || (c >= 'A' && c <= 'F') || c == '#';
+    return true;
+}
+
+static bool th_insert(const char *s, int n, int cap)
+{
+    if (th_ed.sel) { th_ed.buf[0] = 0; th_ed.cur = 0; th_ed.sel = false; }
+    int len = (int)strlen(th_ed.buf);
+    if (len + n >= cap) return false;
+    memmove(th_ed.buf + th_ed.cur + n, th_ed.buf + th_ed.cur, (size_t)(len - th_ed.cur) + 1);
+    memcpy(th_ed.buf + th_ed.cur, s, (size_t)n);
+    th_ed.cur += n;
+    return true;
+}
+
+const char *Th_TextValue(void) { return th_ed.buf; }
+bool Th_TextIs(const char *name) { return th_ed.name[0] && (!name || !strcmp(th_ed.name, name)); }
+void Th_TextBlur(void) { th_ed.name[0] = 0; }
+
+void Th_TextFocus(const char *name, const char *text, bool selectAll)
+{
+    snprintf(th_ed.name, sizeof th_ed.name, "%s", name);
+    snprintf(th_ed.buf, sizeof th_ed.buf, "%s", text);
+    snprintf(th_ed.old, sizeof th_ed.old, "%s", text);
+    th_ed.cur = (int)strlen(th_ed.buf);
+    th_ed.start = 0;
+    th_ed.sel = selectAll && th_ed.cur > 0;
+    th_ed.seen = true;
+    while (GetCharPressed() > 0) {}   /* the keystroke that led here is not text */
+}
+
+/* The keys of the focused field; returns TH_TF_* bits. */
+static int th_edit(int cap, int flags)
+{
+    int res = 0, c;
+    char *b = th_ed.buf;
+    if (cap <= 0 || cap > (int)sizeof th_ed.buf) cap = (int)sizeof th_ed.buf;
+    while ((c = GetCharPressed()) > 0) {
+        int n = 0;
+        const char *u = CodepointToUTF8(c, &n);
+        if (th_accepts(c, flags) && th_insert(u, n, cap)) res |= TH_TF_CHANGED;
+    }
+    int len = (int)strlen(b);
+    for (int k = 0; k < 2; k++) if (th_key(k ? KEY_DELETE : KEY_BACKSPACE)) {
+        int a = th_ed.cur, z = a;
+        if (th_ed.sel) { a = 0; z = len; } else if (k) z = th_next(b, a); else a = th_prev(b, a);
+        if (z > a) { memmove(b + a, b + z, (size_t)(len - z) + 1); th_ed.cur = a; len -= z - a; res |= TH_TF_CHANGED; }
+        th_ed.sel = false;
+    }
+    bool alt = IsKeyDown(KEY_LEFT_ALT) || IsKeyDown(KEY_RIGHT_ALT);
+    if (!alt && th_key(KEY_LEFT)) { th_ed.cur = th_ed.sel ? 0 : th_prev(b, th_ed.cur); th_ed.sel = false; }
+    if (!alt && th_key(KEY_RIGHT)) { th_ed.cur = th_ed.sel ? len : th_next(b, th_ed.cur); th_ed.sel = false; }
+    if (IsKeyPressed(KEY_HOME)) { th_ed.cur = 0; th_ed.sel = false; }
+    if (IsKeyPressed(KEY_END)) { th_ed.cur = len; th_ed.sel = false; }
+    if (th_ctrl() && IsKeyPressed(KEY_A)) th_ed.sel = len > 0;
+    if (th_ctrl() && IsKeyPressed(KEY_C) && len) SetClipboardText(b);
+    if (th_ctrl() && IsKeyPressed(KEY_V) && GetClipboardText()) {
+        for (const char *q = GetClipboardText(); *q; q++)
+            if (*q != '\n' && *q != '\r' && *q != '\t' && th_accepts((unsigned char)*q, flags) && th_insert(q, 1, cap)) res |= TH_TF_CHANGED;
+    }
+    if (IsKeyPressed(KEY_ENTER) || IsKeyPressed(KEY_KP_ENTER) || IsKeyPressed(KEY_TAB)) { res |= TH_TF_ENTER; th_ed.name[0] = 0; }
+    else if (IsKeyPressed(KEY_ESCAPE)) {
+        res |= TH_TF_ESC;
+        if (flags & TH_TF_REVERT) { snprintf(b, sizeof th_ed.buf, "%s", th_ed.old); res |= TH_TF_CHANGED; }
+        th_ed.name[0] = 0;
+    }
+    return res;
+}
+
+int Th_TextField(Rectangle r, const char *name, const char *text, int cap, int flags, const char *placeholder)
+{
+    Rectangle s = th_snap(r);
+    bool off = flags & TH_TF_DISABLED, lock = off || (flags & TH_TF_READONLY), bare = flags & TH_TF_BARE, search = flags & TH_TF_SEARCH;
+    bool foc = !lock && Th_TextIs(name), over = !lock && th_hover(s);
+    int res = 0;
+    Th_Reg(name, s);
+    if (foc && !th_blocked) {
+        if (!(flags & TH_TF_COMMIT) && strcmp(text, th_ed.buf)) { snprintf(th_ed.buf, sizeof th_ed.buf, "%s", text); th_ed.cur = (int)strlen(th_ed.buf); }   /* changed from outside */
+        res = th_edit(cap, flags);
+        foc = Th_TextIs(name);
+    }
+    if (over) SetMouseCursor(MOUSE_CURSOR_IBEAM);
+    float pad = search ? 30 : bare ? 2 : 8, avail = s.width - 2 * pad;
+    if (IsMouseButtonPressed(MOUSE_BUTTON_LEFT) && !th_blocked) {
+        if (over && !foc) { Th_TextFocus(name, text, flags & TH_TF_SELECT); foc = true; }
+        else if (over) {   /* caret at the click */
+            float mx = GetMousePosition().x - (s.x + pad), bd = 1e9f;
+            int best = th_ed.start;
+            for (int i = th_ed.start; ; i = th_next(th_ed.buf, i)) {
+                float d = fabsf(th_w(th_ed.buf, th_ed.start, i) - mx);
+                if (d < bd) { bd = d; best = i; }
+                if (!th_ed.buf[i] || d > bd + 40) break;
+            }
+            th_ed.cur = best; th_ed.sel = false;
+        } else if (foc) { Th_TextBlur(); foc = false; res |= TH_TF_BLUR; }
+    }
+    if (foc) th_ed.seen = true;
+    const char *show = foc ? th_ed.buf : text;
+    th_draw_rounded_button(s, bare ? BLANK : lock ? TH_PANEL_ALT : TH_PANEL, bare ? BLANK : foc ? TH_ACCENT : over ? TH_HOVER_BORDER : TH_LINE);
+    if (search) th_icon(TH_IC_SEARCH, (Rectangle){ s.x + 4, s.y, 22, s.height }, TH_TEXT_DIM);
+    float ty = s.y + (s.height - Th_Measure("A").y) / 2, x0 = s.x + pad;
+    char vis[sizeof th_ed.buf];
+    if (!foc) {
+        Th_FitText(show, TH_F_BODY, avail, vis, sizeof vis);
+        if (!show[0] && placeholder) Th_Text(placeholder, x0, ty, TH_TEXT_HINT);
+        else Th_Text(vis, bare ? s.x + (s.width - Th_Measure(vis).x) / 2 : x0, ty, lock ? TH_TEXT_DIM : TH_TEXT);
+    } else {
+        int len = (int)strlen(show), end;
+        if (th_ed.cur < th_ed.start) th_ed.start = th_ed.cur;
+        while (th_ed.start < th_ed.cur && th_w(show, th_ed.start, th_ed.cur) > avail - 2) th_ed.start = th_next(show, th_ed.start);
+        if (th_w(show, 0, len) <= avail) th_ed.start = 0;
+        for (end = th_ed.start; show[end] && th_w(show, th_ed.start, th_next(show, end)) <= avail; ) end = th_next(show, end);
+        memcpy(vis, show + th_ed.start, (size_t)(end - th_ed.start));
+        vis[end - th_ed.start] = 0;
+        Vector2 m = Th_Measure(vis);
+        float tx = bare ? s.x + (s.width - m.x) / 2 : x0;
+        if (th_ed.sel && vis[0]) DrawRectangle((int)tx - 1, (int)ty, (int)m.x + 2, (int)m.y, TH_ACCENT_TINT);
+        Th_Text(vis, tx, ty, TH_TEXT);
+        if (!th_ed.sel && (int)(GetTime() * 2) % 2 == 0) DrawRectangle((int)(tx + th_w(show, th_ed.start, th_ed.cur) + 1), (int)ty, 1, (int)m.y, TH_TEXT);
+    }
+    if (search && show[0] && !lock) {
+        char nm[72];
+        snprintf(nm, sizeof nm, "%s_Clear", name);
+        if (Th_Button((Rectangle){ s.x + s.width - 24, s.y + 4, 20, 20 }, nm, TH_BTN_ICON(TH_IC_CLOSE), "Clear")) {
+            if (!foc) Th_TextFocus(name, text, false);
+            th_ed.buf[0] = 0; th_ed.cur = 0; th_ed.sel = false; res |= TH_TF_CHANGED;
+        }
+    }
+    return res;
+}
+
+/* Checkbox and switch share one geometry: the control (a 16 px box or a 36 x 20 pill) at the left of the row, its label on the right;
+ * TH_CK_RIGHT puts the control at the right end and the label at the left.  The whole row is the hit area. */
+static bool th_check(Rectangle r, const char *label, bool *v, int flags, const char *name, bool pill)
+{
+    Rectangle s = th_snap(r);
+    bool off = flags & TH_CK_OFF, right = flags & TH_CK_RIGHT, on = *v, over = !off && th_hover(s);
+    float w = pill ? 36 : 16, h = pill ? 20 : 16, lx = right ? s.x : s.x + w + 10 + ((flags & TH_CK_GAP) ? 12 : 0);
+    Rectangle c = { right ? s.x + s.width - w : s.x, s.y + floorf((s.height - h) / 2), w, h };
+    Color accent = off ? th_mix(TH_ACCENT, TH_PANEL, 0.55f) : TH_ACCENT;
+    Th_Reg(name, c);
+    if (pill) {
+        DrawRectangleRounded(c, 1.0f, TH_BUTTON_SEGMENTS, on ? accent : off ? TH_TRACK : th_mix(TH_TRACK, TH_TEXT_OFF, 0.5f));
+        DrawCircle((int)(on ? c.x + c.width - h / 2 : c.x + h / 2), (int)(c.y + h / 2), h / 2 - 3, TH_PANEL);
+    } else {
+        th_draw_rounded_button(c, on ? accent : off ? TH_PANEL_ALT : TH_PANEL, on ? accent : off ? TH_LINE : over ? TH_TEXT_DIM : TH_TEXT_OFF);
+        if (on) {
+            DrawLineEx((Vector2){ c.x + 3.5f, c.y + 8.5f }, (Vector2){ c.x + 6.5f, c.y + 11.5f }, 1.6f, TH_TEXT_ON);
+            DrawLineEx((Vector2){ c.x + 6.5f, c.y + 11.5f }, (Vector2){ c.x + 12.5f, c.y + 4.5f }, 1.6f, TH_TEXT_ON);
+        }
+    }
+    if (label) Th_Text(label, lx, s.y + (s.height - Th_Measure(label).y) / 2, off ? TH_TEXT_DIM : TH_TEXT);
+    if (over && IsMouseButtonReleased(MOUSE_BUTTON_LEFT)) { *v = !on; return true; }
+    return false;
+}
+bool Th_Check(Rectangle r, const char *label, bool *v, int flags, const char *name) { return th_check(r, label, v, flags, name, false); }
+bool Th_Switch(Rectangle r, const char *label, bool *v, int flags, const char *name) { return th_check(r, label, v, flags, name, true); }
+
+/* The closed select box ("Any v"): the value (dim when `dim`, a placeholder like "Any"), a chevron; accent border while its list is open.
+ * Returns true when clicked; the caller opens its list. */
+bool Th_Dropdown(Rectangle r, const char *name, const char *value, bool dim, bool open)
+{
+    Rectangle s = th_snap(r);
+    bool over = th_hover(s);
+    char fit[256];
+    Th_Reg(name, s);
+    th_draw_rounded_button(s, TH_PANEL, open ? TH_ACCENT : over ? TH_HOVER_BORDER : TH_LINE);
+    Th_FitText(value, TH_F_BODY, s.width - 36, fit, sizeof fit);
+    Th_Text(fit, s.x + 8, s.y + (s.height - Th_Measure(fit).y) / 2, dim ? TH_TEXT_DIM : TH_TEXT);
+    th_icon(TH_IC_CHEV_DOWN, (Rectangle){ s.x + s.width - 24, s.y, 20, s.height }, TH_TEXT_DIM);
+    return over && IsMouseButtonReleased(MOUSE_BUTTON_LEFT);
+}
+
+/* Number box: a stepper whose value is a text field (typed digits are applied on Enter, Tab or a click elsewhere, Escape drops them).
+ * Returns true and *out when the value changes. */
+bool Th_Number(Rectangle r, const char *prefix, int val, int lo, int hi, int flags, int *out)
+{
+    char text[24], n[64];
+    bool off = flags & TH_TF_DISABLED;
+    snprintf(text, sizeof text, "%d", val);
+    snprintf(n, sizeof n, "%s.value", prefix);
+    bool editing = Th_TextIs(n);
+    int step = Th_Stepper(r, NULL, prefix, editing ? TH_STEP_EDIT : off ? TH_STEP_NO_MINUS | TH_STEP_NO_PLUS : (val <= lo ? TH_STEP_NO_MINUS : 0) | (val >= hi ? TH_STEP_NO_PLUS : 0));
+    int f = Th_TextField(Th_StepperValue(r), n, text, 12, TH_TF_NUM | TH_TF_BARE | TH_TF_COMMIT | TH_TF_SELECT | (flags & TH_TF_DISABLED), NULL);
+    if (f & (TH_TF_ENTER | TH_TF_BLUR)) {
+        char *end = NULL;
+        long v = strtol(Th_TextValue(), &end, 10);
+        if (end != Th_TextValue()) step = (int)(v < lo ? lo : v > hi ? hi : v) - val;   /* the typed value, as a step */
+    } else if ((flags & TH_NUM_WHEEL) && !editing && !off && th_hover(r) && GetMouseWheelMove() != 0) { step = GetMouseWheelMove() > 0 ? 1 : -1; th_wheel_used = true; }
+    if (!step) return false;
+    int nv = val + step;
+    nv = nv < lo ? lo : nv > hi ? hi : nv;
+    if (nv == val) return false;
+    *out = nv;
+    return true;
+}
+
+/* Scroll bar: the track is the right edge of `view`, inset 4 px; one bar is dragged at a time, identified by its track's origin. */
+static Vector2 th_sb_id;
+static bool th_sb_drag;
+static float th_sb_grab;
+
+bool Th_ScrollBar(Rectangle view, float *scroll, float content, float step, bool live)
+{
+    float max = content - view.height;
+    Rectangle tr = { view.x + view.width - TH_SB_W, view.y + 4, TH_SB_W - 4, view.height - 8 };
+    bool mine = th_sb_drag && th_sb_id.x == tr.x && th_sb_id.y == tr.y;
+    if (max <= 0 || tr.height <= 0) { *scroll = 0; if (mine) th_sb_drag = false; return false; }
+    float thumbH = fminf(tr.height, fmaxf(36, tr.height * view.height / content)), room = tr.height - thumbH;
+    Vector2 m = GetMousePosition();
+    bool on = live && th_hover((Rectangle){ tr.x - 4, tr.y, tr.width + 8, tr.height });
+    if (live && step > 0 && !th_wheel_used && th_hover(view) && GetMouseWheelMove() != 0) { *scroll -= GetMouseWheelMove() * step; th_wheel_used = true; }
+    if (on && IsMouseButtonPressed(MOUSE_BUTTON_LEFT)) {
+        float ty = tr.y + room * (*scroll / max);
+        th_sb_drag = mine = true;
+        th_sb_id = (Vector2){ tr.x, tr.y };
+        th_sb_grab = m.y >= ty && m.y <= ty + thumbH ? m.y - ty : thumbH / 2;   /* a click beside the thumb centres it there */
+    }
+    bool hot = on || mine;   /* a drag that ends this frame still has the mouse */
+    if (mine && (!live || !IsMouseButtonDown(MOUSE_BUTTON_LEFT))) th_sb_drag = mine = false;
+    if (mine && room > 0) *scroll = fminf(1, fmaxf(0, (m.y - th_sb_grab - tr.y) / room)) * max;
+    *scroll = floorf(fminf(max, fmaxf(0, *scroll)));
+    if (hot) DrawRectangleRounded(tr, 1.0f, 6, TH_SCROLL_TRACK);
+    float tw = hot ? tr.width : 4;
+    DrawRectangleRounded((Rectangle){ tr.x + (tr.width - tw) / 2, tr.y + room * (*scroll / max), tw, thumbH }, 1.0f, 6, hot ? TH_SCROLL_THUMB_HOT : TH_SCROLL_THUMB);
+    return hot;
+}
+
+bool Th_ScrollRows(Rectangle view, int *first, int n, int vis, float rowH, bool live)
+{
+    float px = *first * rowH;
+    bool hot = Th_ScrollBar(view, &px, n * rowH + view.height - vis * rowH, 2 * rowH, live);
+    *first = n > vis ? (int)(px / rowH + 0.5f) : 0;
+    return hot;
+}
+
+/* Raised surface, menu, toast and status bar: the things that float over or sit under a view. */
+void Th_Raised(Rectangle r, float a)
+{
+    Rectangle s = th_snap(r);
+    DrawRectangleRounded((Rectangle){ s.x, s.y + 3, s.width, s.height }, th_roundness(s), TH_BUTTON_SEGMENTS, (Color){ 0, 0, 0, (unsigned char)(24 * a) });
+    th_draw_rounded_button(s, Fade(TH_PANEL, a), Fade(TH_LINE, a));
+}
+
+static void th_menu_item(const ThMenu *m, int i, ThMenuItem *o)
+{
+    memset(o, 0, sizeof *o);
+    if (m->items) *o = m->items[i];
+    else m->get(m->ud, i, o);
+}
+
+Rectangle Th_MenuRect(const ThMenu *m)
+{
+    int vis = m->vis > 0 && m->vis < m->n ? m->vis : m->n, seps = 0;
+    for (int i = 0; vis == m->n && i < m->n; i++) { ThMenuItem it; th_menu_item(m, i, &it); seps += (it.flags & TH_MI_SEP) != 0; }
+    Rectangle r = { m->x - ((m->flags & TH_MENU_RIGHT) ? m->w : 0), m->y, m->w, 8.0f + vis * TH_ROW_H + seps * 9.0f };
+    float W = (float)GetScreenWidth(), H = (float)GetScreenHeight();
+    if (r.x + r.width > W - 4) r.x = W - 4 - r.width;
+    if (r.y + r.height > H - TH_ROW_H - 4) r.y = H - TH_ROW_H - 4 - r.height;
+    return r;
+}
+
+bool Th_MenuKeys(int key) { return th_menu_prev && (key == KEY_UP || key == KEY_DOWN || key == KEY_HOME || key == KEY_END || key == KEY_ENTER || key == KEY_KP_ENTER || key == KEY_ESCAPE); }
+
+/* The next enabled item from `from` in direction dir (+1, -1), or -1. */
+static int th_menu_step(const ThMenu *m, int from, int dir)
+{
+    for (int i = from + dir; i >= 0 && i < m->n; i += dir) { ThMenuItem it; th_menu_item(m, i, &it); if (!(it.flags & TH_MI_OFF)) return i; }
+    return -1;
+}
+
+static int hi = -1;   /* the highlighted item of the open menu, -1 none */
+int Th_MenuHi(void) { return hi; }
+
+int Th_Menu(const ThMenu *m, bool *open)
+{
+    static const void *mid;
+    Rectangle r = Th_MenuRect(m);
+    Vector2 mp = GetMousePosition(), md = GetMouseDelta();
+    bool in = CheckCollisionPointRec(mp, r), more = m->vis > 0 && m->vis < m->n, moved = md.x != 0 || md.y != 0;
+    int vis = more ? m->vis : m->n, pick = -1;
+    const void *id = m->items ? (const void *)m->items : (const void *)m->get;
+    if (id != mid || !th_menu_prev) hi = -1;   /* a menu opened afresh starts without a highlight */
+    mid = id;
+    int step = ((IsKeyPressed)(KEY_DOWN) || (IsKeyPressedRepeat)(KEY_DOWN)) - ((IsKeyPressed)(KEY_UP) || (IsKeyPressedRepeat)(KEY_UP));
+    if (step) { int nx = th_menu_step(m, hi < 0 && step < 0 ? m->n : hi, step); if (nx >= 0) hi = nx; }
+    if ((IsKeyPressed)(KEY_HOME)) hi = th_menu_step(m, -1, 1);
+    if ((IsKeyPressed)(KEY_END)) hi = th_menu_step(m, m->n, -1);
+    if (more && hi >= 0) { if (hi < *m->scroll) *m->scroll = hi; else if (hi >= *m->scroll + vis) *m->scroll = hi - vis + 1; }
+    Th_Raised(r, 1);
+    bool grab = false, pb = th_blocked;
+    th_blocked = false;   /* the widgets under a popup are blocked, the popup is not */
+    if (more) grab = Th_ScrollRows(r, m->scroll, m->n, vis, TH_ROW_H, true);
+    th_blocked = pb;
+    int sc = more ? *m->scroll : 0;
+    float y = r.y + 4;
+    for (int k = 0; k < vis; k++) {
+        ThMenuItem it;
+        th_menu_item(m, sc + k, &it);
+        Rectangle ir = { r.x + 4, y, r.width - 8 - (more ? 8 : 0), TH_ROW_H };
+        bool off = it.flags & TH_MI_OFF, hv = in && CheckCollisionPointRec(mp, ir);
+        if (it.name) Th_Reg(it.name, ir); else Th_RegLabel(it.label, ir);
+        if (hv && !off && !grab && (moved || hi < 0)) hi = sc + k;   /* the mouse moves the highlight */
+        if (hi == sc + k && !off) DrawRectangleRounded(ir, 0.2f, 6, TH_HOVER);
+        if (it.flags & TH_MI_CUR) DrawRectangleRounded(ir, 0.2f, 6, TH_ACCENT_TINT);
+        if (hv && off && it.why) th_tip = it.why;
+        Color c = off ? TH_TEXT_OFF : (it.flags & TH_MI_DANGER) ? TH_DANGER : (it.flags & TH_MI_CUR) ? TH_ACCENT : (it.flags & TH_MI_DIM) ? TH_TEXT_DIM : TH_TEXT;
+        float kw = it.key && it.key[0] ? Th_MeasureSmall(it.key).x + 12 : 0;
+        Th_TextClip(it.label, ir.x + 10, ir.y + (ir.height - Th_Measure("A").y) / 2, ir.width - 20 - kw, c, TH_F_BODY);
+        if (kw) Th_TextSmall(it.key, ir.x + ir.width - kw + 2, ir.y + (ir.height - Th_MeasureSmall("A").y) / 2, TH_TEXT_DIM);
+        if (hv && !off && !grab && IsMouseButtonReleased(MOUSE_BUTTON_LEFT)) pick = sc + k;
+        y += TH_ROW_H;
+        if (it.flags & TH_MI_SEP) { Th_HLine(r.x + 8, r.x + r.width - 8, y + 4, TH_LINE); y += 9; }
+    }
+    if (pick < 0 && hi >= 0 && ((IsKeyPressed)(KEY_ENTER) || (IsKeyPressed)(KEY_KP_ENTER))) pick = hi;
+    if (pick >= 0 || (IsKeyPressed)(KEY_ESCAPE) || (!in && !CheckCollisionPointRec(mp, m->keep) && (IsMouseButtonPressed(MOUSE_BUTTON_LEFT) || IsMouseButtonPressed(MOUSE_BUTTON_RIGHT)))) { *open = false; hi = -1; }
+    th_menu_cur |= *open;
+    return pick;
+}
+
+static struct { char text[200]; double t0; float life; int kind; } th_toasts[4];
+static int th_toast_n;
+
+void Th_Toast(int kind, const char *fmt, ...)
+{
+    if (th_toast_n == 4) { memmove(&th_toasts[0], &th_toasts[1], sizeof th_toasts[0] * 3); th_toast_n = 3; }
+    __typeof__(th_toasts[0]) *t = &th_toasts[th_toast_n++];
+    __builtin_va_list ap;
+    __builtin_va_start(ap, fmt);
+    vsnprintf(t->text, sizeof t->text, fmt, ap);
+    __builtin_va_end(ap);
+    t->t0 = GetTime();
+    t->life = kind == TH_TOAST_ERR ? 6.0f : 3.2f;
+    t->kind = kind;
+}
+
+int Th_ToastCount(void) { return th_toast_n; }
+bool Th_ToastHas(const char *sub) { for (int i = 0; i < th_toast_n; i++) if (strstr(th_toasts[i].text, sub)) return true; return false; }
+
+void Th_ToastDraw(Rectangle area, bool left)
+{
+    double now = GetTime();
+    int out = 0;
+    for (int i = 0; i < th_toast_n; i++) if (now - th_toasts[i].t0 < th_toasts[i].life) th_toasts[out++] = th_toasts[i];
+    th_toast_n = out;
+    float y = area.y + area.height - TH_PAD - 4;
+    for (int i = th_toast_n - 1; i >= 0; i--) {
+        double age = now - th_toasts[i].t0;
+        float a = age < 0.15 ? (float)(age / 0.15) : th_toasts[i].life - age < 0.4 ? (float)((th_toasts[i].life - age) / 0.4) : 1.0f;
+        float w = fminf(Th_Measure(th_toasts[i].text).x + 36, area.width - 32), h = 36;
+        Rectangle r = { left ? area.x + 16 : area.x + area.width - w - 16, y - h, w, h };
+        Th_Raised(r, a);
+        DrawRectangleRounded((Rectangle){ r.x + 8, r.y + 9, 3, h - 18 }, 1.0f, 4, Fade(th_toasts[i].kind == TH_TOAST_ERR ? TH_DANGER : th_toasts[i].kind == TH_TOAST_OK ? TH_M_CAP : TH_ACCENT, a));
+        Th_TextClip(th_toasts[i].text, r.x + 22, r.y + (h - Th_Measure("A").y) / 2, w - 30, Fade(TH_TEXT, a), TH_F_BODY);
+        y -= h + 8;
+    }
+}
+
+/* Draws part p at x (ending at x when `right`) if it fits in `room`; returns its width, 0 when it is dropped. */
+static float th_part(const ThPart *p, float x, float room, bool right, Rectangle r)
+{
+    char fit[1200];
+    if (!p->text) {
+        float w = Th_HashShort(p->kind, p->hash, 0, 0, TH_HASH_MEASURE | TH_HASH_SMALL, NULL);
+        if (w > room) return 0;
+        Th_HashShort(p->kind, p->hash, x, r.y + floorf((r.height - Th_MeasureSmall("M").y) / 2), TH_HASH_SMALL | (p->flags & TH_HASH_ACCENT) | (right ? TH_HASH_RIGHT : 0), p->copy);
+        return w;
+    }
+    float lim = p->maxFrac > 0 && p->maxFrac * r.width < room ? p->maxFrac * r.width : room;
+    Th_FitText(p->text, TH_F_SMALL | (p->flags & TH_SP_TAIL), lim, fit, sizeof fit);
+    float w = Th_MeasureSmall(fit).x;
+    if (w > lim) return 0;
+    Th_TextSmall(fit, right ? x - w : x, r.y + floorf((r.height - Th_MeasureSmall("M").y) / 2), p->color.a ? p->color : TH_TEXT_DIM);
+    return w;
+}
+
+void Th_StatusBar(Rectangle r, float reserve, const ThPart *left, int nl, const ThPart *right, int nr)
+{
+    DrawRectangleRec(r, TH_PANEL_ALT);
+    Th_HLine(r.x, r.x + r.width, r.y, TH_LINE);
+    float x = r.x + TH_PAD, lim = r.x + r.width - TH_PAD - reserve;
+    for (int i = 0; i < nl; i++) { float w = th_part(&left[i], x, lim - x, false, r); if (w) x += w + 14; }
+    for (int i = nr - 1; i >= 0; i--) { float w = th_part(&right[i], lim, lim - x - 16, true, r); if (w) lim -= w + 10; }
 }

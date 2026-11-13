@@ -1,0 +1,45 @@
+# 59b. The navigation bar for a font that belongs to no typeface (testdata font 03696f65, a duplicate): the first segment reads
+# "Orphaned" and leads to the Typefaces list; the style segment shows the modified marker.
+waitfor loading = 0 20000
+wait 20
+assert infont 1
+assert nav 3
+assert navactive 1
+assert navseg 0 Orphaned
+assert navseg 2 Glyphs
+assert modified 0
+click @cell:U+0041
+key d ctrl
+wait 4
+type U+0042
+key enter
+wait 6
+assert modified 1
+assert navseg 0 Orphaned
+shot tests/tmp/shots/59b_orphan_font.png
+
+# a glyph: Orphaned | style | caption
+dblclick @cell:U+0042
+wait 12
+assert nav 4
+assert navactive 2
+assert navseg 0 Orphaned
+# the first segment goes to the Typefaces list (the duplicate is committed to memory on the way)
+click @nav.0
+wait 10
+assert nav 0
+assert navactive 0
+assert navseg 0 Typefaces
+assert inbrowser 1
+
+# Alt+Right comes back to where the font was left (its glyph view), Alt+Left goes up one level: Glyph, Font, then the Typefaces
+# list again (a font without a typeface has no Typeface view)
+key right alt
+wait 20
+assert nav 4
+key left alt
+wait 8
+assert nav 3
+key left alt
+wait 8
+assert nav 0

@@ -1,0 +1,36 @@
+# 60. Screenshots of the six views (tests/tmp/nav/*.png) on a copy of the real library; not part of run_all.bat.
+# Run: tests\tmp\pxfe_e2e.exe tests\tmp\nav\real.pxfdb --ini tests\tmp\nav\nav.ini --play tests\e2e\60_shots_nav.txt
+waitfor loading = 0 600000
+wait 30
+click @Filter
+type ASI_Mono
+wait 120
+shot tests/tmp/nav/1_typefaces.png
+click @Two_lines
+wait 10
+dblclick @hdr:0
+wait 150
+shot tests/tmp/nav/2_typeface.png
+sleep 600
+click @tv.open.1
+wait 60
+shot tests/tmp/nav/4_font.png
+dblclick @cell:U+0041
+wait 60
+shot tests/tmp/nav/5_glyph.png
+click @nav.1
+wait 20
+click @nav.0
+wait 20
+wait 20
+click @Fonts
+wait 10
+click @Filter_Clear
+wait 120
+shot tests/tmp/nav/3_fonts.png
+click @Glyphs
+wait 20
+key f ctrl
+type A
+wait 200
+shot tests/tmp/nav/6_glyphs.png

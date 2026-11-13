@@ -6,7 +6,7 @@ click @cell:U+0041
 wait 4
 click @ptab_Glyph
 wait 4
-assert ptab 2
+assert ptab 1
 assert w.Open_in_Glyph_View 1
 shot tests/tmp/shots/45_open_in_glyph_view.png
 assert editor 0

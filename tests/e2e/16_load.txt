@@ -16,7 +16,7 @@ assert statusdb saved
 copyfile tests/tmp/e2e.pxfdb tests/tmp/e2e_before.pxfdb
 shot tests/tmp/shots/16_pxfdb.png
 # the File menu
-click @File
+click @Menu
 wait 3
 assert filemenu 1
 assert w.file.load 1

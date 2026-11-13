@@ -19,7 +19,7 @@ assert pixel @cellorigin:U+0020 2 14 D68A00
 shot tests/tmp/shots/02_metrics_start.png
 
 # Ascent + button: the glyphs do not move (y stays), only the box grows; the lines move on the cells
-click @ascent.plus
+click @ascent+
 wait 3
 assert m.ascent 7
 assert glyph U+0048 y 0
@@ -31,7 +31,7 @@ assert pixel @cellorigin:U+0020 2 14 2F9E6E
 assert pixel @cellorigin:U+0020 2 21 D68A00
 shot tests/tmp/shots/02_metrics_asc7.png
 # rapid clicks on one spinner coalesce into one undo step
-click @ascent.plus
+click @ascent+
 wait 3
 assert m.ascent 8
 key z ctrl
@@ -43,8 +43,8 @@ wait 3
 assert m.ascent 8
 assert glyph U+0048 y 0
 # minus button
-click @ascent.minus
-click @ascent.minus
+click @ascent-
+click @ascent-
 wait 3
 assert m.ascent 6
 
@@ -83,12 +83,12 @@ wait 2
 click @grid.empty
 wait 3
 assert m.ascent 7
-click @ascent.minus
+click @ascent-
 wait 3
 assert m.ascent 6
 
 # Descent, down to 0 and not below
-click @descent.plus
+click @descent+
 wait 10
 assert m.descent 3
 click @descent.value
@@ -97,15 +97,15 @@ type 4
 key enter
 wait 3
 assert m.descent 4
-click @descent.minus
+click @descent-
 wait 6
-click @descent.minus
+click @descent-
 wait 6
-click @descent.minus
+click @descent-
 wait 6
-click @descent.minus
+click @descent-
 wait 6
-click @descent.minus
+click @descent-
 wait 6
 wait 3
 assert m.descent 0
@@ -117,11 +117,11 @@ wait 3
 assert m.descent 2
 
 # Cap height: spinner, typing, checkbox off removes the line
-click @capheight.plus
+click @capheight+
 wait 3
 assert m.capheight 6
 assert pixel @cellorigin:U+0020 2 0 2F9E6E
-click @capheight.minus
+click @capheight-
 wait 3
 assert m.capheight 5
 click @capheight.on
@@ -136,7 +136,7 @@ assert has.capheight 1
 assert m.capheight 5
 assert pixel @cellorigin:U+0020 2 7 2F9E6E
 # X-height
-click @xheight.plus
+click @xheight+
 wait 3
 assert m.xheight 5
 click @xheight.on
@@ -160,7 +160,7 @@ wait 3
 assert m.capheight 5
 
 # the other optional rows: line gap, internal leading, quad width (6 = advance of M), underline, strike-out
-click @linegap.plus
+click @linegap+
 wait 3
 assert m.linegap 2
 click @linegap.on
@@ -177,7 +177,7 @@ click @quadwidth.on
 wait 3
 assert has.quadwidth 1
 assert m.quadwidth 6
-click @quadwidth.plus
+click @quadwidth+
 wait 3
 assert m.quadwidth 7
 click @quadwidth.value
@@ -192,7 +192,7 @@ wait 3
 assert has.underlineposition 1
 assert m.underlineposition -1
 assert m.underlinethickness 1
-click @underlineposition.minus
+click @underlineposition-
 wait 3
 assert m.underlineposition -2
 click @strikeoutposition.on
@@ -212,11 +212,11 @@ wait 3
 assert hasratio 1
 assert ratioa 1
 assert ratiob 1
-click @ratioa.plus
+click @ratioa+
 wait 3
 assert ratioa 2
 assert ratiob 1
-click @ratiob.plus
+click @ratiob+
 wait 3
 assert ratioa 1
 assert ratiob 1
@@ -254,7 +254,7 @@ click @capheight.on
 wait 3
 assert has.capheight 0
 setdialog folder tests/tmp/xout
-click @File
+click @Menu
 click @file.export
 wait 8
 assert modal Export_finished

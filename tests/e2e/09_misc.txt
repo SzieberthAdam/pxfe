@@ -9,9 +9,9 @@ wait 3
 assert m.ascent 6
 # holding the + button repeats after a delay.  The click comes first on purpose: the first edit of a duplicate adds the
 # "FONT HASH (ORIGINAL)" box to the Font tab, which moves the metric rows down 51 px under a mouse that stays put.
-click @descent.plus
+click @descent+
 wait 2
-move @descent.plus
+move @descent+
 wait 2
 mousedown
 sleep 900
@@ -73,7 +73,7 @@ wait 6
 shot tests/tmp/shots/09_big.png
 # toolbar Undo and Redo buttons
 click @ptab_Font
-click @ascent.plus
+click @ascent+
 wait 3
 assert m.ascent 7
 click @Undo

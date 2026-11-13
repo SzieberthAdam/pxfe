@@ -15,7 +15,7 @@ wait 5
 assert toast No changes to save
 assert samefile tests/tmp/e2e.pxfdb tests/tmp/e2e_before.pxfdb
 # --- edits: ascent, clone, delete, a stroke, the family name
-click @ascent.plus
+click @ascent+
 wait 6
 click @cell:U+0041
 key d ctrl
@@ -46,13 +46,23 @@ assert glyph U+0020 size 4x4
 assert glyph U+0020 ink 2
 assert modified 1
 assert unsaved 1
-click @ptab_Typeface
+# the typeface of the duplicate is edited in the Typeface view (version 7): the first segment leads there, the copy stays editable
+click @nav.0
+wait 16
+assert nav 1
+assert navseg 0 Test Sans *
+click @bside_Typeface
+wait 3
 click @c.family
 wait 2
 type  Edited
 key enter
 wait 3
 assert ctext FAMILY Test Sans Edited
+assert navseg 0 Test Sans Edited *
+key right alt
+wait 16
+assert nav 3
 assert wtitle e2e.pxfdb
 assert wtitle modified
 assert statusdb modified
@@ -87,7 +97,7 @@ assert toast No changes to save
 assert samefile tests/tmp/e2e.pxfdb tests/tmp/e2e_saved1.pxfdb
 # one more change: the next commit replaces the earlier one (it was never an original), so the file still has 5 fonts
 click @ptab_Font
-click @ascent.plus
+click @ascent+
 wait 6
 assert unsaved 1
 click @Save

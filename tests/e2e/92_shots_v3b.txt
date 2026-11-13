@@ -36,9 +36,6 @@ wait 6
 click @ptab_Font
 wait 6
 shot tests/shots/v3b_font_tab_font.png
-click @ptab_Typeface
-wait 6
-shot tests/shots/v3b_font_tab_typeface.png
 click @ptab_Glyph
 waitfor usage >= 0 20000
 wait 30

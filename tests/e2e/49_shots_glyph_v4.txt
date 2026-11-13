@@ -54,8 +54,8 @@ click @lay_font_0
 wait 3
 click @Add
 wait 4
-click @lay_x.plus
-click @lay_y.plus
+click @lay_x+
+click @lay_y+
 wait 4
 shot tests/shots/v4_glyph_layers.png
 # the current glyph hidden

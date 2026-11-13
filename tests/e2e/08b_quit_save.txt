@@ -1,6 +1,6 @@
 # 8b. Close with changes -> Save: the database file is written and the app exits.
 wait 5
-click @ascent.plus
+click @ascent+
 wait 3
 closewindow
 wait 4

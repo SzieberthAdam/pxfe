@@ -55,7 +55,14 @@ key a ctrl
 type Hamburg
 wait 4
 assert bsample Hamburg
-click @Zoom_5
+assert bzoom 2
+repeat 3 click @bzoom+
+wait 3
+assert bzoom 5
+repeat 9 click @bzoom+
+wait 3
+assert bzoom 8
+repeat 3 click @bzoom-
 wait 3
 assert bzoom 5
 click @Cols_3
@@ -64,7 +71,7 @@ assert bcols 3
 click @Hamburgefontsiv
 wait 3
 assert bsample Hamburgefontsiv
-click @Zoom_2
+repeat 3 click @bzoom-
 click @Cols_Auto
 wait 3
 assert bzoom 2
@@ -84,7 +91,9 @@ assert hascont 1
 assert hashname 1
 assert snapdir unchanged
 # back with the Library button: filter, selection and tab are kept
-click @Library
+click @nav.0
+wait 8
+click @Typefaces
 wait 6
 assert inbrowser 1
 assert bfilter Test
@@ -99,6 +108,10 @@ assert readonly 1
 assert hashname 1
 key left alt
 wait 6
+assert nav 1
+assert bselpxfm $OHASH
+click @nav.0
+wait 8
 assert inbrowser 1
 assert bfilter Test
 assert bsel 1
@@ -129,7 +142,9 @@ wait 3
 assert editor 0
 assert unsaved 1
 assert dbmodified 0
-click @Library
+click @nav.0
+wait 8
+click @Typefaces
 wait 6
 assert inbrowser 1
 assert dbmodified 1
@@ -176,7 +191,11 @@ wait 3
 key esc
 wait 3
 assert modified 1
-click @Library
+click @nav.0
+wait 8
+click @Typefaces
+wait 6
+click @Fonts
 wait 6
 assert inbrowser 1
 assert btotal 6

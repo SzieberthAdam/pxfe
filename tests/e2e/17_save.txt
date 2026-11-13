@@ -24,7 +24,7 @@ assert hascont 1
 assert variant 1
 assert unsaved 0
 # an edit: ascent, and a stroke in the space glyph
-click @ascent.plus
+click @ascent+
 wait 6
 click @cell:U+0020
 key enter
@@ -37,7 +37,9 @@ assert modified 1
 assert unsaved 1
 assert wtitle modified
 # leaving the font view commits the duplicate into memory; the file is still as it was
-click @Library
+click @nav.0
+wait 8
+click @Typefaces
 wait 8
 assert dbmodified 1
 assert wtitle modified

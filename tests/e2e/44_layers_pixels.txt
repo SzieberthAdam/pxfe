@@ -53,8 +53,8 @@ wait 3
 assert l.color.0 0x2F6FED
 assert pixel @ecell:0,5 2F6FED
 # offset: one right, one up
-click @lay_x.plus
-click @lay_y.plus
+click @lay_x+
+click @lay_y+
 wait 3
 assert l.dx.0 1
 assert l.dy.0 1

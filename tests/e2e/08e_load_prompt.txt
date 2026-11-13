@@ -23,7 +23,7 @@ wait 8
 assert infont 1
 click @Duplicate_to_Edit
 wait 6
-click @ascent.plus
+click @ascent+
 wait 6
 assert unsaved 1
 key o ctrl
@@ -60,7 +60,7 @@ dblclick @card:0
 wait 8
 click @Duplicate_to_Edit
 wait 6
-click @ascent.plus
+click @ascent+
 wait 6
 key o ctrl
 wait 4
@@ -85,9 +85,9 @@ dblclick @card:0
 wait 8
 click @Duplicate_to_Edit
 wait 6
-click @ascent.plus
+click @ascent+
 wait 6
-click @ascent.plus
+click @ascent+
 wait 6
 key o ctrl
 wait 4

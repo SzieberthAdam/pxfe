@@ -21,8 +21,8 @@
 #define INS_SIM_N 20            /* rows of a similarity list */
 #define INS_USAGE_CAP 8         /* usage rows shown before "Show all" */
 #define INS_CODE_LINES 6        /* lines of codes of a usage row */
-#define INS_SIM_ROW 52.0f
-#define INS_SAMPLE_H 26         /* height of the sample band of a similarity row */
+#define INS_SIM_ROW 64.0f
+#define INS_SAMPLE_H 30         /* height of the sample band of a similarity row */
 #define INS_SAMPLE_MAXW 230     /* the sample is cut after this many pixels (1x) */
 
 /* ------------------------------------------------------------------ results */
@@ -96,8 +96,6 @@ struct Insight {
 
 /* ------------------------------------------------------------------ small helpers */
 
-static void hash8(const char *h, char out[9]) { memcpy(out, h, 8); out[8] = 0; }
-
 static void code_text(int32_t c, char *out, size_t cap)
 {
     if (px_code_is_uncoded(c)) snprintf(out, cap, "#%d", (int)(c - PX_CODE_UNCODED_FIRST));
@@ -105,11 +103,11 @@ static void code_text(int32_t c, char *out, size_t cap)
     else snprintf(out, cap, "U+%04X", (unsigned)c);
 }
 
-static void make_label(const char *family, const char *style, const char *pxfm, char *out, size_t cap)
+static void make_label(const char *family, const char *style, char *out, size_t cap)
 {
     if (family && family[0]) snprintf(out, cap, "%s%s%s", family, style && style[0] ? " " : "", style ? style : "");
     else if (style && style[0]) snprintf(out, cap, "%s", style);
-    else hash8(pxfm, out);
+    else out[0] = 0;   /* the view shows the hash instead */
 }
 
 static int cmp_ci(const char *a, const char *b)
@@ -184,7 +182,7 @@ static UsageRes *job_usage(StoreConn *c, char (*hashes)[33], int n, unsigned gen
         for (int i = 0; i < ul.count; i++) {
             const StoreUsage *u = &ul.u[i];
             UTmp *t = &tmp[i];
-            make_label(u->pxtf[0] ? u->family : "", u->pxtf[0] ? u->style : "", u->pxfm, t->label, sizeof t->label);
+            make_label(u->pxtf[0] ? u->family : "", u->pxtf[0] ? u->style : "", t->label, sizeof t->label);
             memcpy(t->pxfm, u->pxfm, 33); memcpy(t->pxtf, u->pxtf, 33);
             t->variant = u->variant; t->code = u->code;
         }
@@ -226,7 +224,7 @@ static UsageRes *job_usage(StoreConn *c, char (*hashes)[33], int n, unsigned gen
         int *idx = (int *)malloc((size_t)(el.count + 1) * sizeof *idx);
         for (int i = 0; i < el.count; i++) {
             const StoreEntry *e = &el.e[i];
-            make_label(e->family, e->style, e->pxfm, tmp[i].label, sizeof tmp[i].label);
+            make_label(e->family, e->style, tmp[i].label, sizeof tmp[i].label);
             memcpy(tmp[i].pxfm, e->pxfm, 33); memcpy(tmp[i].pxtf, e->pxtf, 33);
             tmp[i].variant = e->variant; tmp[i].code = e->glyphCount;
             idx[i] = i;
@@ -390,8 +388,8 @@ static SimRes *job_similar(Store *st, StoreConn *c, Names *names, const char *ha
             SimRow *row = &r->rows[i];
             const StoreEntry *e = names->have ? names_find(typefaces ? &names->tfs : &names->fonts, typefaces ? names->ti : names->fi, sim[i].hash, typefaces) : NULL;
             if (!e && pass == 0) { miss = true; continue; }
-            if (e) make_label(e->family, e->style, e->pxfm[0] ? e->pxfm : sim[i].hash, row->name, sizeof row->name);
-            else hash8(sim[i].hash, row->name);
+            if (e) make_label(e->family, e->style, row->name, sizeof row->name);
+            else row->name[0] = 0;
             if (typefaces && e && e->family[0]) snprintf(row->name, sizeof row->name, "%s", e->family);
             if (e) memcpy(row->openPxfm, e->pxfm, 33);
             else if (!typefaces) memcpy(row->openPxfm, sim[i].hash, 33);
@@ -681,59 +679,25 @@ static void cx_tip(Cx *c, const char *text)
     c->in->tipPos = GetMousePosition();
 }
 
-/* Draws `s` cut to maxw with an ellipsis; small or UI font. */
-static void draw_fit(const char *s, float x, float y, float maxw, Color col, bool small)
-{
-    char buf[272];
-    snprintf(buf, sizeof buf, "%.250s", s);
-    Vector2 (*meas)(const char *) = small ? Th_MeasureSmall : Th_Measure;
-    if (meas(buf).x > maxw) {
-        size_t n = strlen(buf);
-        while (n > 0) {
-            n--;
-            while (n > 0 && ((unsigned char)buf[n] & 0xC0) == 0x80) n--;
-            memcpy(buf + n, "â¦", 4);   /* ellipsis and the terminator */
-            if (meas(buf).x <= maxw) break;
-        }
-    }
-    if (small) Th_TextSmall(buf, x, y, col); else Th_Text(buf, x, y, col);
-}
-
-/* Section header: chevron, small dim caps label, optional right-aligned dim text. Returns true when open. */
+/* Section header: the fold caption of Th_Section with an optional right-aligned count. Returns true when open. */
 static bool sec_header(Cx *c, float *y, int idx, const char *label, const char *right, bool first)
 {
     Insight *in = c->in;
-    float x = c->area.x, w = c->area.width;
-    if (!first) { Th_HLine(x + 8, x + w - 8, *y + 2, TH_LINE); *y += 8; }
-    else *y += 4;
-    Rectangle hr = { x + 8, *y, w - 16, 22 };
-    if (cx_visible(c, hr.y, hr.height)) {
-        bool hv = cx_hover(c, hr);
-        if (hv) {
-            DrawRectangleRounded(hr, 0.2f, 6, TH_HOVER);
-            if (IsMouseButtonReleased(MOUSE_BUTTON_LEFT)) in->open[idx] = !in->open[idx];
-        }
-        float cx = x + 20, cy = hr.y + 11;
-        if (in->open[idx]) DrawTriangle((Vector2){ cx - 4, cy - 2 }, (Vector2){ cx, cy + 3 }, (Vector2){ cx + 4, cy - 2 }, TH_TEXT_DIM);
-        else DrawTriangle((Vector2){ cx - 2, cy - 4 }, (Vector2){ cx - 2, cy + 4 }, (Vector2){ cx + 3, cy }, TH_TEXT_DIM);
-        Th_TextSmall(label, x + 32, hr.y + 5, TH_TEXT_DIM);
-        if (right && right[0]) {
-            Vector2 m = Th_MeasureSmall(right);
-            Th_TextSmall(right, x + w - 16 - m.x, hr.y + 5, TH_TEXT_DIM);
-        }
-    }
-    *y += 26;
+    *y += first ? 4 : TH_GAP;
+    float sy = *y;
+    if (cx_visible(c, sy, TH_ROW_H) && Th_Section(label, c->area.x + 16, y, c->area.width - 32, in->open[idx] ? TH_SEC_OPEN : TH_SEC_CLOSED, right)) in->open[idx] = !in->open[idx];
+    *y = sy + TH_ROW_H;
     return in->open[idx];
 }
 
 static void note(Cx *c, float *y, const char *text, bool spinner)
 {
-    if (cx_visible(c, *y, 24)) {
+    if (cx_visible(c, *y, TH_ROW_H)) {
         float x = c->area.x + 16;
-        if (spinner) { Th_Spinner((Vector2){ x + 6, *y + 11 }, 6, TH_TEXT_DIM); x += 20; }
-        draw_fit(text, x, *y + 4, c->area.width - 32 - (x - c->area.x - 16), TH_TEXT_DIM, false);
+        if (spinner) { Th_Spinner((Vector2){ x + 6, *y + 12 }, 6, TH_TEXT_DIM); x += 20; }
+        Th_TextClip(text, x, *y + 3, c->area.width - 32 - (x - c->area.x - 16), TH_TEXT_DIM, TH_F_BODY);
     }
-    *y += 26;
+    *y += TH_ROW_H;
 }
 
 static void ensure_tex(Texture2D *t, unsigned char **mask, int w, int h)
@@ -801,8 +765,7 @@ static void draw_usage(Cx *c, float *y, bool first)
     UsageRes *u = in->usage;
     bool loading = usage_loading(in);
     char right[48] = "";
-    if (!loading && !u->failed && u->nGlyphs == 1) snprintf(right, sizeof right, "%d fonts", u->nFonts);
-    else if (!loading && !u->failed && u->nGlyphs > 1) snprintf(right, sizeof right, "%d fonts", u->nFonts);
+    if (!loading && !u->failed && u->nGlyphs >= 1) snprintf(right, sizeof right, "%d font%s", u->nFonts, u->nFonts == 1 ? "" : "s");
     if (!sec_header(c, y, 0, "GLYPH USAGE", right, first)) return;
     float x = c->area.x, w = c->area.width, x0 = x + 16, x1 = x + w - 16;
 
@@ -813,44 +776,43 @@ static void draw_usage(Cx *c, float *y, bool first)
     if (u->nGlyphs == 1) {
         int useN = usage_code_fonts(in);
         float top = *y + 2;
-        if (cx_visible(c, top, 52)) {
-            Rectangle box = { x0, top, 48, 48 };
+        if (cx_visible(c, top, 56)) {
+            Rectangle box = { x0, top, 56, 56 };
             DrawRectangleRec(box, TH_PANEL);
             ensure_tex(&u->tex, &u->mask, u->w, u->h);
             if (u->tex.id) {
-                int z = (int)fminf(44.0f / (float)u->w, 44.0f / (float)u->h);
+                int z = (int)fminf(52.0f / (float)u->w, 52.0f / (float)u->h);
                 if (z < 1) z = 1;
                 float gw = (float)(u->w * z), gh = (float)(u->h * z);
-                float gx = box.x + floorf((48 - gw) / 2), gy = box.y + floorf((48 - gh) / 2);
+                float gx = box.x + floorf((56 - gw) / 2), gy = box.y + floorf((56 - gh) / 2);
                 if (gx < box.x) gx = box.x;
                 if (gy < box.y) gy = box.y;
                 Th_DrawTextureClipped(u->tex, gx, gy, z, box, WHITE);
             }
             Th_RectLines(box, TH_LINE);
-            char h8[9], t[96];
-            hash8(u->first, h8);
-            Th_TextMono(h8, x0 + 58, top + 2, TH_TEXT_DIM);
-            Rectangle hr = { x0 + 58, top, 80, 16 };
+            char t[96];
+            Th_HashShort("Glyph", u->first, x0 + 66, top, 0, NULL);
+            Rectangle hr = { x0 + 66, top, 90, 16 };
             if (cx_hover(c, hr)) cx_tip(c, u->first);
             snprintf(t, sizeof t, "%d \xC3\x97 %d px", u->w, u->h);
-            Th_Text(t, x0 + 58, top + 17, TH_TEXT);
+            Th_Text(t, x0 + 66, top + 16, TH_TEXT);
             snprintf(t, sizeof t, "In %d font%s \xC2\xB7 %d typeface variant%s", u->nFonts, u->nFonts == 1 ? "" : "s", u->nVariants, u->nVariants == 1 ? "" : "s");
-            draw_fit(t, x0 + 58, top + 33, x1 - x0 - 58, TH_TEXT_DIM, false);
+            Th_TextClip(t, x0 + 66, top + 36, x1 - x0 - 66, TH_TEXT_DIM, TH_F_BODY);
             if (useN >= 0) {
                 char cc[24];
                 code_text(in->prefer, cc, sizeof cc);
                 snprintf(t, sizeof t, "%d use it for %s", useN, cc);
-                draw_fit(t, x0, top + 54, x1 - x0, TH_TEXT_DIM, false);
+                Th_TextClip(t, x0, top + 62, x1 - x0, TH_TEXT_DIM, TH_F_BODY);
             }
         }
-        *y += useN >= 0 ? 78 : 58;
+        *y += useN >= 0 ? 92 : 64;
     } else {
         char t[96];
         snprintf(t, sizeof t, "Fonts holding all %d selected glyphs", u->nGlyphs);
-        if (cx_visible(c, *y, 22)) {
-            draw_fit(t, x0, *y + 3, x1 - x0, TH_TEXT, false);
+        if (cx_visible(c, *y, TH_ROW_H)) {
+            Th_TextClip(t, x0, *y + 3, x1 - x0, TH_TEXT, TH_F_BODY);
         }
-        *y += 24;
+        *y += TH_ROW_H;
     }
 
     if (u->nRows == 0) {
@@ -862,36 +824,32 @@ static void draw_usage(Cx *c, float *y, bool first)
         const UsageRow *r = &u->rows[i];
         char lines[INS_CODE_LINES][160];
         int nl = wrap_codes(r->codes, x1 - x0, lines);
-        Rectangle rr = { x + 8, *y, w - 16, 24.0f + 14.0f * (float)nl };
+        Rectangle rr = { x + 8, *y, w - 16, 30.0f + 18.0f * (float)nl };
         if (cx_visible(c, rr.y, rr.height)) {
             char nm[32];
             snprintf(nm, sizeof nm, "usage_row_%d", i);
             Th_Reg(nm, (Rectangle){ rr.x, fmaxf(rr.y, c->vis.y), rr.width, fminf(rr.y + rr.height, c->vis.y + c->vis.height) - fmaxf(rr.y, c->vis.y) });
             bool hv = cx_hover(c, rr);
-            if (hv) {
-                DrawRectangleRounded(rr, 0.15f, 6, TH_HOVER);
-                if (IsMouseButtonReleased(MOUSE_BUTTON_LEFT)) click_target(c, r);
-            }
-            char h8[9];
-            hash8(r->pxfm, h8);
-            float hw = Th_MeasureMono(h8).x;
-            Th_TextMono(h8, x1 - hw, rr.y + 4, TH_TEXT_DIM);
-            draw_fit(r->label, x0, rr.y + 3, x1 - x0 - hw - 8, TH_TEXT, false);
-            for (int k = 0; k < nl; k++) draw_fit(lines[k], x0, rr.y + 21 + 14.0f * (float)k, x1 - x0, TH_TEXT_DIM, true);
+            Th_ListRow(rr, hv ? TH_LR_HOVER : 0);
+            if (hv && IsMouseButtonReleased(MOUSE_BUTTON_LEFT)) click_target(c, r);
+            float hw = Th_HashShort("Font", r->pxfm, x1, rr.y + 3, TH_HASH_RIGHT, NULL);
+            Th_TextClip(r->label, x0, rr.y + 3, x1 - x0 - hw - 8, TH_TEXT, TH_F_BODY);
+            for (int k = 0; k < nl; k++) Th_TextClip(lines[k], x0, rr.y + 26 + 18.0f * (float)k, x1 - x0, TH_TEXT_DIM, TH_F_SMALL);
         }
         *y += rr.height;
     }
     if (u->nRows > INS_USAGE_CAP) {
-        Rectangle rr = { x + 8, *y + 2, w - 16, 24 };
+        Rectangle rr = { x0, *y + 2, 0, TH_ROW_H };
         if (cx_visible(c, rr.y, rr.height)) {
-            bool hv = cx_hover(c, rr);
-            if (hv) { DrawRectangleRounded(rr, 0.2f, 6, TH_HOVER); if (IsMouseButtonReleased(MOUSE_BUTTON_LEFT)) in->showAll = !in->showAll; }
             char t[48];
-            if (in->showAll) snprintf(t, sizeof t, "Show fewer");
-            else snprintf(t, sizeof t, "Show all %d", u->nRows);
-            Th_Text(t, x0, rr.y + 4, TH_ACCENT);
+            snprintf(t, sizeof t, in->showAll ? "Show fewer" : "Show all %d", u->nRows);
+            rr.width = Th_ButtonW(t);
+            bool pb = Th_InputBlocked();
+            Th_SetInputBlocked(pb || !CheckCollisionPointRec(GetMousePosition(), c->vis));   /* a scrolled-out button does not react */
+            if (Th_Button(rr, t, 0, NULL)) in->showAll = !in->showAll;
+            Th_SetInputBlocked(pb);
         }
-        *y += 28;
+        *y += TH_ROW_H + 4;
     }
 }
 
@@ -914,7 +872,7 @@ static void draw_sim(Cx *c, float *y, bool typefaces, bool first)
     if (s->failed) { note(c, y, "Similarity is not available for this entry.", false); return; }
     if (s->n == 0) { note(c, y, "Nothing similar found.", false); return; }
 
-    const float colW = 46;
+    const float colW = 52;
     for (int i = 0; i < s->n; i++) {
         SimRow *r = &s->rows[i];
         Rectangle rr = { x + 8, *y, w - 16, INS_SIM_ROW };
@@ -923,8 +881,8 @@ static void draw_sim(Cx *c, float *y, bool typefaces, bool first)
             snprintf(nm, sizeof nm, "similar_row_%d", i);
             Th_Reg(nm, (Rectangle){ rr.x, fmaxf(rr.y, c->vis.y), rr.width, fminf(rr.y + rr.height, c->vis.y + c->vis.height) - fmaxf(rr.y, c->vis.y) });
             bool hv = cx_hover(c, rr);
+            Th_ListRow(rr, hv ? TH_LR_HOVER : 0);
             if (hv) {
-                DrawRectangleRounded(rr, 0.12f, 6, TH_HOVER);
                 char tip[200];
                 if (r->shapeUsed) snprintf(tip, sizeof tip, "shape %.0f \xC2\xB7 shared %.0f \xC2\xB7 metrics %.0f", r->shape, r->shared, r->metrics);
                 else if (typefaces) snprintf(tip, sizeof tip, "shape not used for some font pairs \xC2\xB7 shared %.0f \xC2\xB7 metrics %.0f", r->shared, r->metrics);
@@ -941,12 +899,12 @@ static void draw_sim(Cx *c, float *y, bool typefaces, bool first)
             /* score: number and a small bar */
             char sc[16];
             snprintf(sc, sizeof sc, "%.0f", r->score);
-            Th_Text(sc, x0, rr.y + 5, TH_TEXT);
-            Rectangle bar = { x0, rr.y + 24, colW - 10, 4 };
+            Th_Text(sc, x0, rr.y + 3, TH_TEXT);
+            Rectangle bar = { x0, rr.y + 28, colW - 12, 4 };
             DrawRectangleRec(bar, TH_LINE_SOFT);
             float fw = floorf(bar.width * (float)(r->score / 100.0));
             if (fw < 1 && r->score > 0) fw = 1;
-            Color bc = r->shapeUsed ? TH_ACCENT : (Color){ 0x9A, 0xB4, 0xEE, 0xFF };
+            Color bc = r->shapeUsed ? TH_ACCENT : TH_HOVER_BORDER;
             DrawRectangle((int)bar.x, (int)bar.y, (int)fw, 4, bc);
             /* name, extras */
             float tx = x0 + colW;
@@ -959,9 +917,10 @@ static void draw_sim(Cx *c, float *y, bool typefaces, bool first)
                 Th_TextSmall(ex, x1 - ew, rr.y + 6, TH_TEXT_DIM);
                 right = x1 - ew - 8;
             }
-            draw_fit(r->name, tx, rr.y + 3, right - tx, TH_TEXT, false);
+            if (r->name[0]) Th_TextClip(r->name, tx, rr.y + 3, right - tx, TH_TEXT, TH_F_BODY);
+            else Th_HashShort(typefaces ? "Typeface" : "Font", r->hash, tx, rr.y + 3, 0, NULL);
             /* sample, pixel-perfect at an integer scale */
-            Rectangle band = { tx, rr.y + 21, x1 - tx, INS_SAMPLE_H };
+            Rectangle band = { tx, rr.y + 28, x1 - tx, INS_SAMPLE_H };
             if (r->hasSample) {
                 ensure_tex(&r->tex, &r->mask, r->mw, r->mh);
                 if (r->tex.id) {
@@ -973,7 +932,7 @@ static void draw_sim(Cx *c, float *y, bool typefaces, bool first)
                     Th_DrawTextureClipped(r->tex, band.x, gy, z, band, WHITE);
                 }
             } else {
-                Th_TextSmall("no sample", band.x, band.y + 8, (Color){ 0xB5, 0xB5, 0xBD, 0xFF });
+                Th_TextSmall("no sample", band.x, band.y + 6, TH_TEXT_HINT);
             }
         }
         *y += INS_SIM_ROW;
@@ -1007,8 +966,8 @@ float Insight_Draw(Insight *in, Rectangle area, int sections, bool *clicked, Ins
         if (tx + tw > (float)GetScreenWidth() - 4) tx = (float)GetScreenWidth() - 4 - tw;
         if (ty + th > (float)GetScreenHeight() - 4) ty = in->tipPos.y - th - 6;
         Rectangle tr = { floorf(tx), floorf(ty), tw, th };
-        DrawRectangleRounded(tr, 0.2f, 6, (Color){ 0x2A, 0x2A, 0x30, 0xF2 });
-        Th_Text(in->tip, tr.x + 8, tr.y + 5, WHITE);
+        DrawRectangleRounded(tr, 0.2f, 6, TH_TIP_BG);
+        Th_Text(in->tip, tr.x + 8, tr.y + 5, TH_TEXT_ON);
     }
     return y - area.y;
 }

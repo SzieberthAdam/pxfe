@@ -132,6 +132,15 @@ call :fresh
 call :run 55_delete_requests "%DB%"
 call :fresh
 call :run 58_delete_ui "%DB%"
+call :fresh
+call :run 59_navigation "%DB%"
+call :fresh
+call :run 59b_navigation_orphan "%DB% --font %H3% --duplicate"
+call :fresh
+(echo [browser]& echo tab=1& echo sidetab=1) > tests\tmp\e2e.ini
+call :run 61_views "%DB%"
+call :fresh
+call :run 93_menu_keys "%DB%"
 
 echo.
 echo %RUNS% scripts run, %FAILS% failed

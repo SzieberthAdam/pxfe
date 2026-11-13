@@ -1,0 +1,185 @@
+# 61. Version 7: views (testdata/lib).  pxfe.ini holds the Fonts tab and the Similar side tab of the last session (run_all.bat writes it).
+# 1 the program starts in the Typefaces view; 2 and 3 the Glyphs view's side panel View | Usage and the click in the usage; 4, 5, 6 the one zoom
+# control [-] Nx [+] everywhere; 7 the Typeface tab of the Typefaces and Typeface views; 8 its boxed hash field.
+wait 16
+
+# ---- 1. the Typefaces view, although the last session ended in the Fonts tab
+assert nav 0
+assert navactive 0
+assert btab 0
+assert intypeface 0
+assert bboxes 2
+
+# ---- 7. the Typefaces view's panel: View | Typeface | Similar
+assert w.bside_View 1
+assert w.bside_Typeface 1
+assert w.bside_Similar 1
+click @bside_View
+wait 3
+assert bside 0
+# ---- 5. the zoom of the View tab is the stepper: [-] 2x [+]
+assert w.bzoom- 1
+assert w.bzoom+ 1
+assert w.Zoom_1 0
+assert w.Zoom_8 0
+assert bzoom 2
+click @bzoom+
+wait 3
+assert bzoom 3
+click @bzoom-
+click @bzoom-
+click @bzoom-
+wait 3
+assert bzoom 1
+click @bzoom+
+wait 3
+assert bzoom 2
+shot tests/tmp/p1/td_1_typefaces.png
+
+# the Typeface tab shows the typeface of the selected box (header or variant) with the boxed hash field of the Font tab
+click @hdr:0
+wait 3
+click @bside_Typeface
+wait 3
+assert bside 2
+assert w.hash_typeface_full 1
+# the hash shown is the typeface as stored (the pxtf of the library entry), as in the box header
+assert tabhash b925951bb94de1d15ec27404b3261476
+assert w.c.family 1
+assert w.c.copyright 1
+assert w.c.italic 1
+assert w.Typeface_hash 0
+shot tests/tmp/p1/td_2_typefaces_tab.png
+click @card:1
+wait 3
+assert w.hash_typeface_full 1
+click @bside_Similar
+wait 3
+assert bside 1
+click @bside_Typeface
+wait 3
+assert bside 2
+
+# ---- 7. the Typeface view: the same three tabs, the same tab
+dblclick @hdr:0
+wait 16
+assert nav 1
+assert w.bside_View 1
+assert w.bside_Typeface 1
+assert w.bside_Similar 1
+assert bside 2
+assert w.hash_typeface_full 1
+assert w.c.family 1
+shot tests/tmp/p1/td_3_typeface.png
+click @bside_View
+wait 3
+assert w.bzoom+ 1
+assert w.Zoom_5 0
+shot tests/tmp/p1/td_3b_typeface_view.png
+sleep 600
+
+# ---- the font view: Font | Glyph | Similar, no Typeface tab; the zoom of the toolbar and of the strip are the same control
+click @tv.open.0
+wait 12
+assert nav 3
+assert w.ptab_Font 1
+assert w.ptab_Glyph 1
+assert w.ptab_Similar 1
+assert w.ptab_Typeface 0
+assert w.c.family 0
+assert w.zoom- 1
+assert w.zoom+ 1
+assert w.sz- 1
+assert w.sz+ 1
+assert w.sz_1 0
+assert w.sz_8 0
+assert stripzoom 2
+click @sz+
+wait 2
+assert stripzoom 3
+click @sz-
+wait 2
+assert stripzoom 2
+shot tests/tmp/p1/td_4_font.png
+
+# ---- the Fonts view: View | Similar, and the same zoom control
+key left alt
+wait 16
+assert nav 1
+click @Fonts
+wait 12
+assert nav 2
+assert w.bside_View 1
+assert w.bside_Typeface 0
+assert w.bside_Similar 1
+assert w.bzoom+ 1
+shot tests/tmp/p1/td_5_fonts.png
+
+# ---- 2. the Glyphs view: the side panel View | Usage, the strip of the old top is in the View tab
+click @Glyphs
+wait 12
+assert nav 5
+assert infinder 1
+assert fside 0
+assert w.fside_View 1
+assert w.fside_Usage 1
+assert w.finder.search 1
+assert w.finder.prev 1
+assert w.finder.next 1
+assert w.Sort_by 0
+assert w.fsort_Count 1
+assert w.fsort_Height 1
+assert w.fsort_Width 1
+# 4. the zoom is the stepper, with no Auto: a default of 3x
+assert w.fzoom- 1
+assert w.fzoom+ 1
+assert w.Auto 0
+assert w.fzoom_Auto 0
+assert fzoom 3
+click @fzoom+
+wait 3
+assert fzoom 4
+click @fzoom-
+click @fzoom-
+click @fzoom-
+click @fzoom-
+wait 3
+assert fzoom 1
+repeat 2 click @fzoom+
+wait 3
+assert fzoom 3
+click @finder.search
+type A
+wait 20
+assert finder_code 65
+assert finder_count 2
+click @finder.next
+wait 20
+assert finder_code 66
+click @finder.prev
+wait 20
+assert finder_code 65
+click @fcell:0
+wait 4
+shot tests/tmp/p1/td_6_glyphs_view.png
+click @fside_Usage
+wait 4
+assert fside 1
+assert w.finder.search 0
+waitfor usage >= 1 10000
+wait 10
+shot tests/tmp/p1/td_7_glyphs_usage.png
+
+# ---- 3. a font of the usage opens its Glyph view on that glyph
+click @usage_row_0
+wait 12
+assert nav 4
+assert editor 1
+assert navactive 2
+assert navseg 2 A U+0041
+assert readonly 1
+assert sel U+0041 1
+shot tests/tmp/p1/td_8_glyph.png
+key left alt
+wait 6
+assert nav 3

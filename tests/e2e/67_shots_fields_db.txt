@@ -1,0 +1,38 @@
+# 67. Fields in dialogs and the Font tab, on the test library: the export dialog (checkbox, read-only field), the clone dialog (text field), a number field being typed into
+# (tests/tmp/p2/c3/*.png).  Not part of run_all.bat.
+# Run: tests\tmp\pxfe_e2e.exe tests\tmp\e2e.pxfdb --font 0820dc69a21b1cdb3a44d2cff7d884d8 --duplicate --size 1400x900 --ini tests\tmp\e2e.ini --play tests\e2e\67_shots_fields_db.txt
+wait 10
+click @ascent.value
+wait 5
+type 12
+wait 5
+shot tests/tmp/p2/c3/font_dup_number_typing.png
+key escape
+click @capheight.on
+wait 5
+shot tests/tmp/p2/c3/font_dup_checks.png
+writefile tests/tmp/xout/pxfm/08/0820dc69a21b1cdb3a44d2cff7d884d8.pxfm SENTINEL
+
+writefile tests/tmp/xout/notes.txt keep me
+
+click @ascent+
+wait 6
+setdialog folder tests/tmp/xout
+click @Menu
+wait 3
+click @file.export
+wait 8
+shot tests/tmp/p2/c3/export_dialog.png
+click @xd.backup
+wait 5
+shot tests/tmp/p2/c3/export_dialog_nobackup.png
+key escape
+wait 5
+click @cell:U+0041
+wait 3
+click @Clone
+wait 8
+type 7
+wait 5
+shot tests/tmp/p2/c3/clone_modal_input.png
+key escape

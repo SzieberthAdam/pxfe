@@ -1,0 +1,45 @@
+# 62. Version 7: screenshots of the changed views (tests/tmp/p1/real_*.png) on a copy of the real library; not part of run_all.bat.
+# Run: tests\tmp\pxfe_e2e.exe tests\tmp\p1\real.pxfdb --ini tests\tmp\p1\real.ini --play tests\e2e\62_shots_views.txt
+waitfor loading = 0 600000
+wait 30
+click @Filter
+type ASI_Mono
+wait 120
+click @hdr:0
+click @bside_Typeface
+wait 20
+shot tests/tmp/p1/real_1_typefaces_tab.png
+click @bside_View
+wait 10
+shot tests/tmp/p1/real_1b_typefaces_view.png
+dblclick @hdr:0
+wait 150
+shot tests/tmp/p1/real_2_typeface_view.png
+click @bside_Typeface
+wait 20
+shot tests/tmp/p1/real_3_typeface_tab.png
+sleep 600
+click @tv.open.1
+wait 60
+shot tests/tmp/p1/real_4_font.png
+key left alt
+wait 20
+click @Fonts
+wait 20
+click @Filter_Clear
+wait 120
+shot tests/tmp/p1/real_5_fonts.png
+click @Glyphs
+wait 20
+click @finder.search
+type A
+wait 200
+click @fcell:0
+wait 10
+shot tests/tmp/p1/real_6_glyphs_view.png
+click @fside_Usage
+wait 60
+shot tests/tmp/p1/real_7_glyphs_usage.png
+click @usage_row_0
+wait 80
+shot tests/tmp/p1/real_8_glyph.png

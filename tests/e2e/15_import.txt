@@ -6,7 +6,7 @@ delete tests/tmp/e2e_imp.pxfdb
 snapdir tests/tmp/e2elib
 setdialog folder tests/tmp/e2elib
 setdialog save tests/tmp/e2e_imp.pxfdb
-click @File
+click @Menu
 wait 3
 click @file.import
 wait 3
@@ -29,7 +29,7 @@ assert sqlfile tests/tmp/e2e_imp.pxfdb "select count(*) from glyph" 6
 # the folder is not changed
 assert snapdir unchanged
 # a second import onto the same target asks to replace; Cancel keeps everything
-click @File
+click @Menu
 wait 3
 click @file.import
 wait 6
@@ -39,7 +39,7 @@ click @Cancel
 wait 4
 assert modal none
 assert wtitle e2e_imp.pxfdb
-click @File
+click @Menu
 wait 3
 click @file.import
 wait 6
@@ -82,7 +82,9 @@ assert infinder 0
 click @Glyphs
 wait 4
 assert infinder 1
-click @Library
+click @nav.0
+wait 8
+click @Typefaces
 wait 4
 assert inbrowser 1
 assert infinder 0

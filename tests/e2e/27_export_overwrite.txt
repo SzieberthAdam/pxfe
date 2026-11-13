@@ -3,7 +3,7 @@
 waitfor loading = 0 60000
 wait 5
 setdialog folder tests/tmp/xout
-click @File
+click @Menu
 wait 3
 click @file.export
 wait 10
@@ -32,7 +32,7 @@ assert modal none
 assert storefonts 3
 assert dbmodified 1
 # the dialog: what is found, the backup option (default on), the backup path through a Save dialog
-click @File
+click @Menu
 wait 3
 click @file.export
 wait 8

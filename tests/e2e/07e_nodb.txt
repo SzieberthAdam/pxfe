@@ -4,7 +4,7 @@ assert glyphs 0
 assert inbrowser 0
 assert hasstore 0
 assert wtitle pxfe
-click @File
+click @Menu
 wait 3
 assert filemenu 1
 assert w.file.load 1

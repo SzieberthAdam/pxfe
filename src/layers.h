@@ -56,8 +56,6 @@ int     Layers_Add(Layers *l, const char *pxfm, const char *fontName, bool sameC
 void    Layers_Remove(Layers *l, int i);          /* not the current glyph */
 void    Layers_Move(Layers *l, int i, int dir);   /* -1 up (towards the top), +1 down */
 
-/* A text field of the panel or of the popover has the keyboard: the editor must not use its shortcuts. */
-bool    Layers_TextFocus(const Layers *l);
 /* The Add Layer popover: open, and its rectangle (the rest of the UI ignores the mouse while it is open). */
 bool    Layers_PopoverOpen(const Layers *l);
 void    Layers_PopoverClose(Layers *l);

@@ -7,7 +7,7 @@ key a ctrl
 setclip ÁRVÍZTŰRŐ TÜKÖRFÚRÓGÉP\nárvíztűrő tükörfúrógép 0123
 key v ctrl
 key enter ctrl
-click @Zoom_2
+wait 1
 wait 90
 shot tests/shots/v4_typefaces_top.png
 
@@ -15,7 +15,7 @@ shot tests/shots/v4_typefaces_top.png
 click @Filter
 type Bradley
 wait 4
-click @Zoom_3
+click @bzoom+
 wait 120
 shot tests/shots/v4_typefaces_bradley.png
 click @hdr:0
@@ -36,7 +36,7 @@ click @Filter
 type Dina
 wait 4
 click @Cols_2
-click @Zoom_2
+wait 1
 wait 120
 shot tests/shots/v4_typefaces_dina.png
 
@@ -59,12 +59,12 @@ wait 30
 sleep 800
 wait 30
 shot tests/shots/v4_sample_strip.png
-click @sz_4
+repeat 2 click @sz+
 wait 20
 shot tests/shots/v4_sample_strip_4x.png
 drag @Sample_Resize @grid.scrollbar
 wait 20
 shot tests/shots/v4_sample_strip_tall.png
-click @Sample_Collapse
+click @Sample_Fold
 wait 20
 shot tests/shots/v4_sample_strip_collapsed.png

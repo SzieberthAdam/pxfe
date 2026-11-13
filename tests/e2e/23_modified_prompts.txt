@@ -3,7 +3,7 @@ wait 5
 assert unsaved 0
 assert wtitle e2e.pxfdb
 assert statusdb saved
-click @ascent.plus
+click @ascent+
 wait 6
 assert unsaved 1
 assert wtitle e2e.pxfdb
@@ -11,18 +11,18 @@ assert wtitle modified
 assert statusdb modified
 shot tests/tmp/shots/v5_title_modified.png
 # undoing the edit clears the marker (the hash is the original again)
-click @ascent.minus
+click @ascent-
 wait 6
 assert unsaved 0
 assert statusdb saved
-click @ascent.plus
+click @ascent+
 wait 6
 assert unsaved 1
 # Import Folder asks first; Cancel keeps everything
 setdialog folder tests/tmp/e2elib
 delete tests/tmp/e2e_imp.pxfdb
 setdialog save tests/tmp/e2e_imp.pxfdb
-click @File
+click @Menu
 wait 3
 click @file.import
 wait 5
@@ -33,7 +33,7 @@ assert modal none
 assert unsaved 1
 assert m.ascent 7
 # Quit from the File menu asks too; Cancel keeps the app
-click @File
+click @Menu
 wait 3
 click @file.quit
 wait 5
@@ -43,7 +43,7 @@ wait 4
 assert modal none
 assert unsaved 1
 # Import then Discard: the changes are dropped, the folder is imported
-click @File
+click @Menu
 wait 3
 click @file.import
 wait 5

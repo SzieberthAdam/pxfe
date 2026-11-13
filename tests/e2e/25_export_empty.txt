@@ -5,7 +5,7 @@ assert hasstore 1
 assert unsaved 0
 snapdir tests/tmp/e2elib
 setdialog folder tests/tmp/xout
-click @File
+click @Menu
 wait 3
 click @file.export
 wait 10

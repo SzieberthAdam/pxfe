@@ -9,7 +9,7 @@ assert glyphs 6
 snapdir tests/tmp/e2elib
 shot tests/tmp/shots/10_readonly.png
 # metric spinners, Delete, clone, shortcuts do nothing
-click @ascent.plus
+click @ascent+
 wait 3
 assert m.ascent 6
 key delete
@@ -53,7 +53,7 @@ assert modified 0
 assert unsaved 0
 assert glyphs 6
 click @ptab_Font
-click @ascent.plus
+click @ascent+
 wait 3
 assert m.ascent 7
 assert modified 1

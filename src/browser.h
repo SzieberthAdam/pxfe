@@ -14,7 +14,9 @@ typedef enum {
     BROWSER_DUPLICATE,  /* open a duplicate of the chosen entry for editing */
     BROWSER_INSIGHT,    /* the user clicked an entry of the "Similar" list: see BrowserChoice.insight */
     BROWSER_DELETE_FONT,     /* delete the font choice.pxfm (Del, context menu); main.c confirms and deletes */
-    BROWSER_DELETE_TYPEFACE  /* delete the typeface choice.pxtf (box header or a variant row) */
+    BROWSER_DELETE_TYPEFACE, /* delete the typeface choice.pxtf (box header or a variant row) */
+    BROWSER_OPEN_TYPEFACE,   /* a box header was opened: the browser itself switches to the Typeface view (never returned to main) */
+    BROWSER_DUPLICATE_TYPEFACE /* Duplicate to Edit on the typeface (choice.pxtf, and the selected font choice.pxfm / variant): main.c opens the Typeface view on an editable copy */
 } BrowserAction;
 
 typedef struct BrowserChoice {
@@ -33,6 +35,13 @@ void     Browser_Destroy(Browser *b);
 const char *Browser_Root(const Browser *b);
 /* The index of the store (typeface variants first, then fonts): main.c finds the typeface of a font in it. */
 const Library *Browser_Lib(const Browser *b);
+
+/* The Typeface tab of the side panel is drawn by the application (main.c, panel.inc) with the widgets of the font view: it gets the
+ * panel's x and width, the y to draw at (advanced past what it drew) and the pxtf hash of the typeface as the library stores it, and one variant of it. */
+typedef void (*BrowserTypefaceTab)(float x, float width, float *y, const PxtfTypeface *tf, const char *hash, int variant);
+typedef bool (*BrowserTypefaceEditing)(const char *pxtf);   /* the open document is an editable duplicate of this typeface */
+void     Browser_SetTypefaceTab(BrowserTypefaceTab draw, BrowserTypefaceEditing editing);
+bool     Browser_TypefaceTabShown(const Browser *b);
 
 /* Rescan the library (after a commit, a deletion or a load), keeping filters, scroll and selection where possible. */
 void     Browser_Rescan(Browser *b);
@@ -62,7 +71,7 @@ void     Browser_SetColumns(Browser *b, int cols);     /* 0 = Auto, 1..8 */
 void     Browser_ScrollBy(Browser *b, float pixels);   /* positive: down */
 void     Browser_SelectVisible(Browser *b, int visibleIndex);
 int      Browser_Tab(const Browser *b);
-int      Browser_SideTab(const Browser *b);   /* 0 View, 1 Similar */
+int      Browser_SideTab(const Browser *b);   /* 0 View, 1 Similar, 2 Typeface (shown as View | Typeface | Similar) */
 int      Browser_Zoom(const Browser *b);
 int      Browser_Columns(const Browser *b);
 const char *Browser_FilterText(const Browser *b);
@@ -86,5 +95,13 @@ bool     Browser_TypefaceHeaderCenter(const Browser *b, int box, Vector2 *out); 
 int      Browser_LastAction(const Browser *b);
 const char *Browser_LastPxfm(const Browser *b);
 const char *Browser_LastPxtf(const Browser *b);
+
+/* The Typeface view (the Typefaces tab narrowed to one typeface, its fonts as large rows).  Opened by a double click, Enter or Open
+ * on a box header; the application's navigation bar shows it and leaves it (Browser_SetTab also leaves it). */
+bool     Browser_OpenTypeface(Browser *b, const char *pxtf, const char *selPxfm);   /* false when the library has no such typeface; selPxfm (may be NULL) is the font to select */
+void     Browser_CloseTypeface(Browser *b);
+bool     Browser_InTypeface(const Browser *b);
+const char *Browser_TypefaceHash(const Browser *b);
+void     Browser_TypefaceName(const Browser *b, char *out, size_t n);   /* the family ("" outside the view) */
 
 #endif

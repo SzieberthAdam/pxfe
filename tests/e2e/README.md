@@ -52,9 +52,15 @@ One command per line, `#` starts a comment.
 - Insight and finder state:
   `usage` (fonts that hold the selected glyphs), `usagevar` (typeface variants that name them), `usagecode` (fonts that hold the single selected glyph under its code, -1 when none), `similar` (entries of the similar list), `insightbusy`.
   `finder_count` (bitmaps found for the code), `finder_code`, `fcellfonts` (the "N fonts" of the first finder cell).
-- Panel tabs: `ptab` (right panel of the font view: 0 Font, 1 Typeface, 2 Glyph, 3 Similar), `bside` (side panel of the browser: 0 View, 1 Similar).
-  The tab buttons are `@ptab_Font`, `@ptab_Typeface`, `@ptab_Glyph`, `@ptab_Similar`, `@bside_View`, `@bside_Similar`.
-  The metric and typeface widgets (`@ascent.plus`, `@c.family`…) exist only on their tab, so a script clicks the tab first.
+- Navigation (version 6): `nav` (0 Typefaces, 1 Typeface, 2 Fonts, 3 Font, 4 Glyph, 5 Glyphs), `navactive` (the blue segment), `intypeface`, `assert navseg <0|1|2> <text>`; the segments are `@nav.0`, `@nav.1`, `@nav.2` (also `@Typefaces`, `@Fonts`, `@Glyphs` where they read so); the way back to the open font is `key right alt`.
+  In the Typeface view the rows' buttons are `@tv.open.N`, `@tv.dup.N` and `@tv.delete.N`; `blast` 6 is the opening of a typeface.
+- Panel tabs: `ptab` (right panel of the font view: 0 Font, 1 Glyph, 2 Similar), `bside` (side panel of the browser: 0 View, 1 Similar, 2 Typeface), `fside` (side panel of the Glyphs view: 0 View, 1 Usage).
+  The tab buttons are `@ptab_Font`, `@ptab_Glyph`, `@ptab_Similar`, `@bside_View`, `@bside_Typeface`, `@bside_Similar`, `@fside_View`, `@fside_Usage`.
+  The Typeface tab exists in the Typefaces and Typeface views only (version 7); its fields (`@c.family`, `@c.italic`…) and the boxed hash `@hash_typeface_full` are read-only until "Duplicate Typeface to Edit" (`@Duplicate_Typeface_to_Edit` in the tab, `@tv.duptypeface` in the Typeface view's heading) made an editable copy; then `@hash_typeface_orig` shows the original hash beside the current one.
+  A script scrolls the panel (`wheel -8 1250 400`) before it clicks a switch, and waits 10 frames after the click (the content changes height with the original hash box).
+  The metric widgets (`@ascent+`…) exist only on their tab, so a script clicks the tab first.
+- Zoom (version 7): every zoom is one stepper, `[-] 3x [+]`, registered as `@<prefix>-` and `@<prefix>+`: `@zoom` (font view toolbar), `@ezoom` (glyph view), `@sz` (the sample strip), `@bzoom` (the library views' View tab), `@fzoom` (the Glyphs view's View tab, `fzoom` is its value, default 3).
+  The Glyphs view's sort is `@fsort_Count`, `@fsort_Height`, `@fsort_Width`, the search `@finder.search`, Previous and Next `@finder.prev`, `@finder.next`.
   The rows of the usage and similar lists are `@usage_row_N` and `@similar_row_N`, and the panel's link is `@glyph_find`.
 - `assert glyph <cp> exists|size|top|y|x|advance|ink|pixel|hash`, where `<cp>` is `U+0041` or `#n`.
 - `assert caption <glyph> <text>` checks the code label of the grid (`U+0041`, `#0`).
@@ -69,8 +75,8 @@ One command per line, `#` starts a comment.
   Right click: `click @card:0 right`; the side panel's buttons are `@Delete_Font` and `@Delete_Typeface` (`assert w.Delete_Font 0|1`); the context menu items are `@Ctx_Open`, `@Ctx_Duplicate_to_Edit`, `@Ctx_Delete_Font`, `@Ctx_Delete_Typeface`.
 - Sample (shared by the browser and the font view): `assert sample <text>` (`\n` is a new line, `-` is empty), `samplelines`, `samplefocus`, `setclip <text>` puts text on the clipboard for Ctrl+V.
   The browser's box is `@Sample`, the strip's `@Sample_Edit`.
-  Strip state: `stripzoom`, `striph` (stored height), `stripcollapsed`; widgets `@sz_1` to `@sz_8`, `@Sample_Resize` (the top edge), `@Sample_Collapse`, `@Sample_Preview`, and `@Sample_Origin`, the top left of the first line's font box (for `assert pixel`).
-- `assert hashname` checks that the current hash of the font (and of its typeface) equals the hash it was opened with, names a row of the store and, for a root, a file of the library.
+  Strip state: `stripzoom`, `striph` (stored height), `stripcollapsed`; widgets `@sz-`, `@sz+`, `@Sample_Resize` (the top edge), `@Sample_Fold`, `@Sample_Preview`, and `@Sample_Origin`, the top left of the first line's font box (for `assert pixel`).
+- `assert tabhash <hash>` (the hash in the Typeface tab's boxed field), `assert hashname` checks that the current hash of the font (and of its typeface) equals the hash it was opened with, names a row of the store and, for a root, a file of the library.
 - `waitfor <name> <op> <value> [ms]` idles until a state of `assert` holds (default timeout 60 s, a timeout is a failure).
 - `snapdir <dir>` takes the snapshot used by `assert snapdir`.
 - Glyph view (version 4): `gtab` (right panel: 0 Glyph, 1 Usage, 2 Layers; the tab buttons are `@gtab_Glyph`, `@gtab_Usage`, `@gtab_Layers`), `emetrics` (metric lines on), `ehidden` (the edited glyph's layer is hidden), `ezoom`.
@@ -83,7 +89,7 @@ One command per line, `#` starts a comment.
   `$GHASH` and `$GOHASH` in a script are the pxgl hash of the glyph being edited, now and when the font was opened.
   A value may be written `0xRRGGBB`.
 - `setdialog folder|pxfdb|save <path>` overrides the native dialogs (`none` clears them): the folder pickers of Import and Export, the Load dialog, and the Save dialogs of Save As, the import target and the backup.
-- File menu and export dialog: `@File`, `@file.load`, `@file.save`, `@file.saveas`, `@file.import`, `@file.export`, `@file.quit`, `@Save`; `assert filemenu`; the dialog has `xdopen`, `xfound_fonts|typefaces|glyphs`, `xbackup`, the widgets `@xd.backup`, `@xd.change`, `@Append`, `@Overwrite`, `@Cancel`; after an export `xw_*` (written), `xs_*` (skipped), `xd_*` (deleted) and `xbackupfailed`.
+- Menu (formerly File) and export dialog: `@Menu`, `@file.load`, `@file.save`, `@file.saveas`, `@file.import`, `@file.export`, `@file.quit`, `@Save`; `assert filemenu`; the dialog has `xdopen`, `xfound_fonts|typefaces|glyphs`, `xbackup`, the widgets `@xd.backup`, `@xd.change`, `@Append`, `@Overwrite`, `@Cancel`; after an export `xw_*` (written), `xs_*` (skipped), `xd_*` (deleted) and `xbackupfailed`.
 - `copyfile`, `writefile`, `delete`, `verifylib <pxfm> <libroot> [N]`, `shot <png>`, `expectquit`.
 
 Command line options for the console build: `--ini <file>`, `--font <hash>`, `--typeface <hash>`, `--duplicate`, `--import-to <pxfdb>`, `--job-hold-ms N` (keep the progress screen at least that long), `--shot-job <png>` with `--shot-job-ms N` (a screenshot of the progress screen), `--play <script>`.
@@ -99,7 +105,7 @@ The environment variable `PXFE_TRACE=1` prints one `TRACE load ...` or `TRACE im
 - 09: input paths.
 - 10: read-only behaviour and Duplicate to Edit.
 - 11: modified marker by hash.
-- 12: typeface duplicate and Save.
+- 12: a typeface duplicate (version 7): "Duplicate Typeface to Edit" in the Typeface view, the fields and the italic switch of its Typeface tab, the "*" in the first nav segment, Save writes a new pxtf and no pxfm, the original stays, leaving the view commits.
 - 13: default glyph and kerning.
 - 14: browser: tabs and counts, filter, sample, zoom, columns, opening a card read-only, Back, Duplicate to Edit, the commit into memory, Save.
 - 15: Import Folder from the File menu (progress, replace prompt, the folder untouched, navigation).
@@ -118,6 +124,12 @@ The environment variable `PXFE_TRACE=1` prints one `TRACE load ...` or `TRACE im
 - 30 and 30b: delete a font and a typeface, Save, reload.
 - 40 to 45: the glyph view (bar, panel, layers); 45 is the discoverability: "Open in Glyph View" in the font view, the bar's `@Layers` toggle (`@Layers_1` when a layer exists), the empty Layers tab with its big `@+_Add_Layer`.
 - 50 to 55: samples, typeface boxes, delete requests of the browser.
+- 61: version 7 (the Typefaces start view, the Typeface tab of the library views, the one zoom control, the Glyphs view's View and Usage tabs, the usage click opening the Glyph view).
+- 60, 62 and 64 to 69 (not in `run_all.bat`): screenshot scripts that start from a database given as the first argument; each names its own command and output folder in its first lines.
+  60 is the six navigation views, 62 the version 7 views, 64 to 68 one component each (hash, buttons, fields, lists), 67 on the test library, and 69 the final shots of every view and overlay at 1400 x 900 and at 1110 x 600 (`tests\tmp\p2\final`).
+  They run on a copy of the real library (`tests\tmp\p2\real.pxfdb`, from `pixelglyphlib\pxfdb.pxfdb`) and report 0 passed, 0 failed.
+- 93: the keyboard in menus (Down, Up, Home, Enter, Escape on the File menu; the highlight follows the mouse; Enter does not reach the selected card behind the menu; `assert menuhi N`).
+- 59: the navigation bar (Menu, Typefaces | Fonts | Glyphs, the Typeface, Font and Glyph views, Alt+Left); 59b: a font without a typeface ("Orphaned").
 - 58: the red Delete Font and Delete Typeface buttons of the browser's side panel, end to end (confirmation, Cancel, rewritten typeface, emptied typeface, orphaned glyphs, the Fonts tab).
 - 49, 56, 57, 90, 91, 92 (not in `run_all.bat`): screenshots and a performance run; start them with a database as the first argument.
 - 20: smoke test on the real library (see below).

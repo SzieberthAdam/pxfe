@@ -17,7 +17,7 @@
 
 #define TOOLBAR_H 40
 #define PALETTE_H 34
-#define STATUS_H 24
+#define STATUS_H TH_ROW_H
 #define MARGIN 3          /* cells of free space around the box when fitting */
 #define MAX_BITMAP 4096
 
@@ -99,12 +99,6 @@ static Color pixcol(const PxFont *f, char c)
 }
 
 static Color fade(Color c, int a) { c.a = (unsigned char)((c.a * a) / 255); return c; }
-
-static void tri(Vector2 a, Vector2 b, Vector2 c, Color col)
-{
-    DrawTriangle(a, b, c, col);
-    DrawTriangle(a, c, b, col);
-}
 
 static void touch(Editor *e)
 {
@@ -313,73 +307,7 @@ static void draw_bitmap_color(const PxGlyph *g, int sx, int sy, int scale, Color
 
 static bool hit(Rectangle r) { return !Th_InputBlocked() && CheckCollisionPointRec(GetMousePosition(), r); }
 
-static void reg_tip(const char *tip, Rectangle r)
-{
-    char n[48];
-    int i = 0;
-    for (; tip[i] && !(tip[i] == ' ' && tip[i + 1] == ' ') && i < 47; i++) n[i] = tip[i] == ' ' ? '_' : tip[i];
-    n[i] = 0;
-    Th_Reg(n, r);
-}
-
 static void sep(float x, float y, float h) { Th_VLine(x, y + 9, y + h - 9, TH_LINE); }
-
-enum { IC_PENCIL, IC_ERASER, IC_LINE, IC_RECT, IC_FILL, IC_PREV, IC_NEXT, IC_LEFT, IC_RIGHT, IC_UP, IC_DOWN };
-
-static void draw_icon(int ic, Rectangle r, Color c)
-{
-    float cx = (float)(int)(r.x + r.width / 2), cy = (float)(int)(r.y + r.height / 2);
-    switch (ic) {
-    case IC_PENCIL:
-        DrawLineEx((Vector2){cx - 5, cy + 5}, (Vector2){cx + 4, cy - 4}, 2.5f, c);
-        DrawRectangle((int)cx + 4, (int)cy - 7, 3, 3, c);
-        DrawRectangle((int)cx - 7, (int)cy + 5, 3, 2, c);
-        break;
-    case IC_ERASER:
-        DrawRectangleLinesEx((Rectangle){cx - 6, cy - 4, 12, 9}, 1, c);
-        DrawRectangle((int)cx - 6, (int)cy + 1, 12, 4, c);
-        break;
-    case IC_LINE:
-        DrawLineEx((Vector2){cx - 6, cy + 6}, (Vector2){cx + 6, cy - 6}, 1.5f, c);
-        DrawRectangle((int)cx - 8, (int)cy + 4, 3, 3, c);
-        DrawRectangle((int)cx + 5, (int)cy - 7, 3, 3, c);
-        break;
-    case IC_RECT:
-        DrawRectangleLinesEx((Rectangle){cx - 6, cy - 5, 12, 10}, 1.5f, c);
-        break;
-    case IC_FILL:
-        DrawRectangleLinesEx((Rectangle){cx - 6, cy - 3, 11, 9}, 1.5f, c);
-        DrawRectangle((int)cx - 5, (int)cy + 1, 9, 4, c);
-        DrawLineEx((Vector2){cx - 2, cy - 3}, (Vector2){cx + 2, cy - 7}, 1.5f, c);
-        DrawCircle((int)cx + 7, (int)cy + 4, 1.8f, c);
-        break;
-    case IC_PREV: tri((Vector2){cx + 3, cy - 5}, (Vector2){cx - 3, cy}, (Vector2){cx + 3, cy + 5}, c); break;
-    case IC_NEXT: tri((Vector2){cx - 3, cy - 5}, (Vector2){cx + 3, cy}, (Vector2){cx - 3, cy + 5}, c); break;
-    case IC_LEFT: tri((Vector2){cx + 3, cy - 4}, (Vector2){cx - 3, cy}, (Vector2){cx + 3, cy + 4}, c); break;
-    case IC_RIGHT: tri((Vector2){cx - 3, cy - 4}, (Vector2){cx + 3, cy}, (Vector2){cx - 3, cy + 4}, c); break;
-    case IC_UP: tri((Vector2){cx - 4, cy + 3}, (Vector2){cx, cy - 3}, (Vector2){cx + 4, cy + 3}, c); break;
-    case IC_DOWN: tri((Vector2){cx - 4, cy - 3}, (Vector2){cx, cy + 3}, (Vector2){cx + 4, cy - 3}, c); break;
-    }
-}
-
-/* Flat icon button; returns true when clicked. */
-static bool ibtn(Editor *e, Rectangle r, int icon, bool active, bool enabled, const char *tip)
-{
-    bool popupBlock = e->showAll && CheckCollisionPointRec(GetMousePosition(), e->popupRect);
-    if (tip) reg_tip(tip, r);
-    bool hv = enabled && hit(r) && !popupBlock;
-    bool down = hv && IsMouseButtonDown(MOUSE_BUTTON_LEFT);
-    if (active) {
-        DrawRectangleRounded(r, 0.2f, 6, TH_ACCENT_TINT);
-        DrawRectangleRoundedLinesEx(r, 0.2f, 6, 1, TH_ACCENT);
-    } else if (hv) {
-        DrawRectangleRounded(r, 0.2f, 6, down ? (Color){0, 0, 0, 22} : TH_HOVER);
-    }
-    Color ic = !enabled ? (Color){0xB8, 0xB8, 0xC0, 0xFF} : (active ? TH_ACCENT : TH_TEXT);
-    draw_icon(icon, r, ic);
-    if (hv && tip) { e->tip = tip; e->tipRect = r; }
-    return hv && IsMouseButtonReleased(MOUSE_BUTTON_LEFT);
-}
 
 static void glyph_label(const PxGlyph *g, char *buf, size_t n)
 {
@@ -413,14 +341,14 @@ static bool swatch(Editor *e, Rectangle r, char c)
     } else {
         if (col.a < 255) {
             DrawRectangleRec(r, TH_PANEL);
-            DrawRectangle((int)r.x, (int)r.y, (int)r.width / 2, (int)r.height / 2, (Color){0xE4, 0xE4, 0xE8, 0xFF});
+            DrawRectangle((int)r.x, (int)r.y, (int)r.width / 2, (int)r.height / 2, TH_TRACK);
         }
         DrawRectangleRec(r, col);
         int lum = (col.r * 30 + col.g * 59 + col.b * 11) / 100;
         char s[2] = {c, 0};
         Vector2 m = Th_MeasureSmall(s);
         Th_TextSmall(s, r.x + (int)((r.width - m.x) / 2), r.y + (int)((r.height - m.y) / 2),
-                     lum > 140 ? (Color){0, 0, 0, 150} : (Color){255, 255, 255, 190});
+                     lum > 140 ? TH_ON_LIGHT : TH_ON_DARK);
     }
     Th_RectLines(r, hv ? TH_M_BOX : TH_LINE);
     if (sel) {
@@ -454,17 +382,6 @@ static int palette_chars(const Editor *e, char *out)
 
 static void close_edit_cmd(Editor *e) { e->editOpen = false; }
 
-/* A small text button that draws disabled (and does nothing) in a read-only original. */
-static bool tbtn(Editor *e, Rectangle r, const char *label)
-{
-    if (!locked(e)) return Th_Button(r, label);
-    DrawRectangleRounded(r, 0.2f, 6, TH_PANEL_ALT);
-    DrawRectangleRoundedLinesEx(r, 0.2f, 6, 1, TH_LINE);
-    Vector2 m = Th_Measure(label);
-    Th_Text(label, r.x + (int)((r.width - m.x) / 2), r.y + (int)((r.height - m.y) / 2), (Color){0xB8, 0xB8, 0xC0, 0xFF});
-    return false;
-}
-
 /* Zoom by `delta` steps around the middle of the canvas. */
 static void zoom_by(Editor *e, int delta)
 {
@@ -477,23 +394,6 @@ static void zoom_by(Editor *e, int delta)
     e->vx = (int)floor(e->cv.width / 2 - fx * nz + 0.5);
     e->vy = (int)floor(e->cv.height / 2 - fy * nz + 0.5);
     e->userZoom = true;
-}
-
-/* "Read-only · Duplicate to Edit": the chip an original shows in the bar.  Returns true when clicked. */
-static bool ro_chip(Editor *e, Rectangle r, const char *label)
-{
-    Th_Reg("ro_chip", r);
-    bool hv = hit(r);
-    DrawRectangleRounded(r, 0.5f, 8, hv ? (Color){0xFF, 0xEC, 0xBF, 0xFF} : (Color){0xFF, 0xF4, 0xD6, 0xFF});
-    DrawRectangleRoundedLinesEx(r, 0.5f, 8, 1, hv ? (Color){0xD9, 0xA8, 0x2E, 0xFF} : (Color){0xEB, 0xD2, 0x8C, 0xFF});
-    Color ink = (Color){0x7A, 0x55, 0x00, 0xFF};
-    float lx = r.x + 11, cy = (float)(int)(r.y + r.height / 2);
-    DrawRectangleLinesEx((Rectangle){lx + 1, cy - 6, 6, 5}, 1, ink);        /* a padlock: shackle and body */
-    DrawRectangle((int)lx - 1, (int)cy - 2, 10, 7, ink);
-    Vector2 m = Th_Measure(label);
-    Th_Text(label, r.x + 26, r.y + (int)((r.height - m.y) / 2), ink);
-    if (hv) { e->tip = "An original is read-only: make an editable copy of this font"; e->tipRect = r; }
-    return hv && IsMouseButtonReleased(MOUSE_BUTTON_LEFT);
 }
 
 /* Draws the glyph view's bar (two rows) inside r; returns the height used. */
@@ -509,21 +409,21 @@ static float draw_toolbar(Editor *e, Rectangle area)
     Th_HLine(area.x, area.x + area.width, area.y + total - 1, TH_LINE);
 
     /* ---- row 1: Back, previous / next, the glyph's name, tools, zoom, metrics, the read-only chip */
-    float x = area.x + 10, y = area.y + 6, bh = 28;
-    if (Th_Button((Rectangle){x, y, 60, bh}, "Back")) e->result = EDITOR_CLOSE;
-    x += 60 + 10;
+    float x = area.x + 10, y = area.y + 6, bh = TH_ROW_H;
+    if (Th_Button((Rectangle){x, y, Th_ButtonW("Back"), bh}, "Back", 0, NULL)) e->result = EDITOR_CLOSE;
+    x += Th_ButtonW("Back") + 10;
     sep(x, area.y, h1); x += 10;
 
-    if (ibtn(e, (Rectangle){x, y, 28, bh}, IC_PREV, false, e->gi > 0, "Previous glyph  (PgUp)")) e->result = EDITOR_PREV;
-    x += 30;
-    if (ibtn(e, (Rectangle){x, y, 28, bh}, IC_NEXT, false, e->gi + 1 < e->font->count, "Next glyph  (PgDn)")) e->result = EDITOR_NEXT;
-    x += 28 + 8;
+    if (Th_Button((Rectangle){x, y, bh, bh}, "Previous glyph  (PgUp)", TH_BTN_ICON(TH_IC_PREV) | TH_BTN_OFF(e->gi > 0), "Previous glyph  (PgUp)")) e->result = EDITOR_PREV;
+    x += bh + 2;
+    if (Th_Button((Rectangle){x, y, bh, bh}, "Next glyph  (PgDn)", TH_BTN_ICON(TH_IC_NEXT) | TH_BTN_OFF(e->gi + 1 < e->font->count), "Next glyph  (PgDn)")) e->result = EDITOR_NEXT;
+    x += bh + 8;
 
     char name[48] = "";
     if (g) glyph_label(g, name, sizeof name);
     Vector2 nm = Th_Measure(name);
     Th_Text(name, x, area.y + (int)((h1 - 1 - nm.y) / 2), TH_TEXT);
-    x += (nm.x > 96 ? nm.x : 96) + 8;
+    x += (nm.x > 72 ? nm.x : 72) + 8;
     sep(x, area.y, h1); x += 10;
 
     for (int t = 0; t < T_COUNT; t++) {
@@ -531,77 +431,49 @@ static float draw_toolbar(Editor *e, Rectangle area)
         snprintf(tip, sizeof tip, "%s  (%s)", kToolName[t], kToolKey[t]);
         static char tips[T_COUNT][48];
         memcpy(tips[t], tip, sizeof tip);
-        if (ibtn(e, (Rectangle){x, y, 30, bh}, IC_PENCIL + t, e->tool == (Tool)t, !locked(e), tips[t])) e->tool = (Tool)t;
-        x += 32;
+        if (Th_Button((Rectangle){x, y, bh, bh}, tips[t], TH_BTN_ICON(TH_IC_PENCIL + t) | (e->tool == (Tool)t ? TH_BTN_ACTIVE : 0) | TH_BTN_OFF(!locked(e)), tips[t])) e->tool = (Tool)t;
+        x += bh + 2;
     }
     x += 4;
     sep(x, area.y, h1); x += 10;
 
     /* zoom: Fit, minus, value, plus */
-    if (Th_Button((Rectangle){x, y, 40, bh}, "Fit")) { e->needFit = true; e->userZoom = false; }
-    Th_Reg("ezoom.fit", (Rectangle){x, y, 40, bh});
-    x += 40 + 6;
+    if (Th_Button((Rectangle){x, y, Th_ButtonW("Fit"), bh}, "Fit", 0, NULL)) { e->needFit = true; e->userZoom = false; }
+    Th_Reg("ezoom.fit", (Rectangle){x, y, Th_ButtonW("Fit"), bh});
+    x += Th_ButtonW("Fit") + 6;
     {
         char zt[12];
         snprintf(zt, sizeof zt, "%dx", e->zoom);
-        Vector2 zm = Th_Measure(zt);
-        Rectangle zr = {x, y, 28 + 44 + 28, bh};
-        DrawRectangleRounded(zr, 0.2f, 6, TH_PANEL);
-        DrawRectangleRoundedLinesEx(zr, 0.2f, 6, 1, TH_LINE);
-        Rectangle zmn = {zr.x, zr.y, 28, bh}, zpl = {zr.x + zr.width - 28, zr.y, 28, bh};
-        Th_Reg("ezoom-", zmn); Th_Reg("ezoom+", zpl);
-        bool hm = hit(zmn), hp = hit(zpl);
-        if (hm) { DrawRectangleRounded(zmn, 0.3f, 6, TH_HOVER); e->tip = "Zoom out"; e->tipRect = zmn; }
-        if (hp) { DrawRectangleRounded(zpl, 0.3f, 6, TH_HOVER); e->tip = "Zoom in"; e->tipRect = zpl; }
-        float cy = (float)(int)(zr.y + bh / 2);
-        DrawRectangle((int)(zmn.x + 10), (int)cy, 8, 1, TH_TEXT);
-        DrawRectangle((int)(zpl.x + 10), (int)cy, 8, 1, TH_TEXT);
-        DrawRectangle((int)(zpl.x + 13.5f), (int)cy - 4, 1, 9, TH_TEXT);
-        Th_Text(zt, zr.x + 28 + (int)((44 - zm.x) / 2), zr.y + (int)((bh - zm.y) / 2), TH_TEXT);
-        if (hm && IsMouseButtonReleased(MOUSE_BUTTON_LEFT)) zoom_by(e, -1);
-        if (hp && IsMouseButtonReleased(MOUSE_BUTTON_LEFT)) zoom_by(e, 1);
-        x += zr.width + 6;
+        int zs = Th_Stepper((Rectangle){x, y, TH_STEP_W, bh}, zt, "ezoom", (e->zoom <= 1 ? TH_STEP_NO_MINUS : 0) | (e->zoom >= 64 ? TH_STEP_NO_PLUS : 0));
+        if (Th_StepperHover()) { e->tip = Th_StepperHover() < 0 ? "Zoom out" : "Zoom in"; e->tipRect = (Rectangle){x, y, TH_STEP_W, bh}; }
+        if (zs) zoom_by(e, zs);
+        x += TH_STEP_W + 6;
     }
     sep(x, area.y, h1); x += 10;
-    Th_Toggle((Rectangle){x, y, 78, bh}, "Metrics", &e->showMetrics);
-    x += 78 + 6;
+    Th_Toggle((Rectangle){x, y, Th_ButtonW("Metrics"), bh}, "Metrics", &e->showMetrics, 0, NULL);
+    x += Th_ButtonW("Metrics") + 6;
     {
         int extra = e->layers ? Layers_Count(e->layers) - 1 : 0;
         char ll[24];
         if (extra > 0) snprintf(ll, sizeof ll, "Layers %d", extra); else snprintf(ll, sizeof ll, "Layers");
-        Rectangle lr = {x, y, Th_Measure(ll).x + 28, bh};
-        bool act = e->layersActive;
-        Th_Toggle(lr, ll, &act);
+        Rectangle lr = {x, y, Th_ButtonW(ll), bh};
         Th_Reg("Layers", lr);
-        if (hit(lr)) {
-            e->tip = "Reference layers: trace or compare other glyphs";
-            e->tipRect = lr;
-            if (IsMouseButtonReleased(MOUSE_BUTTON_LEFT)) e->layersReq = true;
-        }
+        if (Th_Button(lr, ll, e->layersActive ? TH_BTN_ACTIVE : 0, "Reference layers: trace or compare other glyphs")) e->layersReq = true;
         x += lr.width;
-    }
-
-    if (e->readOnly) {
-        const char *full = "Read-only \xC2\xB7 Duplicate to Edit", *shortL = "Duplicate to Edit";
-        float cw = Th_Measure(full).x + 38;
-        const char *lbl = full;
-        if (area.x + area.width - 10 - cw < x + 14) { lbl = shortL; cw = Th_Measure(shortL).x + 38; }
-        if (ro_chip(e, (Rectangle){area.x + area.width - 10 - cw, y + 1, cw, bh - 2}, lbl)) e->result = EDITOR_DUPLICATE;
     }
 
     /* ---- row 2: the ink palette on the left, the move and advance controls on the right */
     float y2 = area.y + h1 + 3;
     float px = area.x + 10, py = area.y + h1 + 6;
-    Th_TextSmall("INK", px, py + 6, TH_TEXT_DIM);
-    px += 30;
+    Th_TextCap("INK", px, py + 4, TH_TEXT_DIM);
+    px += Th_MeasureCap("INK").x + TH_GAP;
     for (int i = 0; i < nchars; i++) {
         if (chars[i] == '.' && i > 0) px += 8;
         if (swatch(e, (Rectangle){px, py, 22, 22}, chars[i])) e->ink = chars[i];
         px += 26;
     }
     if (e->font->hasPalette) {
-        Rectangle br = {px + 4, py, 44, 22};
-        if (Th_Toggle(br, "All", &e->showAll)) {}
+        Th_Toggle((Rectangle){px + 4, py, 44, 22}, "All", &e->showAll, 0, NULL);
         px += 52;
     }
     (void)close_edit_cmd;
@@ -610,27 +482,28 @@ static float draw_toolbar(Editor *e, Rectangle area)
     if (g) {
         char adv[40];
         snprintf(adv, sizeof adv, "%d", g->advance);
-        Vector2 am = Th_Measure(adv);
-        float aw = imax(40, (int)am.x + 16);
-        rx -= 24; if (tbtn(e, (Rectangle){rx, y2, 24, bh}, "+")) set_advance(e, g->advance + 1), close_edit_cmd(e);
-        rx -= aw + 2;
-        {
-            Rectangle vr = {rx, y2, aw, bh};
-            DrawRectangleRounded(vr, 0.2f, 6, TH_PANEL);
-            DrawRectangleRoundedLinesEx(vr, 0.2f, 6, 1, TH_LINE);
-            Th_Text(adv, vr.x + (int)((aw - am.x) / 2), vr.y + (int)((bh - am.y) / 2), TH_TEXT);
-        }
-        rx -= 24 + 2; if (tbtn(e, (Rectangle){rx, y2, 24, bh}, "-")) set_advance(e, g->advance - 1), close_edit_cmd(e);
-        Vector2 lm = Th_MeasureSmall("ADVANCE");
-        rx -= lm.x + 8; Th_TextSmall("ADVANCE", rx, y2 + (int)((bh - lm.y) / 2), TH_TEXT_DIM);
+        Rectangle sr = {rx - TH_STEP_W, y2, TH_STEP_W, bh};
+        int st = Th_Stepper(sr, adv, "", locked(e) ? TH_STEP_NO_MINUS | TH_STEP_NO_PLUS : 0);
+        if (st) set_advance(e, g->advance + st), close_edit_cmd(e);
+        rx = sr.x;
+        Vector2 lm = Th_MeasureCap("ADVANCE");
+        rx -= lm.x + 8; Th_TextCap("ADVANCE", rx, y2 + (int)((bh - lm.y) / 2), TH_TEXT_DIM);
         rx -= 8; sep(rx, area.y + h1, PALETTE_H); rx -= 10;
 
-        rx -= 28; if (ibtn(e, (Rectangle){rx, y2, 28, bh}, IC_DOWN, false, g->w > 0 && !locked(e), "Move bitmap down  (Shift+Down)")) move_bitmap(e, 0, 1);
-        rx -= 28; if (ibtn(e, (Rectangle){rx, y2, 28, bh}, IC_UP, false, g->w > 0 && !locked(e), "Move bitmap up  (Shift+Up)")) move_bitmap(e, 0, -1);
-        rx -= 28; if (ibtn(e, (Rectangle){rx, y2, 28, bh}, IC_RIGHT, false, g->w > 0 && !locked(e), "Move bitmap right  (Shift+Right)")) move_bitmap(e, 1, 0);
-        rx -= 28; if (ibtn(e, (Rectangle){rx, y2, 28, bh}, IC_LEFT, false, g->w > 0 && !locked(e), "Move bitmap left  (Shift+Left)")) move_bitmap(e, -1, 0);
-        lm = Th_MeasureSmall("MOVE");
-        rx -= lm.x + 8; Th_TextSmall("MOVE", rx, y2 + (int)((bh - lm.y) / 2), TH_TEXT_DIM);
+        rx -= bh; if (Th_Button((Rectangle){rx, y2, bh, bh}, "Move bitmap down  (Shift+Down)", TH_BTN_ICON(TH_IC_DOWN) | TH_BTN_OFF(g->w > 0 && !locked(e)), "Move bitmap down  (Shift+Down)")) move_bitmap(e, 0, 1);
+        rx -= bh; if (Th_Button((Rectangle){rx, y2, bh, bh}, "Move bitmap up  (Shift+Up)", TH_BTN_ICON(TH_IC_UP) | TH_BTN_OFF(g->w > 0 && !locked(e)), "Move bitmap up  (Shift+Up)")) move_bitmap(e, 0, -1);
+        rx -= bh; if (Th_Button((Rectangle){rx, y2, bh, bh}, "Move bitmap right  (Shift+Right)", TH_BTN_ICON(TH_IC_RIGHT) | TH_BTN_OFF(g->w > 0 && !locked(e)), "Move bitmap right  (Shift+Right)")) move_bitmap(e, 1, 0);
+        rx -= bh; if (Th_Button((Rectangle){rx, y2, bh, bh}, "Move bitmap left  (Shift+Left)", TH_BTN_ICON(TH_IC_LEFT) | TH_BTN_OFF(g->w > 0 && !locked(e)), "Move bitmap left  (Shift+Left)")) move_bitmap(e, -1, 0);
+        lm = Th_MeasureCap("MOVE");
+        rx -= lm.x + 8; Th_TextCap("MOVE", rx, y2 + (int)((bh - lm.y) / 2), TH_TEXT_DIM);
+    }
+    if (e->readOnly) {   /* between the ink palette and the move controls: the notice (dropped when it does not fit) and the primary button */
+        float lw = Th_Measure("Read-only").x + 8, cw = Th_DuplicateW(false), x0 = px + 8;
+        bool lab = x0 + lw + cw <= rx - 8;
+        Rectangle cr = {x0 + (lab ? lw : 0), y2, cw, bh};
+        if (lab) Th_Text("Read-only", x0, y2 + (int)((bh - Th_Measure("M").y) / 2), TH_TEXT_WARN);
+        Th_Reg("ro_chip", cr);
+        if (Th_Duplicate(cr, false, 0, "An original is read-only: make an editable copy of this font")) e->result = EDITOR_DUPLICATE;
     }
     return total;
 }
@@ -642,9 +515,7 @@ static void draw_popup(Editor *e, Rectangle anchor)
     Rectangle p = {anchor.x + 10 + 30, anchor.y + anchor.height + 2, cols * cs + 16, rows * cs + 16};
     if (p.x + p.width > GetScreenWidth()) p.x = GetScreenWidth() - p.width - 4;
     e->popupRect = p;
-    DrawRectangleRounded((Rectangle){p.x + 1, p.y + 2, p.width, p.height}, 0.04f, 6, (Color){0, 0, 0, 24});
-    DrawRectangleRounded(p, 0.04f, 6, TH_PANEL);
-    DrawRectangleRoundedLinesEx(p, 0.04f, 6, 1, TH_LINE);
+    Th_Raised(p, 1);
     for (int i = 0; i < PX_NUM_PIXELS; i++) {
         Rectangle r = {p.x + 8 + (i % cols) * cs, p.y + 8 + (i / cols) * cs, cs - 4, cs - 4};
         bool hv = hit(r);
@@ -656,7 +527,7 @@ static void draw_popup(Editor *e, Rectangle anchor)
         char s[2] = {c, 0};
         Vector2 m = Th_MeasureSmall(s);
         Th_TextSmall(s, r.x + (int)((r.width - m.x) / 2), r.y + (int)((r.height - m.y) / 2),
-                     lum > 140 ? (Color){0, 0, 0, 150} : (Color){255, 255, 255, 200});
+                     lum > 140 ? TH_ON_LIGHT : TH_ON_DARK);
         Th_RectLines(r, hv ? TH_M_BOX : TH_LINE);
         if (e->ink == c) DrawRectangleLinesEx((Rectangle){r.x - 2, r.y - 2, r.width + 4, r.height + 4}, 2, TH_ACCENT);
         if (hv && IsMouseButtonReleased(MOUSE_BUTTON_LEFT)) { e->ink = c; e->showAll = false; }
@@ -797,7 +668,7 @@ static void draw_canvas(Editor *e, Rectangle cv, Vector2 mouse)
         if (e->checker) {
             for (int y = 0; y < H; y++)
                 for (int x = 0; x < advW; x++)
-                    DrawRectangle(ox + x * z, boxTop + y * z, z, z, ((x + y) & 1) ? (Color){0xEE, 0xEE, 0xF1, 0xFF} : TH_PANEL);
+                    DrawRectangle(ox + x * z, boxTop + y * z, z, z, ((x + y) & 1) ? TH_CHECKER : TH_PANEL);
         } else {
             DrawRectangle(bx0, by0, bw, bh, TH_PANEL);
         }
@@ -880,7 +751,7 @@ static void draw_canvas(Editor *e, Rectangle cv, Vector2 mouse)
         const char *msg = "Current glyph hidden \xE2\x80\x94 show it to edit";
         Vector2 m = Th_Measure(msg);
         Rectangle nr = {cv.x + (int)((cv.width - m.x - 28) / 2), cv.y + 12, m.x + 28, 26};
-        DrawRectangleRounded(nr, 0.5f, 8, (Color){0xFF, 0xFF, 0xFF, 0xE6});
+        DrawRectangleRounded(nr, 0.5f, 8, Fade(TH_PANEL, 0.902f));
         DrawRectangleRoundedLinesEx(nr, 0.5f, 8, 1, TH_LINE);
         Th_Text(msg, nr.x + 14, nr.y + (int)((nr.height - m.y) / 2), TH_TEXT_DIM);
     }
@@ -1156,38 +1027,19 @@ EditorResult Editor_UpdateDraw(Editor *e, Rectangle area)
     canvas_input(e, cv, mouse);
     draw_canvas(e, cv, mouse);
 
-    /* status line */
+    /* status line: the same strip as the application's (Th_StatusBar), with a Checker toggle in its reserved end */
     {
-        DrawRectangleRec(st, TH_BG);
-        char buf[160];
-        float ty = st.y + 5;
-        if (e->hasHover) {
-            snprintf(buf, sizeof buf, "x %d   y %d", e->hx, -1 - e->hy);
-            Th_TextMono(buf, st.x + 12, ty, TH_TEXT);
-        } else {
-            Th_TextMono("x -   y -", st.x + 12, ty, TH_TEXT_DIM);
-        }
-        char ink[8];
-        snprintf(ink, sizeof ink, "%c", e->ink == '.' ? '.' : e->ink);
-        snprintf(buf, sizeof buf, "%s   ink %s   zoom %dx   bitmap %s", e->readOnly ? "View" : kToolName[e->tool], ink, e->zoom,
+        char pos[32], tool[160], cur[33];
+        snprintf(pos, sizeof pos, e->hasHover ? "x %d   y %d" : "x -   y -", e->hx, -1 - e->hy);
+        snprintf(tool, sizeof tool, "%s   ink %c   zoom %dx   bitmap %s", e->readOnly ? "View" : kToolName[e->tool], e->ink, e->zoom,
                  g->w > 0 ? TextFormat("%dx%d at %d,%d", g->w, g->h, g->x, g->y) : "empty");
-        Th_TextMono(buf, st.x + 150, ty, TH_TEXT_DIM);
-        {
-            char cur[33];
-            px_glyph_hash(g, cur);
-            char c8[12], o8[12];
-            snprintf(c8, sizeof c8, "%.8s", cur[0] ? cur : "no ink");
-            snprintf(o8, sizeof o8, "%.8s", e->origHash[0] ? e->origHash : "no ink");
-            bool differs = e->hasOrig && strcmp(cur, e->origHash) != 0;
-            if (differs) snprintf(buf, sizeof buf, "Glyph %s -> %s", o8, c8);
-            else snprintf(buf, sizeof buf, "Glyph %s", c8);
-            Vector2 hm = Th_MeasureMono(buf);
-            Th_TextMono(buf, st.x + st.width - 100 - hm.x, ty, differs ? TH_ACCENT : TH_TEXT_DIM);
-        }
-        static bool unused;
-        (void)unused;
-        Rectangle tb = {st.x + st.width - 12 - 74, st.y + 1, 74, STATUS_H - 2};
-        Th_Toggle(tb, "Checker", &e->checker);
+        px_glyph_hash(g, cur);
+        bool differs = e->hasOrig && strcmp(cur, e->origHash) != 0;
+        ThPart l[2] = {{pos, e->hasHover ? TH_TEXT : TH_TEXT_DIM}, {tool}};
+        ThPart r[3] = {{NULL, {0}, 0, 0, "Glyph", e->origHash}, {"->"}, {NULL, {0}, 0, TH_HASH_ACCENT, NULL, cur}};
+        if (differs) Th_StatusBar(st, 90, l, 2, r, 3);
+        else Th_StatusBar(st, 90, l, 2, &(ThPart){NULL, {0}, 0, 0, "Glyph", cur}, 1);
+        Th_Toggle((Rectangle){st.x + st.width - 12 - 74, st.y + 1, 74, STATUS_H - 2}, "Checker", &e->checker, 0, NULL);
     }
 
     draw_preview(e, pv);
@@ -1195,13 +1047,14 @@ EditorResult Editor_UpdateDraw(Editor *e, Rectangle area)
     if (e->showAll) draw_popup(e, (Rectangle){area.x, area.y, area.width, TOOLBAR_H + PALETTE_H});
 
     /* tooltip */
+    if (!e->tip) e->tip = Th_Tip(&e->tipRect);
     if (e->tip && e->mode == M_NONE) {
         Vector2 m = Th_MeasureSmall(e->tip);
         float tw = m.x + 14, th = 22;
         float tx = e->tipRect.x, ty = e->tipRect.y + e->tipRect.height + 6;
         if (tx + tw > GetScreenWidth() - 4) tx = GetScreenWidth() - 4 - tw;
-        DrawRectangleRounded((Rectangle){tx, ty, tw, th}, 0.25f, 6, (Color){0x2A, 0x2A, 0x30, 0xF2});
-        Th_TextSmall(e->tip, tx + 7, ty + 5, (Color){0xF3, 0xF3, 0xF4, 0xFF});
+        DrawRectangleRounded((Rectangle){tx, ty, tw, th}, 0.25f, 6, TH_TIP_BG);
+        Th_TextSmall(e->tip, tx + 7, ty + 5, TH_TEXT_TIP);
     }
     return e->result;
 }

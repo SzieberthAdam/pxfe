@@ -38,7 +38,9 @@ assert toast No changes to save
 assert unsaved 0
 assert hashname 1
 shot tests/tmp/shots/20_real_1.png
-click @Library
+click @nav.0
+wait 8
+click @Typefaces
 wait 6
 assert inbrowser 1
 
@@ -70,7 +72,9 @@ assert toast No changes to save
 assert unsaved 0
 assert hashname 1
 shot tests/tmp/shots/20_real_2.png
-click @Library
+click @nav.0
+wait 8
+click @Typefaces
 wait 6
 assert inbrowser 1
 
@@ -102,7 +106,9 @@ assert toast No changes to save
 assert unsaved 0
 assert hashname 1
 shot tests/tmp/shots/20_real_3.png
-click @Library
+click @nav.0
+wait 8
+click @Typefaces
 wait 6
 assert inbrowser 1
 
@@ -133,7 +139,9 @@ assert toast No changes to save
 assert unsaved 0
 assert hashname 1
 shot tests/tmp/shots/20_real_4.png
-click @Library
+click @nav.0
+wait 8
+click @Typefaces
 wait 6
 assert inbrowser 1
 
@@ -164,7 +172,9 @@ assert toast No changes to save
 assert unsaved 0
 assert hashname 1
 shot tests/tmp/shots/20_real_5.png
-click @Library
+click @nav.0
+wait 8
+click @Typefaces
 wait 6
 assert inbrowser 1
 

@@ -74,9 +74,9 @@ assert sql "SELECT COUNT(DISTINCT pxfm) FROM pxfm_glyph WHERE code=65 AND glyph=
 assert usagecode 3
 click @ptab_Glyph
 wait 4
-assert ptab 2
+assert ptab 1
 # the tab is remembered in the settings file
-assert file tests/tmp/e2e.ini contains panelTab=2
+assert file tests/tmp/e2e.ini contains fontTab=1
 shot tests/tmp/shots/21_usage_glyphtab.png
 sleep 450
 click @cell:U+0078
@@ -136,7 +136,7 @@ click @cell:U+0078
 key enter
 wait 6
 assert editor 1
-assert ptab 2
+assert ptab 1
 key f ctrl shift
 wait 8
 assert infinder 1
@@ -165,7 +165,7 @@ type U+0F00
 wait 20
 assert finder_count 0
 
-# ---- double-click a result: the font opens read-only with the glyph selected
+# ---- double-click a result: the most used font opens read-only on that glyph (version 7: the Glyph view)
 key a ctrl
 type A
 wait 20
@@ -174,12 +174,17 @@ dblclick @fcell:0
 wait 10
 assert infinder 0
 assert infont 1
+assert editor 1
 assert inbrowser 0
 assert readonly 1
 assert hashname 1
 assert selected 1
 assert sel U+0041 1
-# Alt+Left from a font goes to the library
+assert navseg 2 A U+0041
+# Alt+Left from the glyph goes to the font, then up to the library
+key left alt
+wait 4
+assert editor 0
 key left alt
 wait 4
 assert inbrowser 1
@@ -193,17 +198,25 @@ type A
 wait 20
 assert finder_count 2
 click @fcell:0
+click @fside_Usage
 waitfor usage = 3 10000
 wait 6
 shot tests/tmp/shots/21_finder_usage.png
+click @fside_Usage
+wait 4
 click @usage_row_0
 wait 10
 assert infinder 0
 assert infont 1
+assert editor 1
 assert readonly 1
 assert hashname 1
 assert selected 1
 assert sel U+0041 1
+assert navseg 2 A U+0041
+key left alt
+wait 4
+assert editor 0
 key left alt
 wait 4
 assert inbrowser 1
