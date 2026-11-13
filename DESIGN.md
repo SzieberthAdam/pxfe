@@ -739,3 +739,71 @@ A component is done when all of the following hold:
 - Noto Sans v2.015 (`assets/fonts/noto-sans`, all weights and italics, `OFL.txt`): SIL Open Font License 1.1.
   Used: Regular and SemiBold.
 - GNU Unifont 18.0.01 (`assets/fonts/unifont`: `unifont-18.0.01.otf` for the BMP, `unifont_upper-18.0.01.otf` for the planes 1 to 16, `COPYING`, `OFL-1.1.txt`): dual licensed under the SIL Open Font License 1.1 and the GNU GPL version 2 or later with the GNU font embedding exception.
+
+## Version 9: font layers
+
+A font layer belongs to a FONT: every glyph of the font offers another font's drawing of the same code point as a layer.
+Session layers (version 4) are unchanged and are never saved.
+
+### Sources
+
+- A font of the database (kind 0), as before: a pixel layer, no size.
+- A file (kind 1), chosen in the Add Layer popover (source "File", the native dialog, filter in `flayers.h`):
+  an outline font (`.ttf .otf .ttc .woff .eot .pfb`, `outline.h`) drawn as a smooth anti-aliased fill, or a bitmap font (`.bdf .pcf .fnt .fon .json`, the bitmap strikes of `.ttf/.otf`, `bmsrc.h`) drawn as pixels.
+  The popover opens the file at once and shows what it holds.
+  A `.ttc` face, a `.fon` font or a strike is chosen with a stepper (`face` of the layer).
+  A `.ttf/.otf` that has outlines and strikes offers "Outlines / Bitmap strikes" (stored as `face >= 0x10000` for the strikes).
+- WOFF2 is not supported.
+
+### Placement and size
+
+- The source glyph's baseline origin sits on the edited glyph's origin.
+- The layer moves it by (x, y) pixels of the edited font (y up), an outline layer in quarter pixels, the others in whole pixels.
+  A correction of the edited glyph (offset, size, hide) adds to that.
+- Outline size: `fontPx * scale * dsize` pixels per em, `fontPx` = ascent + descent of the edited font (a font has no size metric), 100 % is the natural size (the em equals the pixel size).
+- Bitmap size: whole multiples only, k = round(scale * dsize) from 1 to 16; 1 is the strike's own size (a strike cannot be shrunk).
+- Rendering: an outline is rasterised at `size * canvas zoom`, uploaded as a texture when first drawn and cached (64 entries, 8 million pixels, least recently used first); above 1600 px per em it is not drawn.
+
+### The Layers tab
+
+Font layers and session layers share one stack (one list, one order UI).
+A font layer carries the tag FONT, has the same controls as a session layer plus Size (a file layer) and a "THIS GLYPH" block: offset X and Y, size, "Hide for this glyph" and Reset.
+Alt+drag moves a font layer's offset (every glyph).
+A layer whose file is missing or unreadable stays in the list with its settings; its row says "file missing" or "cannot read: ...".
+A file whose size or time changed is reloaded silently and the stored size and time are updated.
+The file is looked at again every two seconds while the layer is used.
+Order: only the order among the font layers is saved.
+When a font is opened its layers are put at the bottom of the stack.
+
+The Add Layer popover has a LAYER choice: "This glyph only" (a session layer, any source) or "Font layer" (saved with the font; the glyph is always the edited glyph's code).
+"This font" as the source is always a session layer.
+A file source defaults to a font layer, the other sources to a session layer.
+
+### Where it is saved
+
+The settings sidecar `<db>-settings` (`fsettings.h`, a SQLite file) holds the font layers by pxfm hash.
+It is read when the database is loaded and written when the database is saved:
+
+- Save writes the sidecar too.
+  When only the settings changed, the document counts as modified (title, status bar, Save button, quit prompts) and Save writes only the sidecar.
+- Save As writes a new sidecar next to the new file; the old one stays.
+- Import starts with empty settings.
+- Export to Folder does not touch them.
+- With no layers at all nothing is written and an old sidecar is deleted.
+
+An original may get layers (they are program settings, the .pxfdb is not changed).
+The open font's layers live in memory (`FlDoc`) and are copied into the settings under the font's current hash whenever they or the hash changed.
+A duplicate starts with the same layers (the same document); the first edit moves them to the new hash, and the earlier hash's settings are dropped unless it is the hash the document was opened with.
+Committing a duplicate writes them under the hash it is committed with; the original's stay.
+Until its first pixel edit a duplicate has the original's hash, so a layer added to it then is written under that hash, and the original shows it too (the same font has one set of layers).
+A change of the layers is copied into the settings on the next frame, a change of the hash (an edit) at the commit and at Save.
+A settings-only change makes the document unsaved (title, status bar, Save button, quit prompts) but does not change the store's own change counter.
+
+### New Font and Add Glyph
+
+Menu, New Font opens a dialog (name, style, pixel size, ascent, descent; the size is ascent + descent).
+It creates an empty font with no glyphs and no typeface, as an editable document that has no original (it counts as modified).
+It is committed like a duplicate.
+The name is only the title of the session: an orphaned font has no name in the database.
+"Add Glyph" in the font view's command bar adds an empty glyph for a code point (or without one).
+Draw it in the glyph view over the layer.

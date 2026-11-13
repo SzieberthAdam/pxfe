@@ -288,21 +288,6 @@ static void draw_bitmap(const PxFont *f, const PxGlyph *g, int sx, int sy, int s
 }
 
 /* A layer's glyph: every inked pixel in one colour, at the offset (dx right, dy up) */
-static void draw_bitmap_color(const PxGlyph *g, int sx, int sy, int scale, Color col)
-{
-    if (!g->pix || g->w <= 0) return;
-    for (int y = 0; y < g->h; y++) {
-        int x = 0;
-        while (x < g->w) {
-            if (g->pix[y * g->w + x] == '.') { x++; continue; }
-            int run = 1;
-            while (x + run < g->w && g->pix[y * g->w + x + run] != '.') run++;
-            DrawRectangle(sx + (g->x + x) * scale, sy + (gtop(g) + y) * scale, run * scale, scale, col);
-            x += run;
-        }
-    }
-}
-
 /* ------------------------------------------------------------------ widgets */
 
 static bool hit(Rectangle r) { return !Th_InputBlocked() && CheckCollisionPointRec(GetMousePosition(), r); }
@@ -678,8 +663,7 @@ static void draw_canvas(Editor *e, Rectangle cv, Vector2 mouse)
         const Layer *a = Layers_Get(e->layers, i);
         if (!a->visible) continue;
         if (a->isCurrent) { draw_bitmap(f, g, ox, oy, z); continue; }
-        const PxGlyph *lg = Layers_Glyph(e->layers, i, NULL);
-        if (lg) draw_bitmap_color(lg, ox + a->dx * z, oy - a->dy * z, z, fade(a->color, a->opacity * 255 / 100));
+        Layers_DrawGlyph(e->layers, i, ox, oy, z);
     }
     if (!e->curHidden && g->w > 0 && g->h > 0 && z >= 6) {
         /* faint outline of the bitmap extent */

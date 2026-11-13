@@ -24,6 +24,7 @@ set FAILS=0
 set RUNS=0
 if not exist tests\tmp\shots mkdir tests\tmp\shots
 if not exist tests\tmp\e2e_out mkdir tests\tmp\e2e_out
+if not exist tests\tmp\fl mkdir tests\tmp\fl
 
 call :fresh
 call :run 00_smoke "%DB% --font %H1%"
@@ -142,6 +143,23 @@ call :run 61_views "%DB%"
 call :fresh
 call :run 70_unifont "%DB% --font %H1% --duplicate"
 call :run 93_menu_keys "%DB%"
+call :fresh
+call :run 94_font_layer_smoke "%DB%"
+call :fresh
+call :run 95_fl_newfont "%DB%"
+call :fresh
+call :run 96_fl_adjust "%DB% --font %H1% --duplicate"
+call :fresh
+call :run 97_fl_save "%DB% --font %H1% --duplicate"
+call :run 97b_fl_reload "%DB% --font %H1%"
+call :fresh
+call :run 97c_fl_empty "%DB% --font %H1% --duplicate"
+call :fresh
+call :run 97d_fl_saveas "%DB% --font %H1% --duplicate"
+call :fresh
+call :run 98_fl_orig "%DB% --font %H1%"
+call :fresh
+call :run 99_fl_dup_commit "%DB% --font %H1%"
 
 echo.
 echo %RUNS% scripts run, %FAILS% failed
@@ -154,6 +172,10 @@ xcopy /e /i /q /y testdata\lib tests\tmp\e2elib >nul
 copy /y testdata\lib.pxfdb tests\tmp\e2e.pxfdb >nul
 if exist tests\tmp\xout rmdir /s /q tests\tmp\xout
 if exist tests\tmp\e2e_copy.pxfdb del tests\tmp\e2e_copy.pxfdb
+if exist tests\tmp\e2e.pxfdb-settings del tests\tmp\e2e.pxfdb-settings
+if exist tests\tmp\e2e_copy.pxfdb-settings del tests\tmp\e2e_copy.pxfdb-settings
+if exist tests\tmp\e2e_imp.pxfdb-settings del tests\tmp\e2e_imp.pxfdb-settings
+if exist tests\tmp\e2e_settings_before del tests\tmp\e2e_settings_before
 if exist tests\tmp\e2e.ini del tests\tmp\e2e.ini
 exit /b 0
 

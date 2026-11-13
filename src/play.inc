@@ -292,6 +292,14 @@ static bool GetInt(const char *name, long *v)
     else if (!strcmp(name, "hascont")) *v = hasCont;
     else if (!strcmp(name, "variant")) *v = contVariant;
     else if (!strcmp(name, "xdopen")) *v = xd.open;                                                  /* the Export dialog */
+    else if (!strcmp(name, "nfopen")) *v = nf.open;                                                  /* the New Font dialog */
+    else if (!strcmp(name, "docnew")) *v = docIsNew;                                                 /* the open font was made by New Font */
+    else if (!strcmp(name, "flayers")) *v = flDoc ? flDoc->n : 0;                                    /* font layers of the open font */
+    else if (!strcmp(name, "fsdirty")) *v = FsDirty();                                               /* the settings differ from the sidecar file */
+    else if (!strcmp(name, "fspending")) *v = FlPending();                                           /* font layers not yet copied into the settings */
+    else if (!strcmp(name, "fslayers")) { EnsureHashes(); *v = fsettings && hasFont ? fs_list_layers(fsettings, curHash, NULL, 0) : -1; }   /* layers the settings hold for the font's current hash */
+    else if (!strcmp(name, "fshasany")) *v = fsettings && fs_has_any(fsettings);                     /* the settings hold any layer at all */
+    else if (!strcmp(name, "flcache")) *v = FlCache_Count();                                         /* outline textures in the cache */
     else if (!strcmp(name, "xbackup")) *v = xd.backup;
     else if (!strcmp(name, "xfound_fonts")) *v = xd.scan.found.fonts;
     else if (!strcmp(name, "xfound_typefaces")) *v = xd.scan.found.typefaces;
@@ -497,6 +505,34 @@ static bool SnapCheck(const char *how, int want)
     return false;
 }
 
+/* Fields of a font layer for `assert flayer <i> <field> <value>`: numbers (compared to 0.001) and texts (equal, or contained for source,
+ * label and err) */
+static bool FlField(FlLayer *fl, const char *f, double *num, const char **str)
+{
+    *str = NULL;
+    FlLayer_Ready(fl);   /* the source is opened lazily: asking is a use */
+    if (!strcmp(f, "kind")) *num = fl->s.kind;
+    else if (!strcmp(f, "face")) *num = fl->s.face;
+    else if (!strcmp(f, "visible")) *num = fl->s.visible;
+    else if (!strcmp(f, "opacity")) *num = fl->s.opacity;
+    else if (!strcmp(f, "dx")) *num = fl->s.dx;
+    else if (!strcmp(f, "dy")) *num = fl->s.dy;
+    else if (!strcmp(f, "scale")) *num = fl->s.scale;
+    else if (!strcmp(f, "color")) *num = (fl->s.r << 16) | (fl->s.g << 8) | fl->s.b;
+    else if (!strcmp(f, "size")) *num = (double)fl->s.fileSize;
+    else if (!strcmp(f, "mtime")) *num = (double)fl->s.fileMtime;
+    else if (!strcmp(f, "ncorr")) *num = fl->ncorr;
+    else if (!strcmp(f, "nfaces")) *num = fl->nFaces;
+    else if (!strcmp(f, "outline")) *num = fl->state == FL_OK && fl->outline;
+    else if (!strcmp(f, "bitmap")) *num = fl->state == FL_OK && !fl->outline && fl->s.kind == 1;
+    else if (!strcmp(f, "ok")) *num = fl->s.kind == 0 || fl->state == FL_OK;
+    else if (!strcmp(f, "source")) *str = fl->s.source;
+    else if (!strcmp(f, "label")) *str = fl->s.label;
+    else if (!strcmp(f, "err")) *str = fl->err;
+    else return false;
+    return true;
+}
+
 static void DoAssert(char **t, int n)
 {
     /* t[0] == "assert" */
@@ -670,6 +706,49 @@ static void DoAssert(char **t, int n)
         ok = store && Same(curHash, origHash) && store_has_pxfm(store_main_conn(store), curHash) &&
              (!hasCont || (Same(curContHash, origContHash) && store_has_pxtf(store_main_conn(store), curContHash)));
         if (!ok) PlayLog("  hash %s (orig %s) typeface %s (orig %s) in %s", curHash, origHash, curContHash, origContHash, libRoot);
+    } else if (!strcmp(k, "sidecar")) {
+        /* assert sidecar exists|missing: the settings file beside the open database (<db>-settings) */
+        char sp[1200] = "";
+        bool have = store && fs_sidecar_path(store_info(store)->path, sp, sizeof sp) && FileHas(sp);
+        ok = !strcmp(t[2], "exists") ? have : (!strcmp(t[2], "missing") ? !have : false);
+        if (!ok) PlayLog("  sidecar %s is %s", sp, have ? "there" : "not there");
+    } else if (!strcmp(k, "flayer") || !strcmp(k, "fcorr")) {
+        /* assert flayer <i> <field> <value>   a font layer (0 = top of the font layers): kind face visible opacity dx dy scale color size mtime
+         *                                     ncorr nfaces outline bitmap ok (numbers), source label err (text; contained)
+         * assert fcorr <i> <code> <field> <value>   its correction for a code (U+0041 or a number): exists dx dy dsize hidden */
+        bool corr = k[1] == 'c';
+        int i = n > 2 ? atoi(t[2]) : -1, fa = corr ? 4 : 3;
+        FlLayer *fl = flDoc && i >= 0 && i < flDoc->n ? flDoc->v[i] : NULL;
+        if (!fl || n <= fa || (n <= fa + 1 && strcmp(t[fa], "exists"))) { PlayLog("  no font layer %d", i); ok = false; }
+        else if (corr) {
+            int32_t code = (int32_t)strtol(t[3] + (t[3][0] == 'U' || t[3][0] == 'u' ? 2 : 0), NULL, t[3][0] == 'U' || t[3][0] == 'u' ? 16 : 0);
+            const FlCorr *c = FlLayer_Corr(fl, code);
+            double have = 0;
+            if (!strcmp(t[fa], "exists")) { have = c != NULL; ok = have == (n < fa + 2 || atof(t[fa + 1]) != 0); }
+            else {
+                if (!strcmp(t[fa], "dx")) have = c ? c->dx : 0;
+                else if (!strcmp(t[fa], "dy")) have = c ? c->dy : 0;
+                else if (!strcmp(t[fa], "dsize")) have = c ? c->dsize : 1;
+                else if (!strcmp(t[fa], "hidden")) have = c ? c->hidden : 0;
+                else { PLAY_FAIL("bad correction field '%s'", t[fa]); return; }
+                ok = fabs(have - atof(t[fa + 1])) < 0.001;
+            }
+            if (!ok) PlayLog("  actual %s %g", t[fa], have);
+        } else {
+            double num = 0;
+            const char *str;
+            if (!FlField(fl, t[fa], &num, &str)) { PLAY_FAIL("bad font layer field '%s'", t[fa]); return; }
+            char want[300] = "";
+            for (int q = fa + 1; q < n; q++) { if (q > fa + 1) strcat(want, " "); strncat(want, t[q], 200); }
+            if (str) {
+                bool contained = !strcmp(t[fa], "source") || !strcmp(t[fa], "label") || !strcmp(t[fa], "err");
+                ok = contained ? strstr(str, want) != NULL : !strcmp(str, want);
+                if (!ok) PlayLog("  actual %s '%s'", t[fa], str);
+            } else {
+                ok = fabs(num - (want[0] == '0' && (want[1] == 'x' || want[1] == 'X') ? (double)strtol(want, NULL, 16) : atof(want))) < 0.001;
+                if (!ok) PlayLog("  actual %s %g", t[fa], num);
+            }
+        }
     } else if (!strcmp(k, "clip")) {   /* assert clip <text>: the clipboard holds exactly this */
         const char *c = GetClipboardText();
         ok = c && n > 2 && !strcmp(c, t[2]);
@@ -882,8 +961,29 @@ static void PlayExecLine(const char *line)
         else if (!strcmp(t[1], "folder")) snprintf(dlgFolderPath, sizeof dlgFolderPath, "%s", t[2]);
         else if (!strcmp(t[1], "pxfdb")) snprintf(dlgDbPath, sizeof dlgDbPath, "%s", t[2]);
         else if (!strcmp(t[1], "save")) snprintf(dlgSavePath, sizeof dlgSavePath, "%s", t[2]);
+        else if (!strcmp(t[1], "layerfile")) snprintf(dlgLayerPath, sizeof dlgLayerPath, "%s", t[2]);
         else PLAY_FAIL("setdialog kind '%s'", t[1]);
-        if (na >= 3 && !strcmp(t[2], "none")) { dlgFolderPath[0] = dlgDbPath[0] = dlgSavePath[0] = 0; }
+        if (na >= 3 && !strcmp(t[2], "none")) { dlgFolderPath[0] = dlgDbPath[0] = dlgSavePath[0] = dlgLayerPath[0] = 0; }
+    } else if (!strcmp(c, "addlayerfile")) {
+        /* addlayerfile <path> [face] [font|session] [expectfail]: what the Add Layer popover does after the file dialog (the face, strike or
+         * .fon font index; a font layer by default).  expectfail: the layer must NOT be added (a missing or unreadable file). */
+        if (na < 2) PLAY_FAIL("addlayerfile <path> [face] [font|session] [expectfail]");
+        else {
+            int face = 0;
+            bool fontLevel = true, expectFail = false;
+            for (int i = 2; i < na; i++) {
+                if (!strcmp(t[i], "session")) fontLevel = false;
+                else if (!strcmp(t[i], "font")) fontLevel = true;
+                else if (!strcmp(t[i], "expectfail")) expectFail = true;
+                else face = atoi(t[i]);
+            }
+            if (!ed) ed = Editor_Create();
+            Layers *L = Editor_Layers(ed);
+            Layers_SetFontDoc(L, flDoc);
+            char err[200];
+            int r = Layers_AddFile(L, t[1], face, fontLevel, err, (int)sizeof err);
+            if (expectFail ? r >= 0 : r < 0) PLAY_FAIL("addlayerfile %s: %s", t[1], r < 0 ? err : "was added");
+        }
     } else if (!strcmp(c, "setclip")) {   /* setclip <text>: the clipboard (
  is a new line), for Ctrl+V */
         Unescape(restBuf);

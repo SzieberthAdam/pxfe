@@ -1,0 +1,64 @@
+# 97d. The sidecar follows the database: Save writes <db>-settings, Save As writes a new one beside the new file (the old one stays as
+# it was), Import starts with no layers, Export to Folder creates none.  Duplicate of 0820dc69.
+wait 5
+addlayerfile testdata/outline/NotoSub.ttf
+wait 6
+key s ctrl
+wait 12
+assert sidecar exists
+assert sqlfile tests/tmp/e2e.pxfdb-settings "select count(*) from layer" 1
+copyfile tests/tmp/e2e.pxfdb-settings tests/tmp/e2e_settings_before
+# a second layer, then Save As: the new file has both layers, the old sidecar still has one
+addlayerfile testdata/bitmap/font.bdf
+wait 6
+assert unsaved 1
+setdialog save tests/tmp/e2e_copy.pxfdb
+key s ctrl shift
+wait 12
+assert wtitle e2e_copy.pxfdb
+assert unsaved 0
+assert sidecar exists
+assert flayers 2
+assert file tests/tmp/e2e_copy.pxfdb-settings exists
+assert sqlfile tests/tmp/e2e_copy.pxfdb-settings "select count(*) from layer" 2
+assert sqlfile tests/tmp/e2e.pxfdb-settings "select count(*) from layer" 1
+assert samefile tests/tmp/e2e.pxfdb-settings tests/tmp/e2e_settings_before
+# a later Save goes to the new sidecar
+addlayerfile testdata/bitmap/font_lsb.pcf
+wait 6
+key s ctrl
+wait 12
+assert sqlfile tests/tmp/e2e_copy.pxfdb-settings "select count(*) from layer" 3
+assert samefile tests/tmp/e2e.pxfdb-settings tests/tmp/e2e_settings_before
+# Export to Folder: no sidecar next to or in the folder
+snapdir tests/tmp/e2elib
+setdialog folder tests/tmp/xout
+click @Menu
+wait 3
+click @file.export
+wait 10
+assert modal Export_finished
+key enter
+wait 4
+assert dirhas tests/tmp/xout pxfm
+assert file tests/tmp/xout-settings missing
+assert file tests/tmp/xout/xout-settings missing
+assert flayers 3
+# Import Folder: the new database starts with empty settings
+delete tests/tmp/e2e_imp.pxfdb
+delete tests/tmp/e2e_imp.pxfdb-settings
+setdialog folder tests/tmp/e2elib
+setdialog save tests/tmp/e2e_imp.pxfdb
+click @Menu
+wait 3
+click @file.import
+wait 3
+waitfor loading = 0 60000
+wait 8
+assert wtitle e2e_imp.pxfdb
+assert storeimported 1
+assert sidecar missing
+assert file tests/tmp/e2e_imp.pxfdb-settings missing
+assert fshasany 0
+# the layers of the other database are untouched
+assert sqlfile tests/tmp/e2e_copy.pxfdb-settings "select count(*) from layer" 3

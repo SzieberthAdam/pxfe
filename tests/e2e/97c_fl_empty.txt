@@ -1,0 +1,36 @@
+# 97c. No layers, no sidecar: a duplicate with a pixel edit and Save leaves no settings file; a layer makes one (Save), removing the last
+# layer and Save deletes it again.  Duplicate of 0820dc69.
+wait 5
+assert sidecar missing
+click @ascent+
+wait 6
+assert unsaved 1
+key s ctrl
+wait 12
+assert unsaved 0
+assert sidecar missing
+assert fshasany 0
+# a layer on the committed font (new hash), Save
+addlayerfile testdata/outline/NotoSub.ttf
+wait 6
+assert unsaved 1
+key s ctrl
+wait 12
+assert sidecar exists
+assert fslayers 1
+assert sqlfile tests/tmp/e2e.pxfdb-settings "select count(*) from layer" 1
+# the layer is removed in the Layers tab; the sidecar goes with the next Save
+click @cell:U+0041
+key enter
+wait 6
+click @gtab_Layers
+wait 3
+click @lay_del_0
+wait 4
+assert flayers 0
+assert unsaved 1
+key s ctrl
+wait 12
+assert unsaved 0
+assert sidecar missing
+assert fshasany 0

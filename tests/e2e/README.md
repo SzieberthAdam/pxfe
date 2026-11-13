@@ -90,6 +90,21 @@ One command per line, `#` starts a comment.
   The panel has `@ghash_orig` and `@ghash_cur` (click copies the full glyph hash, `assert clip <text>` checks the clipboard) and `@glyph_find`.
 - Layers: `assert l.count`, `l.cur` (index of the "Current glyph" row), `l.sel`, `l.pop` (the Add Layer popover is open), `l.focus`, `l.fonts` (fonts in the layer glyph cache) and, per layer N from the top: `l.vis.N`, `l.op.N` (opacity %), `l.dx.N`, `l.dy.N`, `l.color.N` (`0xRRGGBB`), `l.same.N` (follows the edited glyph), `l.this.N` (from this font), `l.code.N`, `l.ink.N` (inked pixels, -1 = not in font).
   Widgets: `@+_Add_Layer`, `@lay_row_N`, `@lay_eye_N`, `@lay_up_N`, `@lay_down_N`, `@lay_del_N`, `@lay_sw_K` (swatches), `@lay_hex`, `@lay_op` (slider), `@lay_opv.value|plus|minus`, `@lay_x.*`, `@lay_y.*`; in the popover `@lay_src_This_font`, `@lay_src_Library_font`, `@lay_search`, `@lay_font_N`, `@lay_same`, `@lay_glyph`, `@Add`, `@Cancel`.
+- Font layers (version 9):
+  `addlayerfile <path> [face] [font|session] [expectfail]` does what the Add Layer popover does after its file dialog (a font layer by default; `face` is the .ttc face, the .fon font or the strike, 65536 + n for a strike of a .ttf that also has outlines; `expectfail`: the layer must not be added).
+  `setdialog layerfile <path>` answers the popover's `@Choose…` button.
+  `assert flayers N` counts the font layers of the open font, `assert flayer <i> <field> <value>` reads one (i = 0 is the top font layer): `kind` (0 database font, 1 file), `face`, `visible`, `opacity`, `dx`, `dy`, `scale`, `color`, `size`, `mtime`, `ncorr`, `nfaces`, `outline`, `bitmap`, `ok` (numbers) and `source`, `label`, `err` (text; contained).
+  `assert fcorr <i> <code> <field> <value>` reads a layer's correction for a code (`exists`, `dx`, `dy`, `dsize`, `hidden`).
+  `assert sidecar exists|missing` is the settings file beside the database; `fsdirty` (the settings differ from the file), `fspending` (layers not yet copied into the settings), `fslayers` (layers the settings hold for the open font's current hash), `fshasany`, `flcache` (outline textures cached), `docnew`, `nfopen`.
+  A change of the layers reaches the settings one frame later (`wait 6` before `fsdirty` or `unsaved`), a change of the font's hash (a pixel edit of a duplicate) only at the commit or at Save.
+  A settings-only change counts for `unsaved` and the status bar, not for `dbmodified` (that counts the store).
+  The sidecar can be read with `assert sqlfile <db>-settings "<query>" <expected>` (tables `layer` and `correction`).
+  The stack rows of the Layers tab count font layers too (`assert l.count`, `l.dx.N`, ...); a font layer's row has the tag FONT.
+  Widgets of the Layers tab: `@lay_x+`, `@lay_x-`, `@lay_y+`, `@lay_y-` (a font layer's offset, quarter pixels for an outline), `@lay_size+`, `@lay_size-`, `@lay_size.value`, and for the edited glyph `@lay_gx±`, `@lay_gy±`, `@lay_gsize±`, `@lay_ghide`, `@lay_greset`.
+  Add Layer popover: `@lay_src_File`, `@lay_choose` (`@Choose…`), `@lay_file`, `@lay_face+`, `@lay_face-`, `@lay_mode_Outlines`, `@lay_mode_Bitmap_strikes`, `@lay_scope_This_glyph_only`, `@lay_scope_Font_layer`.
+- New Font and Add Glyph: Menu, `@file.new` opens the dialog (`assert nfopen 1`): `@nf.name`, `@nf.style`, `@nf.size±`, `@nf.ascent±`, `@nf.descent±` (also `.value`), `@Create`, `@Cancel`.
+  The font view's command bar has `@Add_Glyph` (the code in the dialog: type it, then `@Add`).
+  The Menu now has New Font first: Down from nothing lands on it (`menuhi 0`), Load is 1, Save 2, Save As 3, Import Folder 4, Export to Folder 5, Quit 6.
 - `assert w.<widget> 0|1`: a widget of that name was drawn in the last frame (for the hidden rows).
   `assert pixel <target> [dx dy] RRGGBB` reads the screen.
   `$GHASH` and `$GOHASH` in a script are the pxgl hash of the glyph being edited, now and when the font was opened.
@@ -134,6 +149,16 @@ The environment variable `PXFE_TRACE=1` prints one `TRACE load ...` or `TRACE im
 - 60, 62 and 64 to 69 (not in `run_all.bat`): screenshot scripts that start from a database given as the first argument; each names its own command and output folder in its first lines.
   60 is the six navigation views, 62 the version 7 views, 64 to 68 one component each (hash, buttons, fields, lists), 67 on the test library, and 69 the final shots of every view and overlay at 1400 x 900 and at 1110 x 600 (`tests\tmp\p2\final`).
   They run on a copy of the real library (`tests\tmp\p2\real.pxfdb`, from `pixelglyphlib\pxfdb.pxfdb`) and report 0 passed, 0 failed.
+- 94: font layers, smoke test (New Font, a font layer from `testdata\outline\NotoSub.ttf`, Add Glyph, the glyph view; screenshots in `tests\tmp\fl`).
+- 95 to 99 (version 9, font layers):
+  95: New Font dialog (name, style, size, ascent, descent), an empty orphan font, Add Glyph, a font layer from every source format of `testdata\outline` (ttf, otf, woff, eot, pfb, ttc face 1) and `testdata\bitmap` (bdf, pcf, fnt, fon face 1, sheet json, strikes.ttf strike 2); a missing and an unreadable file are not added.
+  96: the Add Layer popover with the File source, then colour, opacity, offset, size and visibility of a font layer and the per-glyph correction (offset, size, hide, Reset) on two glyphs; the layer and the corrections stay while moving between glyphs and views.
+  97 and 97b: Save writes the sidecar `<db>-settings` and leaves the `.pxfdb` as it was (`assert samefile`); 97b is a second process that reads layers, order and corrections back, a layer whose file was deleted stays with its settings ("file missing").
+  97c: a font without layers leaves no sidecar, removing the last layer and Save deletes it.
+  97d: Save As writes a new sidecar and keeps the old one, Export to Folder creates none, Import starts with empty settings.
+  98: layers on an original (read-only) font: the `.pxfdb` is byte for byte unchanged (`copyfile` before, `assert samefile` after), the sidecar is written, the layers survive Duplicate to Edit.
+  99: a duplicate with layers, a pixel edit and the commit: the layers are under the new hash and the original's stay.
+- 100 (not in `run_all.bat`): font layer screenshots at 1400 x 900 in `tests\tmp\fl` (`shot_newfont`, `shot_glyph_empty`, `shot_glyph_pixels`, `shot_popover_file`, `shot_missing`); the command is in the first lines of the script.
 - 93: the keyboard in menus (Down, Up, Home, Enter, Escape on the File menu; the highlight follows the mouse; Enter does not reach the selected card behind the menu; `assert menuhi N`).
 - 59: the navigation bar (Menu, Typefaces | Fonts | Glyphs, the Typeface, Font and Glyph views, Alt+Left); 59b: a font without a typeface ("Orphaned").
 - 58: the red Delete Font and Delete Typeface buttons of the browser's side panel, end to end (confirmation, Cancel, rewritten typeface, emptied typeface, orphaned glyphs, the Fonts tab).

@@ -1,0 +1,9 @@
+{
+  "source": "sheet.png",
+  "cell": {"width": 6, "height": 8},
+  "columns": 4,
+  "first": 65,
+  "codepage": "ascii",
+  "ink": "dark",
+  "meta": {"family": "Tiny Sheet", "style": "Regular"}
+}

@@ -1,0 +1,61 @@
+# 99. A duplicate with layers: the layers start as the original's, a pixel edit gives the duplicate its own hash, committing it writes
+# the layers under that hash AND the original's layers stay (checked in the settings and by opening the original again).
+# Original 0820dc69 with one outline layer; Duplicate to Edit; a pixel; leave the font view (commit); Save.
+wait 5
+assert readonly 1
+addlayerfile testdata/outline/NotoSub.ttf
+wait 6
+assert flayers 1
+assert fslayers 1
+click @Duplicate_to_Edit
+wait 8
+assert readonly 0
+assert flayers 1
+assert fslayers 1
+# a pixel edit (its own hash), then a second layer only the duplicate has
+# (before the edit the duplicate has the original's hash, so a layer added then would be written under the original's hash too)
+click @cell:U+0041
+key enter
+wait 6
+assert editor 1
+click @ecell:2,3
+wait 4
+assert modified 1
+assert flayers 1
+key escape
+wait 6
+addlayerfile testdata/bitmap/font.bdf
+wait 6
+assert flayers 2
+assert fslayers 2
+wait 6
+# leaving the font view commits the duplicate: its layers are under its new hash, the original's are as they were
+click @nav.0
+wait 10
+assert duppending 0
+assert sql "select count(*) from pxfm" 5
+assert sqlfile tests/tmp/e2e.pxfdb "select count(*) from pxfm" 4
+key s ctrl
+wait 12
+assert unsaved 0
+assert sidecar exists
+assert sqlfile tests/tmp/e2e.pxfdb-settings "select count(*) from layer" 3
+assert sqlfile tests/tmp/e2e.pxfdb-settings "select count(*) from layer where font = '0820dc69a21b1cdb3a44d2cff7d884d8'" 1
+assert sqlfile tests/tmp/e2e.pxfdb-settings "select count(distinct font) from layer" 2
+assert sqlfile tests/tmp/e2e.pxfdb "select count(*) from pxfm" 5
+# the original again: its own single layer
+click @Fonts
+wait 6
+click @Filter
+type 0820dc
+wait 4
+click @card:0
+wait 3
+dblclick @card:0
+wait 8
+assert readonly 1
+assert hashname 1
+assert flayers 1
+assert fslayers 1
+assert flayer 0 source NotoSub.ttf
+assert flayer 0 outline 1

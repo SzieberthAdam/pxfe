@@ -1,0 +1,137 @@
+# 96. Font layers: the Add Layer popover with the File source, font level settings (colour, opacity, visibility, offset, size) and the
+# correction of single glyphs (offset, size, hide, reset), through the Layers tab.  Duplicate of 0820dc69 (glyphs 20 2C 41 48 4D 78).
+wait 5
+click @cell:U+0041
+key enter
+wait 6
+assert editor 1
+click @gtab_Layers
+wait 3
+assert l.count 1
+assert flayers 0
+click @+_Add_Layer
+wait 3
+assert l.pop 1
+click @lay_src_File
+wait 3
+setdialog layerfile testdata/outline/NotoSub.ttf
+click @lay_choose
+wait 6
+assert w.lay_file 1
+click @Add
+wait 6
+assert l.pop 0
+assert flayers 1
+assert flayer 0 kind 1
+assert flayer 0 outline 1
+assert l.count 2
+assert fsdirty 1
+assert l.sel 0
+assert l.vis.0 1
+assert l.ink.0 > 0
+shot tests/tmp/fl/adjust_added.png
+# font level: colour, opacity, offset, size, visibility
+assert flayer 0 visible 1
+assert flayer 0 dx 0
+assert flayer 0 dy 0
+click @lay_sw_2
+wait 2
+assert l.color.0 0x2F9E6E
+assert flayer 0 color 0x2F9E6E
+click @lay_hex
+type #ff8800
+key enter
+wait 3
+assert flayer 0 color 0xFF8800
+click @lay_opv.value
+type 40
+key enter
+wait 3
+assert l.op.0 40
+assert flayer 0 opacity 40
+click @lay_x+
+click @lay_x+
+click @lay_y-
+wait 3
+assert l.dx.0 1
+assert l.dy.0 0
+assert flayer 0 dx 0.5
+assert flayer 0 dy -0.25
+click @lay_size.value
+type 120
+key enter
+wait 3
+assert flayer 0 scale 1.2
+click @lay_size+
+wait 3
+assert flayer 0 scale 1.21
+click @lay_eye_0
+wait 3
+assert l.vis.0 0
+assert flayer 0 visible 0
+click @lay_eye_0
+wait 3
+assert flayer 0 visible 1
+shot tests/tmp/fl/adjust_font.png
+# the correction of glyph A: offset, size, hide, reset
+assert fcorr 0 U+0041 exists 0
+click @lay_gx+
+click @lay_gx+
+click @lay_gx+
+click @lay_gy+
+wait 3
+assert fcorr 0 U+0041 exists 1
+assert fcorr 0 U+0041 dx 0.75
+assert fcorr 0 U+0041 dy 0.25
+assert flayer 0 ncorr 1
+# the font level offset did not change
+assert flayer 0 dx 0.5
+click @lay_gsize.value
+type 150
+key enter
+wait 3
+assert fcorr 0 U+0041 dsize 1.5
+click @lay_ghide
+wait 3
+assert fcorr 0 U+0041 hidden 1
+shot tests/tmp/fl/adjust_glyph.png
+# a second glyph, H, has its own (no) correction; the layer follows
+key pgdn
+wait 6
+assert fcorr 0 U+0048 exists 0
+click @lay_gx-
+wait 3
+assert fcorr 0 U+0048 dx -0.25
+assert flayer 0 ncorr 2
+# back to A: the correction is still there, the layer too
+key pgup
+wait 6
+assert flayers 1
+assert fcorr 0 U+0041 hidden 1
+assert fcorr 0 U+0041 dsize 1.5
+assert fcorr 0 U+0041 dx 0.75
+assert fcorr 0 U+0048 dx -0.25
+# Reset removes the correction of A only
+click @lay_greset
+wait 3
+assert fcorr 0 U+0041 exists 0
+assert fcorr 0 U+0048 exists 1
+assert flayer 0 ncorr 1
+assert flayer 0 dx 0.5
+assert flayer 0 color 0xFF8800
+# leaving the glyph view and coming back: the layer stays
+key escape
+wait 6
+click @cell:U+0048
+key enter
+wait 6
+click @gtab_Layers
+wait 3
+assert flayers 1
+assert fcorr 0 U+0048 dx -0.25
+assert l.ink.0 > 0
+# remove the layer from the stack
+click @lay_del_0
+wait 4
+assert flayers 0
+assert l.count 1

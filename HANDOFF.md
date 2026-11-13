@@ -7,8 +7,8 @@ The glyph view, layers, samples, typeface boxes and hash labels of version 4 sta
 ## State
 
 - `build.bat e2e` builds with no warnings.
-- `build.bat test` passes: 136 pxfont, 101 pxtf and 162 store checks, 0 failed.
-- `tests\e2e\run_all.bat` passes: 59 scripts, 0 failed.
+- `build.bat test` passes: 136 pxfont, 248 outline, 143 bmsrc, 102 fsettings, 101 pxtf and 162 store checks, 0 failed.
+- `tests\e2e\run_all.bat` passes: 71 scripts, 0 failed (version 9 added 95 to 99, 97b, 97c and 97d).
 - `tests\e2e\run_reallib.bat` loads `pixelglyphlib\pxfdb.pxfdb` read-only and imports the folder into `tests\tmp\real.pxfdb`; see the report of the last run for its timings.
 - Plain `build.bat` fails only at the link step when a running `pxfe.exe` locks the file; closing it is enough.
 
@@ -89,3 +89,35 @@ The rule of the round: one component is one function in `src/theme.c`, and a vie
 - Tests: `build.bat test` 136 pxfont, 101 pxtf and 162 store checks, 0 failed; `tests\e2e\run_all.bat` 61 scripts (new: 93_menu_keys, 21 asserts), 0 failed; `build.bat` and `build.bat e2e` build without warnings.
 - Final screenshots: `tests\tmp\p3\final` (script 69, run with a copy of the exe from the repo root).
 
+## Version 9: font layers
+
+The design is in the last section of [DESIGN.md](DESIGN.md), "Version 9: font layers".
+A font layer belongs to a font: another font's drawing of the same code point under every glyph, from a database font or a font file.
+It is saved with the font in a sidecar next to the database.
+
+- New files: `src/flayers.c` and `.h` (the font layer: source, state, glyph cache, corrections, `FlDoc`), `src/fsettings.c` and `.h` (the sidecar `<db>-settings`, a SQLite file with the tables `layer` and `correction`, keyed by pxfm hash), `src/outline.c` and `.h` (outline reader and rasteriser: TrueType, CFF, WOFF, EOT, Type 1 PFB, TTC; its own inflate, WOFF2 is not supported), `src/bmsrc.c`, `src/bmsrc.h` and `src/bmsrc_cp.inc` (bitmap sources: BDF, PCF, FNT, FON, image sheets with a JSON descriptor, bitmap strikes of ttf and otf).
+- Changed: `src/layers.c` and `.h` (the Layers tab and the Add Layer popover with the File source), `src/main.c` (Menu, New Font; the document, `FlSync`, `SaveSidecar`), `src/editor.c`, `src/play.inc`, `src/theme.c` and `.h`, `src/browser.c`.
+- Behaviours: Save writes the sidecar (alone when only the settings changed); Save As writes a new one, the old stays; Import starts empty; Export does not touch it; with no layers nothing is written and an old sidecar is deleted.
+  An original may get layers, the `.pxfdb` stays byte for byte as it was (script 98).
+  A duplicate shares the original's hash until its first pixel edit, so a layer added before the edit is also the original's; after the edit the layers are written under the new hash at the commit or at Save, and the original's stay.
+- New Font (Menu, first item) makes an empty orphan font; Add Glyph in the font view adds a glyph.
+- Bug found by the scripts and fixed: the browser blurred every focused text field of a dialog drawn over it, so typing in the New Font dialog did nothing (`src/browser.c`, `Th_TextIsIn` in `src/theme.c`).
+- `build.bat test` now also runs `tests\test_bmsrc.exe`; a typo `exit \b` in the bmsrc test build line is fixed.
+
+How to run:
+
+- `tests\e2e\run_all.bat` runs everything; a single script is started like the others, for example `tests\tmp\pxfe_e2e.exe tests\tmp\e2e.pxfdb --font 0820dc69a21b1cdb3a44d2cff7d884d8 --duplicate --ini tests\tmp\e2e.ini --play tests\e2e\98_fl_orig.txt` after copying `testdata\lib.pxfdb` to `tests\tmp\e2e.pxfdb`.
+- The scripts and their commands are in [tests/e2e/README.md](tests/e2e/README.md): 94 smoke, 95 sources and New Font, 96 adjustments and corrections, 97 to 97d the sidecar, 98 originals, 99 duplicate and commit; asserts per script 17, 58, 57, 28, 25, 14, 24, 27 and 26.
+- `tests\e2e\100_shots_fl.txt` (not in `run_all.bat`) takes the screenshots in `tests\tmp\fl` at 1400 x 900.
+
+State: `build.bat test` and `build.bat` (no warnings) pass, `run_all.bat` 71 scripts, 0 failed.
+
+Licence record of what the version added:
+
+- `vendor/stb_truetype.h`: v1.26, public domain (alternatively MIT), Sean Barrett.
+  Used by the tests only (`tests/test_outline.c` compares the outline reader with it); the application does not include it.
+- `vendor/stb_image.h`: v2.30, public domain or MIT, Sean Barrett, copied unchanged from raylib's `src/external`; `vendor/stb_image.LICENSE.txt` records it.
+  Used by `src/bmsrc.c` (PNG, GIF, BMP and TGA only).
+- `src/outline.c` has its own inflate (structured after zlib's puff, written for this project); no zlib or sinfl is vendored.
+- `testdata/outline` (the list is in `testdata/outline/README.txt`): subsets and conversions of Noto Sans (SIL OFL 1.1, `OFL.txt` beside them), a Unifont subset (GPLv2 or later with the font embedding exception, and OFL 1.1), and a Type 1 font written by `tests/gen_outline_fonts.py`.
+- `testdata/bitmap` (`testdata/bitmap/README.txt`): tiny hand-made fonts made by `tests/gen_bitmap_fonts.py`, public domain (CC0 1.0); no real font file is copied.

@@ -2158,7 +2158,7 @@ bool Browser_UpdateDraw(Browser *b, Rectangle area, BrowserChoice *choice)
     if (b->dirtyVis) rebuild_vis(b);
     pop_input(b);
     if (!Th_TextIs(NULL) && !Sample_TextFocused()) { while (charSrc() > 0) {} }
-    else if (prevBlocked) Th_TextBlur();
+    else if (prevBlocked && !Th_TextIsIn("nf.")) Th_TextBlur();   /* a dialog over the browser owns its own fields (the New Font dialog) */
 
     DrawRectangle((int)area.x, (int)area.y, (int)area.width, (int)area.height, TH_BG);
     Rectangle panelR = RR(area.x + area.width - PANEL_W, area.y, PANEL_W, area.height - STATUS_H);

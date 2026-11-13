@@ -1,0 +1,4 @@
+stb_image.h v2.30 by Sean Barrett (nothings.org/stb), copied unchanged from raylib's src/external.
+Dual licensed: public domain (Unlicense-like) or MIT, at your choice; the full text is at the end of stb_image.h
+("ALTERNATIVE A - MIT License", "ALTERNATIVE B - Public Domain (www.unlicense.org)").
+Used by src/bmsrc.c (PNG/GIF/BMP/TGA only: STBI_ONLY_*, STBI_NO_STDIO, STBI_STATIC).

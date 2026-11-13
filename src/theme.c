@@ -852,6 +852,7 @@ static bool th_insert(const char *s, int n, int cap)
 
 const char *Th_TextValue(void) { return th_ed.buf; }
 bool Th_TextIs(const char *name) { return th_ed.name[0] && (!name || !strcmp(th_ed.name, name)); }
+bool Th_TextIsIn(const char *prefix) { return th_ed.name[0] && !strncmp(th_ed.name, prefix, strlen(prefix)); }
 void Th_TextBlur(void) { th_ed.name[0] = 0; }
 
 void Th_TextFocus(const char *name, const char *text, bool selectAll)

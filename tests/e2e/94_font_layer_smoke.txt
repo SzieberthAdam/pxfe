@@ -1,0 +1,43 @@
+# 94. Font layers, smoke test: a new font from the Menu (the New Font dialog), a font layer from testdata/outline/NotoSub.ttf, a glyph 'A'
+# added with Add Glyph, the layer under the empty glyph in the glyph view.  Screenshots go to tests/tmp/fl.
+wait 16
+assert hasstore 1
+assert sidecar missing
+click @Menu
+wait 6
+click @file.new
+wait 6
+assert nfopen 1
+shot tests/tmp/fl/smoke_newfont.png
+click @Create
+wait 10
+assert nfopen 0
+assert docnew 1
+assert readonly 0
+assert glyphs 0
+assert flayers 0
+# the font layer, by what the Add Layer popover does after its file dialog
+addlayerfile testdata/outline/NotoSub.ttf
+wait 3
+assert flayers 1
+assert flayer 0 kind 1
+assert flayer 0 outline 1
+assert flayer 0 source NotoSub.ttf
+# a glyph: Add Glyph, the code in the dialog
+click @Add_Glyph
+wait 4
+type A
+wait 2
+click @Add
+wait 6
+assert glyphs 1
+assert glyph U+0041 exists
+click @cell:U+0041
+key enter
+wait 8
+assert editor 1
+click @gtab_Layers
+wait 6
+assert l.count 2
+assert l.ink.0 > 0
+shot tests/tmp/fl/smoke.png

@@ -5,7 +5,7 @@ assert inbrowser 1
 click @card:0
 wait 6
 assert menuhi -1
-# no highlight at first, Down: the first item, Down again: Save
+# no highlight at first, Down: the first item (New Font), Down again: Load, then Save
 click @Menu
 wait 6
 assert filemenu 1
@@ -16,14 +16,17 @@ assert menuhi 0
 key down
 wait 3
 assert menuhi 1
+key down
+wait 3
+assert menuhi 2
 shot tests/tmp/shots/93_menu_keys.png
 # Up and Down: Save again, Enter picks it ("No changes to save"), the menu closes, the selected card was not opened
 key down
 wait 3
-assert menuhi 2
+assert menuhi 3
 key up
 wait 3
-assert menuhi 1
+assert menuhi 2
 key enter
 wait 6
 assert filemenu 0
@@ -36,7 +39,7 @@ wait 6
 assert menuhi -1
 key up
 wait 3
-assert menuhi 5
+assert menuhi 6
 key home
 wait 3
 assert menuhi 0
@@ -52,10 +55,10 @@ wait 3
 assert menuhi 0
 move @file.import
 wait 6
-assert menuhi 3
+assert menuhi 4
 key down
 wait 3
-assert menuhi 4
+assert menuhi 5
 key escape
 wait 6
 assert filemenu 0

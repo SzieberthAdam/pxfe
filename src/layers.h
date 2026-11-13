@@ -17,6 +17,7 @@
 #include "raylib.h"
 #include "pxfont.h"
 #include "store.h"
+#include "flayers.h"
 
 typedef struct Layer {
     bool isCurrent;              /* the edited glyph itself */
@@ -28,6 +29,8 @@ typedef struct Layer {
     int32_t code;                /* the fixed code when !sameCode */
     char pxfm[33];               /* the font of the library, "" = this font */
     char fontName[96];           /* "Family Style" of that font (for the row) */
+    FlLayer *fl;                 /* a layer of a file or a font layer of the database (flayers.h); NULL for a plain session layer */
+    bool fontLevel;              /* a FONT layer: fl belongs to the FlDoc of the font (saved in the sidecar), else to this entry */
 } Layer;
 
 typedef struct Layers Layers;
@@ -55,6 +58,23 @@ void    Layers_Nudge(Layers *l, int i, int dx, int dy);
 int     Layers_Add(Layers *l, const char *pxfm, const char *fontName, bool sameCode, int32_t code);
 void    Layers_Remove(Layers *l, int i);          /* not the current glyph */
 void    Layers_Move(Layers *l, int i, int dir);   /* -1 up (towards the top), +1 down */
+
+/* FONT LAYERS (flayers.h).  The font layers of the open font appear in the same stack as the session layers, marked "FONT"; main.c hands
+ * over the FlDoc of the open font (NULL: none; call with NULL before the document is freed).  The stack's order of the font layers is
+ * the document's order (it is what is persisted: Layers bumps doc->rev for every change that has to be stored).  Session layers that
+ * come from a file (fontLevel false) own their FlLayer and are never stored. */
+void    Layers_SetFontDoc(Layers *l, FlDoc *d);
+/* Adds a layer from a file on top (the code of the edited glyph; a font layer follows it for every glyph).  face: the .ttc face, strike or
+ * font index (flayers.h).  Returns its index, -1 with a message in err (not added). */
+int     Layers_AddFile(Layers *l, const char *path, int face, bool fontLevel, char *err, int errn);
+/* Adds a layer of a database font as a font layer (same code, saved with the font). */
+int     Layers_AddDbFont(Layers *l, const char *pxfm, const char *fontName);
+/* Draws layer i (not the current glyph) with the glyph origin at screen (ox, oy), canvas zoom z. */
+void    Layers_DrawGlyph(Layers *l, int i, int ox, int oy, int z);
+/* The file dialog of the popover (NULL: none; the popover then offers no file source); returns false when cancelled. */
+void    Layers_SetFileDialog(bool (*fn)(char *out, int size));
+/* The script hook that chooses the file of the popover without a dialog. */
+bool    Layers_PopoverSetFile(Layers *l, const char *path);
 
 /* The Add Layer popover: open, and its rectangle (the rest of the UI ignores the mouse while it is open). */
 bool    Layers_PopoverOpen(const Layers *l);

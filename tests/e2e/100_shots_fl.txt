@@ -1,0 +1,67 @@
+# 100. Font layers: screenshots at 1400x900 (tests/tmp/fl/shot_*.png); not part of run_all.bat.
+# Run from the repo root, with a copy of the executable so that a build is not locked:
+#   copy /y tests\tmp\pxfe_e2e.exe tests\tmp\fl\pxfe_fl.exe & copy /y testdata\lib.pxfdb tests\tmp\fl\shots.pxfdb & del tests\tmp\fl\shots.pxfdb-settings & del tests\tmp\fl\shots.ini
+#   tests\tmp\fl\pxfe_fl.exe tests\tmp\fl\shots.pxfdb --size 1400x900 --ini tests\tmp\fl\shots.ini --play tests\e2e\100_shots_fl.txt
+wait 20
+click @Menu
+wait 8
+click @file.new
+wait 8
+click @nf.name
+wait 3
+key a ctrl
+wait 2
+type Noto Layered
+wait 4
+shot tests/tmp/fl/shot_newfont.png
+click @Create
+wait 10
+addlayerfile testdata/outline/NotoSub.ttf
+wait 4
+click @Add_Glyph
+wait 4
+type A
+wait 2
+click @Add
+wait 6
+click @cell:U+0041
+key enter
+wait 8
+click @gtab_Layers
+wait 6
+# the layer under the empty glyph, with the correction of this glyph (offset and size)
+click @lay_gx+
+click @lay_gx+
+click @lay_gy+
+wait 3
+click @lay_gsize.value
+type 90
+key enter
+wait 6
+shot tests/tmp/fl/shot_glyph_empty.png
+# pixels drawn over it
+drag @ecell:3,4 @ecell:3,11
+drag @ecell:8,4 @ecell:8,11
+drag @ecell:3,4 @ecell:8,4
+drag @ecell:3,8 @ecell:8,8
+wait 6
+shot tests/tmp/fl/shot_glyph_pixels.png
+# the Add Layer popover with the File source
+click @+_Add_Layer
+wait 4
+click @lay_src_File
+wait 4
+setdialog layerfile testdata/outline/NotoSub.ttc
+click @lay_choose
+wait 8
+shot tests/tmp/fl/shot_popover_file.png
+click @Cancel
+wait 4
+# a layer whose file is gone
+copyfile testdata/bitmap/font.bdf tests/tmp/fl/gone.bdf
+addlayerfile tests/tmp/fl/gone.bdf
+wait 4
+delete tests/tmp/fl/gone.bdf
+sleep 3000
+wait 20
+shot tests/tmp/fl/shot_missing.png

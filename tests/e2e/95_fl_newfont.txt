@@ -1,0 +1,110 @@
+# 95. Font layers: New Font (name, style, size, ascent, descent) makes an empty orphan font, Add Glyph, and font layers from every
+# source format (outline: ttf otf woff eot pfb ttc face 1; bitmap: bdf pcf fnt fon json strikes.ttf), a missing file (the missing state).
+wait 16
+assert hasstore 1
+click @Menu
+wait 6
+click @file.new
+wait 6
+assert nfopen 1
+# the dialog: name, style, then the numbers (size is ascent + descent)
+click @nf.name
+wait 3
+key a ctrl
+type Layered
+wait 3
+click @nf.style
+wait 3
+key a ctrl
+type Test
+wait 3
+click @nf.size+
+wait 2
+click @nf.ascent+
+wait 2
+click @nf.descent-
+wait 2
+click @Create
+wait 10
+assert nfopen 0
+assert docnew 1
+assert title Layered Test
+assert readonly 0
+assert hascont 0
+assert glyphs 0
+assert flayers 0
+assert unsaved 1
+assert m.ascent 14
+assert m.descent 3
+click @Add_Glyph
+wait 4
+type A
+wait 2
+click @Add
+wait 6
+assert glyphs 1
+assert glyph U+0041 exists
+# outline sources, each one is a new top layer
+addlayerfile testdata/outline/NotoSub.ttf
+assert flayers 1
+assert flayer 0 kind 1
+assert flayer 0 ok 1
+assert flayer 0 outline 1
+assert flayer 0 source NotoSub.ttf
+addlayerfile testdata/outline/NotoSubCff.otf
+assert flayers 2
+assert flayer 0 outline 1
+assert flayer 0 source NotoSubCff.otf
+addlayerfile testdata/outline/NotoSub.woff
+assert flayers 3
+assert flayer 0 outline 1
+assert flayer 0 source NotoSub.woff
+addlayerfile testdata/outline/NotoSub.eot
+assert flayers 4
+assert flayer 0 outline 1
+assert flayer 0 source NotoSub.eot
+addlayerfile testdata/outline/NotoSub.pfb
+assert flayers 5
+assert flayer 0 outline 1
+assert flayer 0 source NotoSub.pfb
+addlayerfile testdata/outline/NotoSub.ttc 1
+assert flayers 6
+assert flayer 0 outline 1
+assert flayer 0 face 1
+assert flayer 0 nfaces 2
+assert flayer 0 source NotoSub.ttc
+# bitmap sources
+addlayerfile testdata/bitmap/font.bdf
+assert flayers 7
+assert flayer 0 bitmap 1
+assert flayer 0 outline 0
+assert flayer 0 source font.bdf
+addlayerfile testdata/bitmap/font_lsb.pcf
+assert flayers 8
+assert flayer 0 bitmap 1
+addlayerfile testdata/bitmap/font.fnt
+assert flayers 9
+assert flayer 0 bitmap 1
+addlayerfile testdata/bitmap/fixed_prop_ne.fon 1
+assert flayers 10
+assert flayer 0 bitmap 1
+assert flayer 0 face 1
+addlayerfile testdata/bitmap/sheet.json
+assert flayers 11
+assert flayer 0 bitmap 1
+addlayerfile testdata/bitmap/strikes.ttf 2
+assert flayers 12
+assert flayer 0 bitmap 1
+assert flayer 0 face 2
+# a missing file and an unreadable one are not added
+addlayerfile testdata/outline/nothere.ttf 0 expectfail
+addlayerfile testdata/outline/OFL.txt 0 expectfail
+assert flayers 12
+# every layer is ok, the first is the oldest
+assert flayer 11 ok 1
+assert flayer 11 source NotoSub.ttf
+# a session layer is not a font layer
+addlayerfile testdata/outline/NotoSub.ttf 0 session
+assert flayers 12
+assert fspending 1
+assert unsaved 1

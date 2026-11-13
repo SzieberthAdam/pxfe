@@ -21,6 +21,8 @@
 #include "theme.h"
 #include "editor.h"
 #include "layers.h"
+#include "flayers.h"
+#include "fsettings.h"
 #include "winfile.h"
 
 /* Scripted text input (hidden --play flag): GetCharPressed is wrapped so the script runner can inject characters.
@@ -77,7 +79,7 @@ static char (*ghHash)[33] = NULL;
 static int ghN = 0;
 
 /* Dialog overrides for scripted runs (play command setdialog). */
-static char dlgFolderPath[PATH_MAX_LEN], dlgSavePath[PATH_MAX_LEN];
+static char dlgFolderPath[PATH_MAX_LEN], dlgSavePath[PATH_MAX_LEN], dlgLayerPath[PATH_MAX_LEN];
 static bool noDialogs = false;
 
 /* ---- the library: one Store for the app's lifetime, the browser / insight / finder on it ---- */
@@ -93,6 +95,14 @@ static bool DlgFolder(char *out, int size, const char *what)
     if (dlgFolderPath[0]) { snprintf(out, (size_t)size, "%s", dlgFolderPath); return true; }
     if (noDialogs) return false;
     return Win_PickFolder(out, size, what);
+}
+
+/* the file of a font layer (Add Layer popover) */
+static bool DlgLayerFile(char *out, int size)
+{
+    if (dlgLayerPath[0]) { snprintf(out, (size_t)size, "%s", dlgLayerPath); return true; }
+    if (noDialogs) return false;
+    return Win_OpenFileDialog(out, size, FL_FILE_FILTER);
 }
 
 static bool DlgDb(char *out, int size)
@@ -130,6 +140,10 @@ static int boxAbove = 6, boxBelow = 2; /* the font box of the current frame (px_
 static float panelScroll = 0;          /* scroll of the right-hand panel */
 static int glyphTab = 0;               /* tab of the glyph view's right panel: 0 Glyph, 1 Usage, 2 Layers (not remembered) */
 static bool TypefaceEditing(const char *pxtf);   /* panel.inc */
+static bool FlPending(void);                    /* font layers (below) */
+static bool FsDirty(void);
+static void CmdAddGlyph(void);
+static void NewFontOpen(void);
 static int panelTab = 0;               /* tab of the right-hand panel: 0 Font, 1 Glyph, 2 Similar (kept in pxfe.ini) */
 
 /* ------------------------------------------------------------------------------------------------
@@ -288,13 +302,16 @@ static void PushUndo(int key)
     undoStack[undoN++] = s;
 }
 
+/* A font made by New Font: it has no original, so it counts as modified until it is committed (and again after every commit's edits). */
+static bool docIsNew = false;
+
 static void EnsureHashes(void)
 {
     if (!hasFont) return;
     if (!needHash && curHash[0]) return;
     px_font_hash(&font, curHash);
     if (hasCont) pxtf_hash(&cont, curContHash); else curContHash[0] = 0;
-    modified = !Same(curHash, origHash) || (hasCont && !Same(curContHash, origContHash));
+    modified = docIsNew || !Same(curHash, origHash) || (hasCont && !Same(curContHash, origContHash));
     needHash = false;
 }
 
@@ -367,7 +384,7 @@ static void DoUndoRedo(bool redo)
  * Modal dialogs
  * ---------------------------------------------------------------------------------------------- */
 enum { M_NONE, M_CONFIRM, M_INPUT };
-enum { A_NONE, A_DELETE, A_CLONE, A_CLONE_REPLACE, A_UNSAVED, A_MESSAGE, A_DELETE_ITEM, A_IMPORT_REPLACE, A_SAVEAS_REPLACE, A_OVERWRITE_NOBACKUP, A_BACKUP_FAILED };
+enum { A_NONE, A_DELETE, A_CLONE, A_CLONE_REPLACE, A_UNSAVED, A_MESSAGE, A_DELETE_ITEM, A_IMPORT_REPLACE, A_SAVEAS_REPLACE, A_OVERWRITE_NOBACKUP, A_BACKUP_FAILED, A_ADDGLYPH };
 
 static struct {
     int kind, action;
@@ -520,7 +537,7 @@ static bool DupPending(void)
 /* memory differs from the file as loaded or last saved, or a duplicate has edits that are not in memory yet */
 static bool DbDirty(void)
 {
-    return store && (store_modified(store) || DupPending());
+    return store && (store_modified(store) || DupPending() || FsDirty() || FlPending());
 }
 
 static const char *DbName(void)
@@ -550,6 +567,86 @@ static void NameOf(const PxtfVariant *v, char *out, size_t cap)
     else snprintf(out, cap, "Unnamed font");
 }
 
+/* ------------------------------------------------------------------------------------------------
+ * Font layers and the settings sidecar (flayers.h, fsettings.h)
+ *
+ * The sidecar <db>-settings holds, per font hash, the font layers of that font.  fsettings is the whole file in memory (like the store);
+ * Save writes it (next to the .pxfdb), Save As writes a new one beside the new path, Import starts with an empty one.  The font layers of
+ * the open font live in flDoc and are the truth while the font is open; they are copied into fsettings under the font's hash whenever they
+ * changed (FlSync): an original under its own hash, a duplicate (or a new font) under its CURRENT hash, which changes with every edit, so a
+ * sync after pixel edits moves the layers to the new hash and drops the old one (unless it is flBase, the hash the document was opened
+ * with).  Leaving a duplicate commits it into memory and syncs, so the layers are written under the hash it is committed with.
+ * ---------------------------------------------------------------------------------------------- */
+static FSettings *fsettings = NULL;
+static bool fsNoWrite = false;         /* the sidecar on disk is not a settings file: never written over */
+static FlDoc *flDoc = NULL;            /* the font layers of the open font */
+static char flBase[33];                /* the hash the document was opened with ("" for a new font) */
+static char flSyncedHash[33];          /* the hash flDoc was last written under */
+static unsigned flSyncedRev;
+
+static void FlDocSet(FlDoc *nd)
+{
+    if (ed) Layers_SetFontDoc(Editor_Layers(ed), nd);   /* the stack lets go of the old layers first */
+    FlDoc_Free(flDoc);
+    flDoc = nd;
+    flSyncedRev = nd ? nd->rev : 0;
+}
+
+static bool FlPending(void) { return flDoc && fsettings && flDoc->rev != flSyncedRev; }
+static bool FsDirty(void) { return fsettings && fs_dirty(fsettings); }
+
+static void FsOpenFor(Store *s)
+{
+    if (fsettings) { fs_close(fsettings); fsettings = NULL; }
+    fsNoWrite = false;
+    char sp[1200], err[FS_ERR_LEN] = "";
+    if (!store_info(s)->imported && fs_sidecar_path(store_info(s)->path, sp, sizeof sp)) {
+        Slashes(sp);
+        fsettings = fs_open(sp, err);
+        if (!fsettings) {
+            ShowError("Cannot read the layer settings", err[0] ? err : "Unknown error.");
+            fsNoWrite = true;
+        }
+    }
+    if (!fsettings) fsettings = fs_new_empty();
+}
+
+static void FlSync(void)
+{
+    if (!hasFont || !flDoc || !fsettings) return;
+    EnsureHashes();
+    bool revCh = flDoc->rev != flSyncedRev, hashCh = !Same(curHash, flSyncedHash);
+    if (!revCh && !hashCh) return;
+    if (hashCh && flSyncedHash[0] && !Same(flSyncedHash, flBase) && fs_has_font(fsettings, flSyncedHash)) fs_remove_font(fsettings, flSyncedHash);
+    if (!FlDoc_Store(flDoc, fsettings, curHash)) Th_Toast(TH_TOAST_ERR, "Cannot keep the layer settings: %s", fs_error(fsettings));
+    snprintf(flSyncedHash, sizeof flSyncedHash, "%s", curHash);
+    flSyncedRev = flDoc->rev;
+}
+
+/* the new document's layers: those the settings hold under its hash (an original), or none (a new font) */
+static void FlOpenDoc(bool original)
+{
+    FlDoc *nd = FlDoc_New();
+    if (original && fsettings) FlDoc_Load(nd, fsettings, curHash);
+    FlDocSet(nd);
+    snprintf(flBase, sizeof flBase, "%s", original ? curHash : "");
+    snprintf(flSyncedHash, sizeof flSyncedHash, "%s", original ? curHash : "");
+}
+
+/* writes the sidecar after the database was written (or by itself when only the settings changed); asNew: a new path (Save As) */
+static bool SaveSidecar(bool asNew)
+{
+    if (!fsettings || fsNoWrite || !store) return true;
+    char sp[1200];
+    if (!fs_sidecar_path(store_info(store)->path, sp, sizeof sp)) return true;
+    Slashes(sp);
+    bool other = !Same(fs_path(fsettings), sp);
+    if (!asNew && !other && !fs_dirty(fsettings)) return true;
+    bool ok = (asNew || other) ? fs_save_as(fsettings, sp) : fs_save(fsettings);
+    if (!ok) ShowError("Cannot save the layer settings", fs_error(fsettings)[0] ? fs_error(fsettings) : "Unknown error.");
+    return ok;
+}
+
 static bool CommitDuplicate(void);
 
 /* Takes over *nf and *nc (nc may be NULL).  origH / origContH: the baseline hashes ("" = the state as loaded). */
@@ -560,6 +657,7 @@ static void AdoptDocument(PxFont *nf, PxtfTypeface *nc, int variant, bool ro, co
     CommitDuplicate();      /* the document being left */
     LiveDupsRetire();
     dupCommit.valid = false;
+    docIsNew = false;
     StackClear(undoStack, &undoN);
     StackClear(redoStack, &redoN);
     if (hasFont) px_font_free(&font);
@@ -580,6 +678,7 @@ static void AdoptDocument(PxFont *nf, PxtfTypeface *nc, int variant, bool ro, co
     snprintf(origContHash, sizeof origContHash, "%s", hasCont ? (origContH && origContH[0] ? origContH : curContHash) : "");
     needHash = true;
     EnsureHashes();
+    FlOpenDoc(ro);
     SnapGlyphHashes();
     selN = 0;
     SelClear();
@@ -614,6 +713,8 @@ static void DropDocument(void)
     curHash[0] = curContHash[0] = origHash[0] = origContHash[0] = 0;
     title[0] = origTitle[0] = docPath[0] = sourcePath[0] = 0;
     modified = false;
+    docIsNew = false;
+    FlDocSet(NULL);
     LiveDupsRetire();
     dupCommit.valid = false;
     SnapGlyphHashes();
@@ -768,7 +869,7 @@ static void DuplicateToEdit(void)
 
 /* Commits the duplicate being edited into memory (a font, and a typeface when it has one), replacing its earlier commit.  The
  * browser is rescanned when something changed.  False when the commit failed (an error is shown). */
-static bool CommitDuplicate(void)
+static bool CommitDuplicateCore(void)
 {
     if (!hasFont || readOnly || !store) return true;
     EnsureHashes();
@@ -813,6 +914,13 @@ static bool CommitDuplicate(void)
     }
     if (changed && browser) Browser_Rescan(browser);
     return true;
+}
+
+static bool CommitDuplicate(void)
+{
+    bool ok = CommitDuplicateCore();
+    if (ok && hasFont && !readOnly) FlSync();   /* the layers go under the hash it was committed with */
+    return ok;
 }
 
 /* ---- the library on a worker thread: Load, Import and Export (the first build of a big folder takes minutes) ---- */
@@ -876,6 +984,7 @@ static void CloseLibrary(void)
     if (finder) { Finder_Destroy(finder); finder = NULL; }
     if (insight) { Insight_Destroy(insight); insight = NULL; }
     if (store) { store_close(store); store = NULL; }
+    if (fsettings) { fs_close(fsettings); fsettings = NULL; }
     inBrowser = false;
     inFinder = false;
 }
@@ -886,6 +995,7 @@ static bool InstallStore(Store *s)
     DropDocument();
     CloseLibrary();
     store = s;
+    FsOpenFor(s);
     liveDups.n = 0;
     liveDups.forStore = s;
     snprintf(libRoot, sizeof libRoot, "%.1000s", store_info(store)->path);
@@ -1241,10 +1351,13 @@ static bool SaveDb(void)
 {
     if (!store) { Th_Toast(2, "No database is loaded"); return false; }
     if (!CommitDuplicate()) return false;
-    if (!store_modified(store)) { Th_Toast(0, "No changes to save"); return true; }
+    FlSync();
+    bool dbMod = store_modified(store);
+    if (!dbMod && !FsDirty()) { Th_Toast(0, "No changes to save"); return true; }
     char err[PX_ERR_LEN] = "";
-    if (!store_save(store, err)) { ShowError("Cannot save", err[0] ? err : "Unknown error."); return false; }
-    Th_Toast(1, "Saved %s", DbName());
+    if (dbMod && !store_save(store, err)) { ShowError("Cannot save", err[0] ? err : "Unknown error."); return false; }
+    if (!SaveSidecar(false)) return false;   /* only the settings changed: the .pxfdb is not rewritten */
+    Th_Toast(1, "Saved %s", dbMod ? DbName() : "the layer settings");
     return true;
 }
 
@@ -1261,6 +1374,8 @@ static bool DoSaveAs(const char *path)
     snprintf(libRoot, sizeof libRoot, "%.1000s", store_info(store)->path);
     Slashes(libRoot);
     IniSetLastDb(libRoot);
+    FlSync();
+    SaveSidecar(true);     /* the settings go beside the new file; the old sidecar stays */
     Th_Toast(1, "Saved as %s", DbName());
     return true;
 }
@@ -2111,6 +2226,7 @@ static void DrawCommandBar(Rectangle r)
     TbSep();
     bool grid = !inEditor;
     if (TbButton("Select Occurrences", TH_BTN_OFF(grid && selCount > 0), "Select every glyph with the same shape as the selected ones  (Ctrl+Shift+A)")) CmdSelectOccurrences();
+    if (TbButton("Add Glyph", TH_BTN_OFF(grid && !readOnly), readOnly ? saveHint : "Add an empty glyph: a code point, or one without")) CmdAddGlyph();
     if (TbButton("Clone", TH_BTN_OFF(grid && !readOnly && selCount == 1), readOnly ? saveHint : "Clone the selected glyph to a new code point, or to a glyph without one  (Ctrl+D)")) CmdClone();
     if (TbButton("Set Default", TH_BTN_OFF(grid && CanSetDefault()), readOnly ? saveHint : "Make the selected glyph the font's default glyph")) CmdSetDefault();
     if (TbButton("Delete", TH_BTN_DANGER | TH_BTN_OFF(grid && !readOnly && selCount > 0), readOnly ? saveHint : "Delete the selected glyphs  (Del)")) CmdDeleteAsk();
@@ -2121,16 +2237,17 @@ static void DrawFileMenu(void)
     if (!fileMenu.open) return;
     const char *nodb = "No database is loaded";
     int off = store ? 0 : TH_MI_OFF;
-    ThMenuItem it[6] = {
-        {"Load\xE2\x80\xA6", "Ctrl+O", "file.load"}, {"Save", "Ctrl+S", "file.save", nodb, off}, {"Save As\xE2\x80\xA6", "Ctrl+Shift+S", "file.saveas", nodb, off | TH_MI_SEP},
+    ThMenuItem it[7] = {
+        {"New Font\xE2\x80\xA6", NULL, "file.new", nodb, off | TH_MI_SEP}, {"Load\xE2\x80\xA6", "Ctrl+O", "file.load"}, {"Save", "Ctrl+S", "file.save", nodb, off}, {"Save As\xE2\x80\xA6", "Ctrl+Shift+S", "file.saveas", nodb, off | TH_MI_SEP},
         {"Import Folder\xE2\x80\xA6", NULL, "file.import"}, {"Export to Folder\xE2\x80\xA6", NULL, "file.export", nodb, off | TH_MI_SEP}, {"Quit", NULL, "file.quit"}};
-    switch (Th_Menu(&(ThMenu){it, 6, .x = fileMenu.anchor.x, .y = fileMenu.anchor.y + fileMenu.anchor.height + 4, .w = 276, .keep = fileMenu.anchor}, &fileMenu.open)) {
-    case 0: Guard(G_LOAD_DIALOG, ""); break;
-    case 1: SaveDb(); break;
-    case 2: SaveAsDialog(); break;
-    case 3: Guard(G_IMPORT_DIALOG, ""); break;
-    case 4: ExportStart(); break;
-    case 5: RequestQuit(); break;
+    switch (Th_Menu(&(ThMenu){it, 7, .x = fileMenu.anchor.x, .y = fileMenu.anchor.y + fileMenu.anchor.height + 4, .w = 276, .keep = fileMenu.anchor}, &fileMenu.open)) {
+    case 0: NewFontOpen(); break;
+    case 1: Guard(G_LOAD_DIALOG, ""); break;
+    case 2: SaveDb(); break;
+    case 3: SaveAsDialog(); break;
+    case 4: Guard(G_IMPORT_DIALOG, ""); break;
+    case 5: ExportStart(); break;
+    case 6: RequestQuit(); break;
     default: break;
     }
 }
@@ -2159,12 +2276,13 @@ static void DrawInfoBar(Rectangle r)
         if (Th_Duplicate(db, false, 0, "Make an editable copy of this font  (the original stays untouched)")) DuplicateToEdit();
     } else {
         char s[400];
-        snprintf(s, sizeof s, "%s \xC2\xB7 editable duplicate of Font", title);
+        snprintf(s, sizeof s, docIsNew ? "%s \xC2\xB7 new font, no typeface" : "%s \xC2\xB7 editable duplicate of Font", title);
         Th_Text(s, x, ty, TH_TEXT);
         x += Th_Measure(s).x + 8;
         x += Th_HashShort(NULL, origHash, x, ty, 0, "hash_font") + 16;
         EnsureHashes();
         if (!modified) Th_Text("Unchanged: same hash as the original", x, ty, TH_TEXT_DIM);
+        else if (docIsNew) Th_Text("not in the database until it is committed", x, ty, TH_TEXT_DIM);
     }
 }
 
@@ -2245,6 +2363,108 @@ static void DrawEmptyState(Rectangle area)
 }
 
 /* The Export dialog: what the folder holds, Append or Overwrite, and the backup of the folder's current data */
+/* ---- Add Glyph and New Font ---- */
+
+/* an empty glyph (no ink) with the next code, or without a code point when cp < 0; it is drawn in the glyph view */
+static void DoAddGlyph(int32_t cp)
+{
+    if (readOnly) return;
+    PushUndo(0);
+    int a, b;
+    px_font_box(&font, &a, &b);
+    PxGlyph g;
+    memset(&g, 0, sizeof g);
+    g.advance = (a + b) / 2 > 0 ? (a + b) / 2 : 1;
+    int ni;
+    if (cp < 0) ni = px_font_add_uncoded(&font, &g);
+    else { g.codepoint = cp; ni = px_font_add_glyph(&font, &g); }
+    needHash = true;
+    selN = 0;
+    SelOnly(ni);
+    revealIdx = ni;
+    if (cp < 0) Th_Toast(1, "Added #%d (no code point)", font.glyphs[ni].codepoint - PX_CODE_UNCODED_FIRST);
+    else Th_Toast(1, "Added U+%04X", (unsigned)cp);
+}
+
+static void CmdAddGlyph(void)
+{
+    if (!hasFont) return;
+    if (readOnly) { Th_Toast(2, "An original is read-only: use Duplicate to Edit first"); return; }
+    ModalOpen(M_INPUT, A_ADDGLYPH, "Add glyph", "Add an empty glyph.\nType U+XXXX, hex digits, or a single character; or add it without a code point.", 3, "Cancel", "No Code Point", "Add", 2, 0, false);
+}
+
+/* New Font: name, style, pixel size, ascent and descent.  The font has no glyphs and no typeface (it is orphaned: the name is only the
+ * title of this session); it is committed into memory like a duplicate, and Add Glyph gives it glyphs. */
+static struct { bool open; int frame; char name[80], style[40]; int size, ascent, descent; } nf;
+
+static void NewFontOpen(void)
+{
+    if (!store) { Th_Toast(2, "No database is loaded"); return; }
+    memset(&nf, 0, sizeof nf);
+    nf.open = true;
+    nf.frame = frameNo;
+    snprintf(nf.name, sizeof nf.name, "New Font");
+    snprintf(nf.style, sizeof nf.style, "Regular");
+    nf.size = 16; nf.ascent = 12; nf.descent = 4;
+    Th_TextBlur();
+}
+
+static void NewFontCreate(void)
+{
+    PxFont f;
+    px_font_init(&f);
+    f.has[PXM_ASCENT] = f.has[PXM_DESCENT] = true;
+    f.m[PXM_ASCENT] = nf.ascent;
+    f.m[PXM_DESCENT] = nf.descent;
+    char t[200];
+    snprintf(t, sizeof t, "%s%s%s", nf.name, nf.name[0] && nf.style[0] ? " " : "", nf.style);
+    if (!t[0]) snprintf(t, sizeof t, "New Font");
+    nf.open = false;
+    AdoptDocument(&f, NULL, 0, false, t, t, NULL, NULL, "new font", "");
+    docIsNew = true;
+    needHash = true;
+    EnsureHashes();
+    Th_Toast(1, "New font: add glyphs with Add Glyph");
+}
+
+static void DrawNewFontDialog(int W, int H)
+{
+    if (!nf.open) return;
+    DrawRectangle(0, 0, W, H, TH_SCRIM);
+    uiBlocked = false;
+    Th_SetInputBlocked(false);
+    bool fresh = nf.frame == frameNo;
+    const float pw = 460, pad = 24;
+    float ph = pad + TH_SIZE_HEAD + TH_PAD + 5 * (TH_ROW_H + TH_GAP / 2) + 2 * TH_LINE_H + TH_PAD + TH_ROW_H + pad;
+    Rectangle pr = {Fl((W - pw) / 2), Fl((H - ph) / 2.5f), pw, ph};
+    Th_Raised(pr, 1);
+    float x = pr.x + pad, w = pr.width - 2 * pad, y = pr.y + pad;
+    Th_TextHead("New Font", x, y, TH_TEXT);
+    y += TH_SIZE_HEAD + TH_PAD;
+    Rectangle vr = Th_Row(x, &y, w, "Name", NULL, 0);
+    if (Th_TextField((Rectangle){vr.x, vr.y, vr.width, TH_ROW_H}, "nf.name", nf.name, (int)sizeof nf.name, 0, "Family") & TH_TF_CHANGED) snprintf(nf.name, sizeof nf.name, "%s", Th_TextValue());
+    vr = Th_Row(x, &y, w, "Style", NULL, 0);
+    if (Th_TextField((Rectangle){vr.x, vr.y, vr.width, TH_ROW_H}, "nf.style", nf.style, (int)sizeof nf.style, 0, "Regular") & TH_TF_CHANGED) snprintf(nf.style, sizeof nf.style, "%s", Th_TextValue());
+    int nv;
+    vr = Th_Row(x, &y, w, "Pixel size", NULL, 0);
+    if (Th_Number((Rectangle){vr.x, vr.y, 96, TH_ROW_H}, "nf.size", nf.size, 1, 256, 0, &nv)) { nf.size = nv; nf.ascent = (nv * 3 + 2) / 4; nf.descent = nv - nf.ascent; }
+    vr = Th_Row(x, &y, w, "Ascent", NULL, 0);
+    if (Th_Number((Rectangle){vr.x, vr.y, 96, TH_ROW_H}, "nf.ascent", nf.ascent, 0, 256, 0, &nv)) { nf.ascent = nv; nf.size = nf.ascent + nf.descent; }
+    vr = Th_Row(x, &y, w, "Descent", NULL, 0);
+    if (Th_Number((Rectangle){vr.x, vr.y, 96, TH_ROW_H}, "nf.descent", nf.descent, 0, 256, 0, &nv)) { nf.descent = nv; nf.size = nf.ascent + nf.descent; }
+    Th_TextSmall("An empty font without a typeface; Add Glyph gives it glyphs.", x, y, TH_TEXT_DIM);
+    Th_TextSmall("The size is ascent + descent. The name is not stored in the font.", x, y + TH_LINE_H, TH_TEXT_DIM);
+    y = pr.y + pr.height - pad - TH_ROW_H;
+    bool create = false, cancel = false;
+    float bx = pr.x + pr.width - pad - 96;
+    create = Th_Button((Rectangle){bx, y, 96, TH_ROW_H}, "Create", TH_BTN_PRIMARY | TH_BTN_OFF(nf.ascent + nf.descent > 0), NULL) && !fresh;
+    cancel = Th_Button((Rectangle){bx - 8 - 96, y, 96, TH_ROW_H}, "Cancel", 0, NULL) && !fresh;
+    if (!fresh && IsKeyPressed(KEY_ESCAPE)) cancel = true;
+    if (!fresh && !Th_TextIs(NULL) && (IsKeyPressed(KEY_ENTER) || IsKeyPressed(KEY_KP_ENTER)) && nf.ascent + nf.descent > 0) create = true;
+    if (cancel) nf.open = false;
+    else if (create) NewFontCreate();
+}
+
 static void DrawExportDialog(int W, int H)
 {
     if (!xd.open) return;
@@ -2329,6 +2549,16 @@ static void ModalResult(int b)
         }
         break;
     case A_CLONE_REPLACE: if (b == 1) DoClone(cp); break;
+    case A_ADDGLYPH:
+        if (b == 1) DoAddGlyph(-1);
+        else if (b == 2) {
+            int32_t c;
+            if (!ParseCodepoint(input, &c)) break;
+            int ex = px_font_find(&font, c);
+            if (ex >= 0) { selN = 0; SelOnly(ex); revealIdx = ex; Th_Toast(0, "U+%04X is already in the font", (unsigned)c); }
+            else DoAddGlyph(c);
+        }
+        break;
     case A_UNSAVED:
         if (b == 2) { if (SaveDb()) RunGuarded(); else guard.kind = G_NONE; }
         else if (b == 1) RunGuarded();
@@ -2381,7 +2611,7 @@ static void DrawModal(int W, int H)
         if (modal.input[0] == 0) { snprintf(info, sizeof info, "Enter a code point"); inputOk = false; }
         else if (!ParseCodepoint(modal.input, &cp)) { snprintf(info, sizeof info, "Not a valid code point"); inputOk = false; ic = TH_DANGER; }
         else {
-            if (px_font_find(&font, cp) >= 0) { snprintf(info, sizeof info, "U+%04X - already in the font, will ask to replace", (unsigned)cp); ic = TH_TEXT_NOTE; }
+            if (px_font_find(&font, cp) >= 0) { snprintf(info, sizeof info, modal.action == A_ADDGLYPH ? "U+%04X - already in the font" : "U+%04X - already in the font, will ask to replace", (unsigned)cp); ic = TH_TEXT_NOTE; }
             else snprintf(info, sizeof info, "U+%04X", (unsigned)cp);
         }
         Th_TextRich(info, pr.x + pad, y, ic, TH_F_BODY, -1);
@@ -2409,7 +2639,7 @@ static void DrawModal(int W, int H)
  * ---------------------------------------------------------------------------------------------- */
 static void HandleShortcuts(void)
 {
-    if (modal.kind != M_NONE || xd.open || (Th_TextIs(NULL) && !Th_TextIs("Filter") && !Th_TextIs("finder.search")) || Sample_TextFocused()) return;   /* a text field owns the keyboard (the library and finder searches leave the navigation keys) */
+    if (modal.kind != M_NONE || xd.open || nf.open || (Th_TextIs(NULL) && !Th_TextIs("Filter") && !Th_TextIs("finder.search")) || Sample_TextFocused()) return;   /* a text field owns the keyboard (the library and finder searches leave the navigation keys) */
     bool ctrl = IsKeyDown(KEY_LEFT_CONTROL) || IsKeyDown(KEY_RIGHT_CONTROL);
     bool shift = IsKeyDown(KEY_LEFT_SHIFT) || IsKeyDown(KEY_RIGHT_SHIFT);
     bool alt = IsKeyDown(KEY_LEFT_ALT) || IsKeyDown(KEY_RIGHT_ALT);
@@ -2516,6 +2746,7 @@ int main(int argc, char **argv)
     SetTargetFPS(playPath ? play.fps : 60);
     Theme_Load();
     if (theme.missing[0]) Th_Toast(TH_TOAST_ERR, "Font files not found in assets/fonts: %s. The default font is used.", theme.missing);
+    Layers_SetFileDialog(DlgLayerFile);
     Th_HoverFn = Hov;
     Th_NoticeFn = HashNotice;
     Sample_LoadIni(IniPath());   /* the shared sample text and the font view strip settings */
@@ -2554,13 +2785,14 @@ int main(int argc, char **argv)
         }
         int W = GetScreenWidth(), H = GetScreenHeight();
         EnsureHashes();
+        if (FlPending()) FlSync();       /* the font layers changed: they go into the settings under the font's hash */
         if (!shotPath && !job.active) HandleShortcuts();
 
         BeginDrawing();
         ClearBackground(TH_BG);
         /* the mouse button that opened a document (a double click) is still down: its release must not hit the new view */
         if (swallowMouse && !IsMouseButtonDown(MOUSE_BUTTON_LEFT) && !IsMouseButtonReleased(MOUSE_BUTTON_LEFT)) swallowMouse = false;
-        bool baseBlocked = modal.kind != M_NONE || xd.open || job.active || swallowMouse;
+        bool baseBlocked = modal.kind != M_NONE || xd.open || nf.open || job.active || swallowMouse;
         uiBlocked = baseBlocked || fileMenu.open || moreMenu.open;   /* an open menu owns the mouse: nothing below it reacts */
         Th_SetInputBlocked(uiBlocked);
         hintText = NULL;
@@ -2620,6 +2852,7 @@ int main(int argc, char **argv)
         } else {
             if (inEditor) {
                 Layers_SetStore(Editor_Layers(ed), store);
+                Layers_SetFontDoc(Editor_Layers(ed), flDoc);
                 Th_SetInputBlocked(uiBlocked || Th_TextIs(NULL) || Layers_PopoverOpen(Editor_Layers(ed))); /* a field being edited owns the keyboard */
                 Editor_SetLayersTabActive(ed, glyphTab == 2);
                 EditorResult er = Editor_UpdateDraw(ed, edArea);
@@ -2662,6 +2895,7 @@ int main(int argc, char **argv)
             Th_ToastDraw((Rectangle){0, 0, (float)(W - (side ? PANEL_W : 0)), (float)(H - STATUS_H)}, side && Browser_InTypeface(browser));
         }
         DrawExportDialog(W, H);
+        DrawNewFontDialog(W, H);
         DrawModal(W, H);
         UpdateTitle();
         EndDrawing();
@@ -2683,6 +2917,8 @@ int main(int argc, char **argv)
     StackClear(redoStack, &redoN);
     CloseLibrary();
     if (ed) Editor_Destroy(ed);
+    FlDoc_Free(flDoc);
+    FlCache_Clear();
     if (hasFont) px_font_free(&font);
     if (hasCont) pxtf_free(&cont);
     free(lx); free(ly); free(lw); free(sel); free(ghCp); free(ghHash);

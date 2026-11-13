@@ -176,6 +176,7 @@ const char *Th_TextValue(void);
 bool        Th_TextIs(const char *name);
 void        Th_TextFocus(const char *name, const char *text, bool selectAll);
 void        Th_TextBlur(void);
+bool        Th_TextIsIn(const char *prefix);   /* the focused field's name starts with prefix */
 /* Text that does not fit: Th_FitText copies `s` shortened with an ellipsis to fit maxW in the face (TH_F_*); Th_TextClip draws it so. */
 enum { TH_F_BODY, TH_F_SMALL, TH_F_UNI, TH_F_HEAD };
 #define TH_F_RICH 0x200   /* or-ed to the face: "U+XXXX" tokens are glyph captions (Th_TextRich) */

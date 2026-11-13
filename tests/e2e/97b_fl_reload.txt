@@ -1,0 +1,35 @@
+# 97b. Second process after 97: the layers and the corrections come back from the sidecar, in their order; the layer whose file is gone
+# stays in the list with its settings and says why.  The font is opened as an original (the layers are program settings).
+wait 8
+assert readonly 1
+assert sidecar exists
+assert flayers 3
+assert fslayers 3
+assert flayer 0 source gone.ttf
+assert flayer 0 ok 0
+assert flayer 0 err missing
+assert flayer 0 color 0x123456
+assert flayer 0 ncorr 1
+assert fcorr 0 U+0041 hidden 1
+assert fcorr 0 U+0041 dx 0.5
+assert fcorr 0 U+0041 dy -0.25
+assert flayer 1 source font.bdf
+assert flayer 1 bitmap 1
+assert flayer 2 source NotoSub.ttf
+assert flayer 2 outline 1
+assert flayer 2 dx 0.75
+assert flayer 2 opacity 60
+assert fcorr 2 U+0041 dsize 1.1
+assert fcorr 2 U+0041 exists 1
+assert fcorr 1 U+0041 exists 0
+# nothing was changed by reading: no modification, no write pending
+assert fsdirty 0
+assert dbmodified 0
+assert statusdb saved
+click @cell:U+0041
+key enter
+wait 6
+click @gtab_Layers
+wait 3
+assert l.count 4
+shot tests/tmp/fl/reload_layers.png

@@ -1,0 +1,2 @@
+{"source": "records.bin", "format": "records", "record_size": 16, "cell": {"width": 3, "height": 4},
+ "first": 32, "codepage": "ascii", "baseline": 3, "advance_gap": 1, "space_advance": 3}
