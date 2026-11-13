@@ -313,16 +313,7 @@ static void glyph_label(const PxGlyph *g, char *buf, size_t n)
 {
     if (px_code_is_uncoded(g->codepoint)) { snprintf(buf, n, "#%d  (no code point)", g->codepoint - PX_CODE_UNCODED_FIRST); return; }
     if (!px_code_is_codepoint(g->codepoint)) { snprintf(buf, n, "(no code point)"); return; }
-    int cp = g->codepoint;
-    if ((cp >= 0x21 && cp < 0x7F) || (cp >= 0xA1 && cp <= 0x17F && cp != 0xAD)) {
-        int len = 0;
-        const char *u = CodepointToUTF8(cp, &len);
-        snprintf(buf, n, "U+%04X  %.*s", cp, len, u);
-    } else if (cp == 0x20) {
-        snprintf(buf, n, "U+0020  space");
-    } else {
-        snprintf(buf, n, "U+%04X", cp);
-    }
+    snprintf(buf, n, "U+%04X", (unsigned)g->codepoint);   /* drawn as a glyph caption (Th_TextRich) */
 }
 
 /* Palette swatch. */
@@ -421,8 +412,8 @@ static float draw_toolbar(Editor *e, Rectangle area)
 
     char name[48] = "";
     if (g) glyph_label(g, name, sizeof name);
-    Vector2 nm = Th_Measure(name);
-    Th_Text(name, x, area.y + (int)((h1 - 1 - nm.y) / 2), TH_TEXT);
+    Vector2 nm = { Th_MeasureRich(name, TH_F_BODY), Th_Measure("A").y };
+    Th_TextRich(name, x, area.y + (int)((h1 - 1 - nm.y) / 2), TH_TEXT, TH_F_BODY, -1);
     x += (nm.x > 72 ? nm.x : 72) + 8;
     sep(x, area.y, h1); x += 10;
 

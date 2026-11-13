@@ -4,6 +4,7 @@
 
 #include "raylib.h"
 #include <stddef.h>
+#include <stdint.h>
 
 /* Palette */
 #define TH_BG          (Color){0xF3, 0xF3, 0xF4, 0xFF}  /* window background */
@@ -46,14 +47,13 @@
 #define TH_LAYER_TEAL  (Color){0x12, 0xA5, 0xB5, 0xFF}
 #define TH_RADIUS 4
 
-/* Type scale (DESIGN.md "Typography"): the size of the em in px (the font is loaded at a larger raylib size, see theme.c) */
-#define TH_SIZE_HEAD    20   /* Segoe UI Semibold: view and dialog titles */
-#define TH_SIZE_BODY    16   /* Segoe UI: labels, values, buttons, rows */
-#define TH_SIZE_CAP     13   /* Segoe UI Semibold: section captions, upper case */
-#define TH_SIZE_SMALL   13   /* Segoe UI: status line, hints, footnotes */
-#define TH_SIZE_MONO    14   /* Consolas: hashes, code points */
-#define TH_SIZE_MONO_SMALL 13 /* Consolas beside small text: the hash of the status bar */
-#define TH_SIZE_PREVIEW 34   /* raylib size of a glyph preview: content, not interface text */
+/* Type scale (DESIGN.md "Typography"): exactly three sizes, the em in px (Noto Sans is loaded at a larger raylib size, see theme.c).
+ * GNU Unifont (hashes, codes) is a 16 px pixel font: drawn only at 16 px (32 for a large preview), never scaled otherwise. */
+#define TH_SIZE_HEAD    18   /* Noto Sans SemiBold: view and dialog titles */
+#define TH_SIZE_BODY    16   /* Noto Sans Regular: labels, values, buttons, rows */
+#define TH_SIZE_CAP     13   /* Noto Sans SemiBold: section captions, upper case */
+#define TH_SIZE_SMALL   13   /* Noto Sans Regular: status line, hints, footnotes */
+#define TH_UNI_H        16   /* line height of Unifont text */
 /* Spacing (4 px grid) */
 #define TH_PAD   12   /* panel padding */
 #define TH_GAP    8   /* gap between controls */
@@ -64,26 +64,41 @@ typedef struct Theme {
     Font head;     /* TH_SIZE_HEAD semibold */
     Font cap;      /* TH_SIZE_CAP semibold */
     Font small;    /* TH_SIZE_SMALL regular */
-    Font mono;     /* TH_SIZE_MONO Consolas, falls back to ui */
-    Font monos;    /* TH_SIZE_MONO_SMALL Consolas */
     bool loaded;
+    char missing[256];   /* font files that were not found ("" = all): Theme_Load leaves it for the caller to report */
 } Theme;
 extern Theme theme;
-/* Load fonts (Segoe UI / Consolas with Latin-1 + Latin Extended-A + common punctuation code points,
- * bilinear filter; fallback raylib default).  Call after InitWindow. */
+/* Load the fonts from assets/fonts (next to the exe, or two folders up for tests	mp, or the cwd): Noto Sans for the interface, GNU Unifont for hashes and
+ * glyph codes (rasterised on demand, see Th_Uni*).  A missing file is named in theme.missing and the raylib default font (Unifont: the small font) stands in.
+ * Call after InitWindow. */
 void Theme_Load(void);
 void Theme_Unload(void);
 /* Text helpers using the theme fonts (spacing 0). */
 void    Th_Text(const char *text, float x, float y, Color c);        /* ui font */
 void    Th_TextHead(const char *text, float x, float y, Color c);    /* heading font */
 void    Th_TextSmall(const char *text, float x, float y, Color c);   /* small font */
-void    Th_TextMono(const char *text, float x, float y, Color c);    /* mono font */
 void    Th_TextCap(const char *text, float x, float y, Color c);     /* caption: semibold, upper case */
 Vector2 Th_Measure(const char *text);
 Vector2 Th_MeasureHead(const char *text);
 Vector2 Th_MeasureCap(const char *text);
 Vector2 Th_MeasureSmall(const char *text);
-Vector2 Th_MeasureMono(const char *text);
+
+/* GNU Unifont: any code point of the BMP (unifont.otf) and the planes 1-16 (unifont_upper.otf), rasterised at exactly 16 px when first needed into a point-filtered
+ * atlas on whole pixels (an atlas that is full is flushed and refilled: a glyph evicted is rasterised again when needed).
+ * Th_TextUni / Th_MeasureUni: a line of text (8 px per half-width, 16 px per full-width glyph; height TH_UNI_H); x, y are rounded.
+ * Th_CodeVisible: the code point has a Unifont image that shows (not a control, space or blank; false for a code point Unifont lacks).
+ * Th_CodeDraw: the glyph caption of cp centred in `area` at `scale` (1 or 2): the character itself, but "U+XXXX" while `hover` (or always when it
+ * has no visible image); "#n" for an uncoded glyph, "-" for none.  Th_CodeW: the width of its U+XXXX form (the slot a caption takes). */
+void    Th_TextUni(const char *text, float x, float y, Color c);
+float   Th_MeasureUni(const char *text);
+bool    Th_CodeVisible(int32_t cp);
+void    Th_CodeDraw(int32_t cp, Rectangle area, Color c, bool hover, int scale);
+float   Th_CodeW(int32_t cp);
+int     Th_CodeForm(int32_t cp);   /* how Th_CodeDraw last drew cp: 1 the character, 2 "U+XXXX", 0 not drawn (for scripts) */
+/* Text with codes: every "U+XXXX" of `text` is drawn as Th_CodeDraw in a slot of its width (hover: over the slot, or `hov` 0/1 for all of them),
+ * the rest in the face (TH_F_*).  Th_FitText / Th_TextClip take TH_F_RICH for the same. */
+float   Th_MeasureRich(const char *text, int face);
+float   Th_TextRich(const char *text, float x, float y, Color c, int face, int hov);
 /* Crisp 1 px lines on the pixel grid (coordinates are snapped). */
 void Th_HLine(float x0, float x1, float y, Color c);
 void Th_VLine(float x, float y0, float y1, Color c);
@@ -122,6 +137,7 @@ typedef struct ThSeg {
     const char *prefix;
     const float *weights;
     const char *const *hints;
+    bool rich;   /* labels with "U+XXXX" are glyph captions (hover over the segment shows the code) */
 } ThSeg;
 int Th_Segmented(Rectangle r, const ThSeg *g);
 
@@ -161,7 +177,8 @@ bool        Th_TextIs(const char *name);
 void        Th_TextFocus(const char *name, const char *text, bool selectAll);
 void        Th_TextBlur(void);
 /* Text that does not fit: Th_FitText copies `s` shortened with an ellipsis to fit maxW in the face (TH_F_*); Th_TextClip draws it so. */
-enum { TH_F_BODY, TH_F_SMALL, TH_F_MONO, TH_F_HEAD };
+enum { TH_F_BODY, TH_F_SMALL, TH_F_UNI, TH_F_HEAD };
+#define TH_F_RICH 0x200   /* or-ed to the face: "U+XXXX" tokens are glyph captions (Th_TextRich) */
 #define TH_F_TAIL 0x100   /* or-ed to the face: keep the end of the text and cut the start (a path) */
 void        Th_FitText(const char *s, int face, float maxW, char *out, size_t cap);
 void        Th_TextClip(const char *s, float x, float y, float maxW, Color c, int face);
@@ -201,14 +218,14 @@ void Th_DrawTextureClipped(Texture2D tex, float x, float y, int s, Rectangle cli
 /* A small busy indicator (a ring of dots) centred at c. */
 void Th_Spinner(Vector2 c, float radius, Color col);
 
-/* Hash display, the two forms (DESIGN.md "Hash display").  Th_HashShort: dim kind word ("Font", NULL for none) and the first 8 characters in mono,
+/* Hash display, the two forms (DESIGN.md "Hash display").  Th_HashShort: dim kind word ("Font", NULL for none) and the first 8 characters in Unifont,
  * top-left at (x, y) like Th_Text (TH_HASH_SMALL: like Th_TextSmall), or with TH_HASH_RIGHT ending at x; TH_HASH_MEASURE only returns the width.  copyName != NULL makes it a copy link
  * (registered under that name).  Th_HashField: the caption and a 28 px box with the full hash ("" = "no ink", NULL = "not known"); a click copies it;
  * *y advances.  `what` names it in the toast ("<what> hash copied").  The hooks (set by main) give the scrolled-panel hover and the hint / toast. */
 #define TH_HASH_RIGHT   1
 #define TH_HASH_ACCENT  2   /* the hash is a changed state */
 #define TH_HASH_MEASURE 4
-#define TH_HASH_SMALL   8   /* small size (kind word and mono), for a line of small text: the status bar */
+#define TH_HASH_SMALL   8   /* small size (kind word), for a line of small text: the status bar */
 float Th_HashShort(const char *kind, const char *hash, float x, float y, int flags, const char *copyName);
 void  Th_HashField(float x, float *y, float w, const char *caption, const char *hash, const char *name, const char *what, int flags);
 extern bool (*Th_HoverFn)(Rectangle r);
@@ -217,7 +234,7 @@ extern void (*Th_NoticeFn)(const char *what, bool copied);
 /* Section caption, label/value row, list row and card (DESIGN.md "Section caption", "Label/value row", "List row and card").
  * Th_Section: the caption `title` (semibold, upper case, dim) and a hairline to the right at (x, *y), width w; *y advances by 24.  `right`: small dim text
  * at the right end.  TH_SEC_OPEN / TH_SEC_CLOSED make it a fold header (chevron, hover plate); true when clicked this frame; it registers "<title>_Fold".
- * Th_Row: a dim label at the left, in a column of TH_ROW_LABEL_W; `value` right-aligned at x + w, fitted (TH_ROW_MONO: mono face).  With value NULL the
+ * Th_Row: a dim label at the left, in a column of TH_ROW_LABEL_W; `value` right-aligned at x + w, fitted (TH_ROW_UNI: Unifont).  With value NULL the
  * row is for a control: the returned rectangle is the value part, where the caller draws it.  *y advances.
  * Th_ListRow (a row in a list or inside a card: hover plate, selected tint with an accent bar) and Th_Card (a bordered card) draw only the surface and
  * return its opaque fill (the background of a sample drawn on it); the caller draws the content.  Flags: TH_LR_HOVER, TH_LR_SELECTED, TH_LR_WITHIN
@@ -225,7 +242,7 @@ extern void (*Th_NoticeFn)(const char *what, bool copied);
 #define TH_SEC_OPEN   1
 #define TH_SEC_CLOSED 2
 #define TH_ROW_LABEL_W 108
-#define TH_ROW_MONO   1
+#define TH_ROW_UNI    1
 #define TH_LR_HOVER    1
 #define TH_LR_SELECTED 2
 #define TH_LR_WITHIN   4

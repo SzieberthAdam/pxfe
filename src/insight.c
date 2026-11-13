@@ -725,7 +725,7 @@ static int wrap_codes(const char *text, float maxw, char lines[INS_CODE_LINES][1
 {
     int n = 0;
     lines[0][0] = 0;
-    if (Th_MeasureSmall(text).x <= maxw) { snprintf(lines[0], 160, "%.159s", text); return 1; }
+    if (Th_MeasureRich(text, TH_F_SMALL) <= maxw) { snprintf(lines[0], 160, "%.159s", text); return 1; }
     const char *p = text;
     while (*p && n < INS_CODE_LINES) {
         char *ln = lines[n];
@@ -742,7 +742,7 @@ static int wrap_codes(const char *text, float maxw, char lines[INS_CODE_LINES][1
             memcpy(cand + cl, p, tl);
             cl += tl;
             cand[cl] = 0;
-            if (len && Th_MeasureSmall(cand).x > maxw) break;
+            if (len && Th_MeasureRich(cand, TH_F_SMALL) > maxw) break;
             memcpy(ln, cand, cl + 1);
             len = cl;
             p += tl;
@@ -834,7 +834,7 @@ static void draw_usage(Cx *c, float *y, bool first)
             if (hv && IsMouseButtonReleased(MOUSE_BUTTON_LEFT)) click_target(c, r);
             float hw = Th_HashShort("Font", r->pxfm, x1, rr.y + 3, TH_HASH_RIGHT, NULL);
             Th_TextClip(r->label, x0, rr.y + 3, x1 - x0 - hw - 8, TH_TEXT, TH_F_BODY);
-            for (int k = 0; k < nl; k++) Th_TextClip(lines[k], x0, rr.y + 26 + 18.0f * (float)k, x1 - x0, TH_TEXT_DIM, TH_F_SMALL);
+            for (int k = 0; k < nl; k++) Th_TextClip(lines[k], x0, rr.y + 26 + 18.0f * (float)k, x1 - x0, TH_TEXT_DIM, TH_F_SMALL | TH_F_RICH);
         }
         *y += rr.height;
     }

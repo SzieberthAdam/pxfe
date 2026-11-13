@@ -109,9 +109,9 @@ static void FindRow(float px, float *y, int32_t insCode)
         panelTargetSet = true;
     }
     if (can) {
-        char cl[24];
-        CodeLabel(insCode, cl, sizeof cl);
-        Th_TextSmall(cl, px + PANEL_W - 16 - Th_MeasureSmall(cl).x, *y + 4, TH_TEXT_DIM);
+        float cw = Th_CodeW(insCode) + 8;
+        Rectangle ca = {px + PANEL_W - 16 - cw, *y, cw, TH_ROW_H - 4};
+        Th_CodeDraw(insCode, ca, TH_TEXT_DIM, Th_HoverFn(ca), 1);
     }
     *y += TH_ROW_H + 4;
 }
@@ -173,7 +173,7 @@ static void GlyphFacts(float px, float *y, const PxGlyph *g, bool character)
     float x = px + 16, w = PANEL_W - 32;
     char cl[64], ch[16] = "—";
     CodeLabel(g->codepoint, cl, sizeof cl);
-    Th_Row(x, y, w, px_code_is_uncoded(g->codepoint) ? "No code point" : "Code point", cl, TH_ROW_MONO);
+    Th_Row(x, y, w, px_code_is_uncoded(g->codepoint) ? "No code point" : "Code point", cl, TH_ROW_UNI);
     if (character) {
         int len = 0;
         const char *u = px_code_is_codepoint(g->codepoint) ? CodepointToUTF8(g->codepoint, &len) : "";

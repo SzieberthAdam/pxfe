@@ -653,6 +653,17 @@ static void DoAssert(char **t, int n)
         if (gi >= 0) CodeLabel(font.glyphs[gi].codepoint, cl, sizeof cl);
         ok = gi >= 0 && n > 3 && !strcmp(cl, t[3]);
         if (!ok) PlayLog("  caption '%s'", cl);
+    } else if (!strcmp(k, "codeimg") || !strcmp(k, "codeform") || !strcmp(k, "codeflush")) {
+        /* assert codeimg U+XXXX <0|1>: Unifont has a visible image for the code point (it is rasterised on demand);
+         * assert codeform U+XXXX <0|1|2>: how the last caption drew it (1 character, 2 U+XXXX, 0 not drawn);
+         * assert codeflush <n> <0|1>: rasterises n code points from U+3400 (far more than the atlas holds, so it is flushed) and checks that all took */
+        int32_t cp = (int32_t)strtol(t[2] + (t[2][0] == 'U' ? 2 : 0), NULL, 16);
+        int want = n > 3 ? atoi(t[3]) : 0, have = 0;
+        if (!strcmp(k, "codeimg")) have = Th_CodeVisible(cp);
+        else if (!strcmp(k, "codeform")) have = Th_CodeForm(cp);
+        else { int ok2 = 0, cnt = atoi(t[2]); for (int i = 0; i < cnt; i++) ok2 += Th_CodeVisible(0x3400 + i); have = ok2 == cnt; }
+        ok = have == want;
+        if (!ok) PlayLog("  %s %s is %d", k, t[2], have);
     } else if (!strcmp(k, "hashname")) {
         /* assert hashname: the current hash of the font (and typeface) equals the hash it was opened with and names a row of the store */
         EnsureHashes();

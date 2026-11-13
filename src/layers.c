@@ -262,11 +262,7 @@ static void code_label(int32_t cp, char *out, size_t n)
 {
     if (px_code_is_uncoded(cp)) { snprintf(out, n, "#%d", cp - PX_CODE_UNCODED_FIRST); return; }
     if (!px_code_is_codepoint(cp)) { snprintf(out, n, "no code"); return; }
-    if ((cp >= 0x21 && cp < 0x7F) || (cp >= 0xA1 && cp <= 0x17F && cp != 0xAD)) {
-        int len = 0;
-        const char *u = CodepointToUTF8(cp, &len);
-        snprintf(out, n, "U+%04X  %.*s", (unsigned)cp, len, u);
-    } else snprintf(out, n, "U+%04X", (unsigned)cp);
+    snprintf(out, n, "U+%04X", (unsigned)cp);   /* drawn as a glyph caption by Th_TextRich */
 }
 
 static void draw_pix(const PxGlyph *g, int sx, int sy, int scale, Color col)
@@ -422,8 +418,8 @@ float Layers_DrawPanel(Layers *l, Rectangle area, Rectangle vis)
         Color c1 = (missing || !a->visible) ? TH_TEXT_DIM : TH_TEXT;
         Th_FitText(line1, TH_F_BODY, tw, fit, sizeof fit);
         Th_Text(fit, tx, card.y + 4, c1);
-        Th_FitText(line2, TH_F_SMALL, tw, fit, sizeof fit);
-        Th_TextSmall(fit, tx, card.y + 27, TH_TEXT_DIM);
+        Th_FitText(line2, TH_F_SMALL | TH_F_RICH, tw, fit, sizeof fit);
+        Th_TextRich(fit, tx, card.y + 27, TH_TEXT_DIM, TH_F_SMALL, hov(vis, head));
 
         /* a click on the row selects it */
         if (!ctl && hov(vis, head) && IsMouseButtonReleased(MOUSE_BUTTON_LEFT)) l->sel = i;
@@ -701,7 +697,7 @@ void Layers_DrawPopover(Layers *l, Rectangle panel)
         else if (codeOk) { char cl[40]; code_label(code, cl, sizeof cl); snprintf(info, sizeof info, "%s", cl); }
         else if (l->glyphText[0]) snprintf(info, sizeof info, "Not a character or code");
         if (l->same) Th_TextSmall(info, x, y + TH_ROW_H + 6, TH_TEXT_DIM);
-        else Th_Text(info, x + 180, y + (TH_ROW_H - Th_Measure("A").y) / 2, codeOk ? TH_TEXT : TH_DANGER);
+        else Th_TextRich(info, x + 180, y + (TH_ROW_H - Th_Measure("A").y) / 2, codeOk ? TH_TEXT : TH_DANGER, TH_F_BODY, -1);
     }
     y += 56;
 

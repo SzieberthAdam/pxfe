@@ -180,7 +180,7 @@ assert readonly 1
 assert hashname 1
 assert selected 1
 assert sel U+0041 1
-assert navseg 2 A U+0041
+assert navseg 2 U+0041
 # Alt+Left from the glyph goes to the font, then up to the library
 key left alt
 wait 4
@@ -213,7 +213,7 @@ assert readonly 1
 assert hashname 1
 assert selected 1
 assert sel U+0041 1
-assert navseg 2 A U+0041
+assert navseg 2 U+0041
 key left alt
 wait 4
 assert editor 0

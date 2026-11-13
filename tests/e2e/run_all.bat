@@ -140,6 +140,7 @@ call :fresh
 (echo [browser]& echo tab=1& echo sidetab=1) > tests\tmp\e2e.ini
 call :run 61_views "%DB%"
 call :fresh
+call :run 70_unifont "%DB% --font %H1% --duplicate"
 call :run 93_menu_keys "%DB%"
 
 echo.

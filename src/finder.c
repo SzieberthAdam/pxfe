@@ -65,8 +65,6 @@ struct Finder {
     int nRows; int *rowFirst; float *rowY, *rowH; int *rowAbove, *rowBelow;   /* flow layout: rows of cells on one baseline */
     float *cellX, *cellW;       /* per display index: x inside the grid, width */
     float layoutW; int layoutZ, layoutN; unsigned layoutVer, ver;
-    /* big character font */
-    Font big; bool bigLoaded;
 };
 
 /* ------------------------------------------------------------------ Unicode blocks (BMP and a few of the SMP) */
@@ -226,7 +224,6 @@ void Finder_Destroy(Finder *f)
     if (f->hasPend) store_code_glyph_list_free(&f->pend);
     free(f->order);
     free_layout(f);
-    if (f->bigLoaded) UnloadFont(f->big);
     if (f->conn) store_conn_close(f->conn);
     DeleteCriticalSection(&f->cs);
     free(f);
@@ -392,30 +389,6 @@ static void box_apply(Finder *f)
 
 /* ------------------------------------------------------------------ drawing */
 
-static void load_big(Finder *f)
-{
-    if (f->bigLoaded) return;
-    static const int ranges[][2] = {
-        {0x20, 0x7E}, {0xA0, 0x24F}, {0x370, 0x3FF}, {0x400, 0x4FF}, {0x2010, 0x2027}, {0x2030, 0x203A}, {0x20AC, 0x20AC},
-        {0x2190, 0x2199}, {0x2212, 0x2212},
-    };
-    int cps[1024], n = 0;
-    for (size_t i = 0; i < sizeof ranges / sizeof *ranges; i++)
-        for (int c = ranges[i][0]; c <= ranges[i][1] && n < 1024; c++) cps[n++] = c;
-    f->bigLoaded = true;
-    if (FileExists("C:/Windows/Fonts/segoeui.ttf")) {
-        f->big = LoadFontEx("C:/Windows/Fonts/segoeui.ttf", TH_SIZE_PREVIEW, cps, n);
-        if (f->big.texture.id && f->big.glyphCount > 0) { SetTextureFilter(f->big.texture, TEXTURE_FILTER_BILINEAR); return; }
-    }
-    f->big = GetFontDefault();
-}
-
-static bool big_has(int32_t c)
-{
-    return (c >= 0x20 && c <= 0x7E) || (c >= 0xA0 && c <= 0x24F) || (c >= 0x370 && c <= 0x3FF) || (c >= 0x400 && c <= 0x4FF) ||
-           (c >= 0x2010 && c <= 0x2027) || (c >= 0x2030 && c <= 0x203A) || c == 0x20AC || (c >= 0x2190 && c <= 0x2199) || c == 0x2212;
-}
-
 static bool in_input_ok(void) { return !Th_InputBlocked(); }
 
 /* The View tab of the side panel: the character to look for (search box, Previous / Next, its preview), the zoom and the sort order. */
@@ -446,13 +419,8 @@ static void draw_view_tab(Finder *f, Rectangle P)
     if (f->code >= 0) {
         Rectangle cb = { x, y, 44, 44 };
         Th_Card(cb, 0);
-        load_big(f);
-        if (printable(f->code) && big_has(f->code)) {
-            int n = 0;
-            const char *u = CodepointToUTF8(f->code, &n);
-            char t[8]; memcpy(t, u, (size_t)n); t[n] = 0;
-            Vector2 ms = MeasureTextEx(f->big, t, TH_SIZE_PREVIEW, 0);
-            DrawTextEx(f->big, t, (Vector2){ floorf(cb.x + (cb.width - ms.x) / 2), floorf(cb.y + (cb.height - ms.y) / 2) }, TH_SIZE_PREVIEW, 0, TH_TEXT);
+        if (Th_CodeVisible(f->code)) {
+            Th_CodeDraw(f->code, cb, TH_TEXT, false, 2);   /* Unifont at 32 px: twice the pixels */
         } else {
             Rectangle bx = { cb.x + 12, cb.y + 8, 20, 28 };
             Th_DashedHLine(bx.x, bx.x + bx.width, bx.y, 3, TH_TEXT_DIM);
@@ -462,7 +430,7 @@ static void draw_view_tab(Finder *f, Rectangle P)
         }
         char code[24];
         snprintf(code, sizeof code, "U+%04X", (unsigned)f->code);
-        Th_TextMono(code, x + 56, y + 4, TH_TEXT);
+        Th_TextUni(code, x + 56, y + 4, TH_TEXT);
         Th_Text(block_name(f->code), x + 56, y + 22, TH_TEXT_DIM);
     }
     y += 62;

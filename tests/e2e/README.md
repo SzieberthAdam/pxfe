@@ -52,6 +52,12 @@ One command per line, `#` starts a comment.
 - Insight and finder state:
   `usage` (fonts that hold the selected glyphs), `usagevar` (typeface variants that name them), `usagecode` (fonts that hold the single selected glyph under its code, -1 when none), `similar` (entries of the similar list), `insightbusy`.
   `finder_count` (bitmaps found for the code), `finder_code`, `fcellfonts` (the "N fonts" of the first finder cell).
+- Glyph captions (version 8, GNU Unifont): the grid and the other captions show the character itself, and "U+XXXX" while the mouse is over the caption or its cell (`move @cell:U+0041`, then `wait 3`).
+  `assert caption <glyph> <text>` still checks the code text of the cell.
+  `assert codeform U+XXXX <0|1|2>` is how the last caption drew the code point: 1 the character, 2 the text, 0 not drawn.
+  `assert codeimg U+XXXX <0|1>`: Unifont has a visible image for it (this rasterises it on demand, any plane).
+  `assert codeflush N <0|1>` rasterises N code points from U+3400 (more than the 1024 slots of the atlas, so it is flushed) and checks that all took.
+  The navigation segment of an open glyph reads `U+0041` (`assert navseg 2 U+0041`), no longer "A U+0041".
 - Navigation (version 6): `nav` (0 Typefaces, 1 Typeface, 2 Fonts, 3 Font, 4 Glyph, 5 Glyphs), `navactive` (the blue segment), `intypeface`, `assert navseg <0|1|2> <text>`; the segments are `@nav.0`, `@nav.1`, `@nav.2` (also `@Typefaces`, `@Fonts`, `@Glyphs` where they read so); the way back to the open font is `key right alt`.
   In the Typeface view the rows' buttons are `@tv.open.N`, `@tv.dup.N` and `@tv.delete.N`; `blast` 6 is the opening of a typeface.
 - Panel tabs: `ptab` (right panel of the font view: 0 Font, 1 Glyph, 2 Similar), `bside` (side panel of the browser: 0 View, 1 Similar, 2 Typeface), `fside` (side panel of the Glyphs view: 0 View, 1 Usage).

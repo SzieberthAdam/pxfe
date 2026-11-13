@@ -1,0 +1,36 @@
+# 70. GNU Unifont captions (version 8): the grid caption is the character itself in Unifont, "U+XXXX" while the mouse is over the cell;
+# any code point is rasterised on demand (BMP and upper planes) and a full atlas is flushed and refilled.
+# Rule: a code point with no visible Unifont image (control, space, blank, or one the file lacks: U+10FFFD, the noncharacters) is shown as U+XXXX always;
+# an unassigned one that Unifont draws (U+0378) shows its image.
+wait 5
+assert glyphs 6
+# the cells at rest show the character (form 1), the code point of the cell under the mouse (form 2)
+move @cell:U+0078
+wait 3
+assert codeform U+0041 1
+assert codeform U+0078 2
+assert caption U+0078 U+0078
+move @cell:U+0041
+wait 3
+assert codeform U+0041 2
+assert codeform U+0078 1
+# no visible image: space is U+0020 always
+assert codeimg U+0020 0
+assert codeform U+0020 2
+# across the planes, each rasterised on first use
+assert codeimg U+0041 1
+assert codeimg U+00E9 1
+assert codeimg U+4E2D 1
+assert codeimg U+1F600 1
+assert codeimg U+0007 0
+assert codeimg U+00AD 0
+assert codeimg U+0378 1
+assert codeimg U+2FFFE 0
+assert codeimg U+10FFFD 0
+assert codeimg U+10FFFF 0
+# 1500 glyphs exceed the atlas of 1024: it is flushed, and glyphs evicted are rasterised again
+assert codeflush 1500 1
+assert codeimg U+4E2D 1
+assert codeimg U+1F600 1
+assert codeimg U+0041 1
+shot tests/tmp/shots/70_unifont.png

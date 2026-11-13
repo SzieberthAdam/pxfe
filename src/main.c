@@ -1171,8 +1171,8 @@ static void DrawProgressScreen(int W, int H)
     Th_TextHead(head, x, y, TH_TEXT);
     y += 34;
     char fit[PATH_MAX_LEN + 8];
-    Th_FitText(job.path, TH_F_MONO, w, fit, sizeof fit);
-    Th_TextMono(fit, x, y, TH_TEXT_DIM);
+    Th_FitText(job.path, TH_F_UNI, w, fit, sizeof fit);
+    Th_TextUni(fit, x, y, TH_TEXT_DIM);
     y += 34;
     long ph = job.prog.phase, done = job.prog.done, total = job.prog.total;
     Th_Text(PhaseLabel(ph), x, y, TH_TEXT);
@@ -1643,13 +1643,6 @@ static void CodeLabel(int32_t c, char *out, size_t n)
     else snprintf(out, n, "-");
 }
 
-static bool PrintableInFont(int32_t cp)
-{
-    if (cp <= 0x20 || (cp >= 0x7F && cp <= 0xA0) || cp == 0xAD) return false;
-    int gi = GetGlyphIndex(theme.ui, cp);
-    return gi >= 0 && theme.ui.glyphs && theme.ui.glyphs[gi].value == cp;
-}
-
 static Rectangle Intersect(Rectangle a, Rectangle b)
 {
     float x0 = a.x > b.x ? a.x : b.x, y0 = a.y > b.y ? a.y : b.y;
@@ -1717,25 +1710,10 @@ static void DrawCell(int i, float cx, float cy, float cw, Rectangle area, const 
         Rectangle cap = {cx + 1, cy + boxPx + 2 * CELL_PADY, cw - 2, CAPTION_H - 1};
         DrawRectangleRec(cap, TH_PANEL_ALT);
         Th_HLine(cap.x, cap.x + cap.width, cap.y, TH_LINE_SOFT);
-        char code[16];
-        CodeLabel(g->codepoint, code, sizeof code);
-        char chs[8] = "";
-        if (px_code_is_codepoint(g->codepoint) && PrintableInFont(g->codepoint)) {
-            int sz = 0;
-            const char *u = CodepointToUTF8(g->codepoint, &sz);
-            memcpy(chs, u, (size_t)sz);
-            chs[sz] = 0;
-        }
         bool isDef = g->codepoint != PX_NO_CODEPOINT && g->codepoint == font.defaultCodepoint;
-        Vector2 mc = Th_MeasureMono(code), mh = chs[0] ? Th_Measure(chs) : (Vector2){0, 0};
-        float gap = chs[0] ? 7.0f : 0.0f;
-        float total = mh.x + gap + mc.x;
-        float tx = Fl(cap.x + (cap.width - total) / 2);
-        if (isDef) tx = Fl(cap.x + 6);
-        if (tx < cap.x + 2) tx = cap.x + 2;
-        float ty = Fl(cap.y + (cap.height - mc.y) / 2);
-        if (chs[0]) Th_Text(chs, tx, Fl(cap.y + (cap.height - mh.y) / 2), TH_TEXT);
-        Th_TextMono(code, tx + mh.x + gap, ty, TH_TEXT_DIM);
+        Rectangle ca = cap;   /* the character in Unifont, "U+XXXX" while the mouse is over the cell; the DEF badge keeps its end */
+        if (isDef) ca.width -= 40;
+        Th_CodeDraw(g->codepoint, ca, TH_TEXT, hovered, 1);
         if (isDef) {
             Vector2 md = Th_MeasureSmall("DEF");
             Rectangle br = {cap.x + cap.width - md.x - 14, cap.y + 4, md.x + 10, CAPTION_H - 8};
@@ -1932,18 +1910,6 @@ static int NavView(void)
     return inEditor ? NV_GLYPH : NV_FONT;
 }
 
-/* "A U+0041", "U+0020", "#3": the caption the grid shows under a glyph */
-static void GlyphCaption(const PxGlyph *g, char *out, size_t n)
-{
-    char code[16];
-    CodeLabel(g->codepoint, code, sizeof code);
-    if (px_code_is_codepoint(g->codepoint) && PrintableInFont(g->codepoint)) {
-        int sz = 0;
-        const char *u = CodepointToUTF8(g->codepoint, &sz);
-        snprintf(out, n, "%.*s %s", sz, u, code);
-    } else snprintf(out, n, "%s", code);
-}
-
 /* the names of the open font in the bar: its typeface (family) or "Orphaned", and its style */
 static void FontNavNames(char fam[300], char sty[300])
 {
@@ -2009,7 +1975,7 @@ static void DrawNav(void)
         FontNavNames(fam, sty);
         snprintf(full[0], 320, "%s", fam);
         snprintf(full[1], 320, "%s%s", sty, modified ? " *" : "");
-        if (view == NV_GLYPH && ed && Editor_GlyphIndex(ed) >= 0 && Editor_GlyphIndex(ed) < font.count) GlyphCaption(&font.glyphs[Editor_GlyphIndex(ed)], full[2], 320);
+        if (view == NV_GLYPH && ed && Editor_GlyphIndex(ed) >= 0 && Editor_GlyphIndex(ed) < font.count) CodeLabel(font.glyphs[Editor_GlyphIndex(ed)].codepoint, full[2], 320);
         else snprintf(full[2], 320, "Glyphs");
         active = view == NV_GLYPH ? 2 : 1;
         break;
@@ -2022,10 +1988,10 @@ static void DrawNav(void)
     char fit[3][300];
     float wi[3], total = 0;
     for (int i = 0; i < 3; i++) {
-        Th_FitText(full[i], TH_F_BODY, 190, fit[i], sizeof fit[i]);
+        Th_FitText(full[i], TH_F_BODY | TH_F_RICH, 190, fit[i], sizeof fit[i]);
         names[i] = fit[i];
         snprintf(navText[i], sizeof navText[i], "%.300s", full[i]);
-        wi[i] = Fl(Th_Measure(names[i]).x) + 32;
+        wi[i] = Fl(Th_MeasureRich(names[i], TH_F_BODY)) + 32;
         total += wi[i];
     }
     bool inFont = view == NV_FONT || view == NV_GLYPH;
@@ -2038,7 +2004,7 @@ static void DrawNav(void)
     snprintf(hbuf[2], sizeof hbuf[2], "%s", view == NV_GLYPH ? TextFormat("The open glyph %s", full[2]) : "Glyphs: every bitmap drawn for a code point  (Ctrl+G)");
     for (int i = 0; i < 3; i++) hint[i] = hbuf[i];
     Rectangle track = {TbX, TbY, total + 4, TH_ROW_H};
-    int c = Th_Segmented(track, &(ThSeg){ names, 3, active, (store != NULL || inFont) ? 0u : 7u, "nav", wi, hint });
+    int c = Th_Segmented(track, &(ThSeg){ names, 3, active, (store != NULL || inFont) ? 0u : 7u, "nav", wi, hint, true });
     for (int i = 0; i < 3; i++) {   /* the scripts also find a segment by its full name */
         Rectangle sr;
         char rn[16];
@@ -2297,8 +2263,8 @@ static void DrawExportDialog(int W, int H)
     Th_TextHead("Export to Folder", x, y, TH_TEXT);
     y += TH_SIZE_HEAD + TH_PAD;
     char fit[PATH_MAX_LEN + 8];
-    Th_FitText(xd.folder, TH_F_MONO, w, fit, sizeof fit);
-    Th_TextMono(fit, x, y, TH_TEXT_DIM);
+    Th_FitText(xd.folder, TH_F_UNI, w, fit, sizeof fit);
+    Th_TextUni(fit, x, y, TH_TEXT_DIM);
     y += TH_ROW_H;
     char found[200], line[300];
     store_counts_text(&xd.scan.found, found, sizeof found);
@@ -2415,14 +2381,10 @@ static void DrawModal(int W, int H)
         if (modal.input[0] == 0) { snprintf(info, sizeof info, "Enter a code point"); inputOk = false; }
         else if (!ParseCodepoint(modal.input, &cp)) { snprintf(info, sizeof info, "Not a valid code point"); inputOk = false; ic = TH_DANGER; }
         else {
-            int sz = 0;
-            const char *u = CodepointToUTF8(cp, &sz);
-            char chs[8] = "";
-            if (PrintableInFont(cp)) { memcpy(chs, u, (size_t)sz); chs[sz] = 0; }
-            if (px_font_find(&font, cp) >= 0) { snprintf(info, sizeof info, "U+%04X %s - already in the font, will ask to replace", (unsigned)cp, chs); ic = TH_TEXT_NOTE; }
-            else snprintf(info, sizeof info, "U+%04X %s", (unsigned)cp, chs);
+            if (px_font_find(&font, cp) >= 0) { snprintf(info, sizeof info, "U+%04X - already in the font, will ask to replace", (unsigned)cp); ic = TH_TEXT_NOTE; }
+            else snprintf(info, sizeof info, "U+%04X", (unsigned)cp);
         }
-        Th_Text(info, pr.x + pad, y, ic);
+        Th_TextRich(info, pr.x + pad, y, ic, TH_F_BODY, -1);
         y += TH_LINE_H + 4;
     }
     y = pr.y + pr.height - pad - TH_ROW_H;
@@ -2553,6 +2515,7 @@ int main(int argc, char **argv)
     SetExitKey(0);
     SetTargetFPS(playPath ? play.fps : 60);
     Theme_Load();
+    if (theme.missing[0]) Th_Toast(TH_TOAST_ERR, "Font files not found in assets/fonts: %s. The default font is used.", theme.missing);
     Th_HoverFn = Hov;
     Th_NoticeFn = HashNotice;
     Sample_LoadIni(IniPath());   /* the shared sample text and the font view strip settings */

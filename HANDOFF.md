@@ -80,12 +80,12 @@ The rule of the round: one component is one function in `src/theme.c`, and a vie
   The shots use a copy of the executable (`tests\tmp\p2\pxfe_p2.exe`) so that a build is never blocked by a running window.
 - Duplicate to Edit is one primary button (`Th_Duplicate`, `Th_DuplicateW`, `Th_DupLabel` in `theme.h`) at every site: info bar, glyph bar (a plain "Read-only" label and the button, script name `ro_chip`), library cards, rows and selection blocks, the Typeface view (heading, font rows) and the Typeface tab.
   Script 40 now asserts `w.Duplicate_to_Edit` 1 beside `ro_chip` in the original's glyph view.
-- The status bar draws its hash through `Th_HashShort` with the new flag `TH_HASH_SMALL` (small kind word, Consolas 13, the same baseline as the neighbours); `theme.monos` is the 13 px mono font.
+- The status bar draws its hash through `Th_HashShort` with the new flag `TH_HASH_SMALL` (small kind word, the hash in Unifont on the baseline of the neighbours).
 - Menus take the keyboard in `Th_Menu` (Up, Down, Home, End, Enter, Escape; the highlight is shared with the mouse hover; a scrolled list keeps it in view).
   While a menu is open those keys do not reach shortcuts or views: `IsKeyPressed` and `IsKeyPressedRepeat` are wrapped in `theme.h` (`Th_MenuKeys`), and `Th_Menu` calls the raw functions.
   `Th_MenuHi` and the play assert `menuhi N` expose the highlight.
 - Deleted: `Th_Panel` (unused) and the raygui style plumbing (no raygui widget is used).
 - User interface files: 10947 lines in all (10960 before this step, 13 fewer): main.c 2729, panel.inc 344, gpanel.inc 90, browser.c 2206, finder.c 693, editor.c 1109, layers.c 730, insight.c 973, sample.c 768, theme.c 1003, theme.h 302.
 - Tests: `build.bat test` 136 pxfont, 101 pxtf and 162 store checks, 0 failed; `tests\e2e\run_all.bat` 61 scripts (new: 93_menu_keys, 21 asserts), 0 failed; `build.bat` and `build.bat e2e` build without warnings.
-- Final screenshots: `tests\tmp\p2\final` has 30 files (28 views and overlays at 1400 x 900 and 1110 x 600, plus `menu_keys.png` and `s_menu_keys.png`, the File menu with the keyboard highlight), all looked at.
-- Not done: checkmarks and submenus in menus.
+- Final screenshots: `tests\tmp\p3\final` (script 69, run with a copy of the exe from the repo root).
+

@@ -8,10 +8,15 @@
 #include <stdlib.h>
 #include <stddef.h>
 
-#define TH_FONT_UI_PATH    "C:/Windows/Fonts/segoeui.ttf"
-#define TH_FONT_MONO_PATH  "C:/Windows/Fonts/consola.ttf"
-#define TH_FONT_SEMI_PATH  "C:/Windows/Fonts/seguisb.ttf"
-#define TH_SEGOE_RATIO     1.33f
+#include "rlgl.h"
+#include "pxfont.h"
+
+#define TH_FONT_UI_PATH    "assets/fonts/noto-sans/NotoSans-Regular.ttf"
+#define TH_FONT_SEMI_PATH  "assets/fonts/noto-sans/NotoSans-SemiBold.ttf"
+#define TH_FONT_UNI_PATH   "assets/fonts/unifont/unifont-18.0.01.otf"
+#define TH_FONT_UNIUP_PATH "assets/fonts/unifont/unifont_upper-18.0.01.otf"
+#define TH_NOTO_RATIO      1.362f   /* (ascender 1069 + descender 293) / 1000: raylib's size per em */
+#define TH_NOTO_ASC        1.069f
 
 #define TH_BUTTON_SEGMENTS 8
 
@@ -25,7 +30,6 @@ static const int th_glyph_ranges[][2] = {
     { 0x2018, 0x2019 },   /* single quotes */
     { 0x201C, 0x201D },   /* double quotes */
     { 0x2026, 0x2026 },   /* ellipsis */
-    { 0x2190, 0x2193 },   /* arrows left, up, right, down */
 };
 
 #define TH_RANGE_COUNT (sizeof(th_glyph_ranges) / sizeof(th_glyph_ranges[0]))
@@ -45,21 +49,123 @@ static void th_build_codepoints(void)
     }
 }
 
-/* Load a font from a file with the theme code points and bilinear filtering;
- * falls back to raylib's default font when the file is missing or fails.
- * `em` is the type size in px (the em of the face); raylib's size is the height from ascent to descent, so it is em * `lineRatio`
- * (Segoe UI: (2210 + 514) / 2048 = 1.33, Consolas: 1.0). */
-static Font th_load_font(const char *path, int em, float lineRatio)
+/* The path of an asset: assets/ next to the exe, two folders up (tests	mp), or in the cwd; NULL (and the name in theme.missing) when absent. */
+static const char *th_asset(const char *rel)
+{
+    static char buf[600];
+    const char *app = GetApplicationDirectory(), *pre[] = { "", "../../", "" };
+    for (int i = 0; i < 3; i++) {
+        snprintf(buf, sizeof buf, "%s%s%s", i < 2 ? app : "", pre[i], rel);
+        if (FileExists(buf)) return buf;
+    }
+    size_t l = strlen(theme.missing);
+    snprintf(theme.missing + l, sizeof theme.missing - l, "%s%s", l ? ", " : "", strrchr(rel, '/') + 1);
+    return NULL;
+}
+
+/* A Noto Sans face with the theme code points and bilinear filtering; the raylib default font when the file is missing or fails.
+ * `em` is the type size in px; raylib's size is the height from ascent to descent, so it is em * TH_NOTO_RATIO. */
+static Font th_load_font(const char *rel, int em)
 {
     Font font = { 0 };
-    int size = (int)((float)em * lineRatio + 0.5f);
-
-    if (FileExists(path)) font = LoadFontEx(path, size, th_codepoints, th_codepoint_count);
-
+    const char *path = th_asset(rel);
+    if (path) font = LoadFontEx(path, (int)((float)em * TH_NOTO_RATIO + 0.5f), th_codepoints, th_codepoint_count);
     if ((font.texture.id == 0) || (font.glyphCount == 0)) return GetFontDefault();
-
     SetTextureFilter(font.texture, TEXTURE_FILTER_BILINEAR);
     return font;
+}
+
+/* Unifont: the two files in memory, an atlas of 32 x 32 slots (a glyph is at most 16 x 16 plus marks) and the glyphs rasterised so far.
+ * LoadFontData (stb_truetype, CFF outlines) at 16 px gives 0 / 255 coverage only: the outlines lie on the pixel grid. */
+#define UF_SLOT 32
+#define UF_COLS 32
+#define UF_MAX  (UF_COLS * UF_COLS)
+#define UF_HASH 4096
+typedef struct { int32_t cp; short ox, oy, w, h, adv, slot; bool show; char form; } ThUfG;
+static struct {
+    unsigned char *file[2];
+    int size[2], n;
+    Texture2D tex;
+    ThUfG g[UF_MAX];
+    short hash[UF_HASH];
+    bool ok;
+} uf;
+
+/* LoadFontData of one code point; raylib warns for a code point the file lacks, which is no error here */
+static GlyphInfo *uf_rasterise(int f, int *cp, int *n)
+{
+    SetTraceLogLevel(LOG_ERROR);
+    GlyphInfo *gi = uf.file[f] ? LoadFontData(uf.file[f], uf.size[f], 16, cp, 1, FONT_DEFAULT, n) : NULL;
+    SetTraceLogLevel(LOG_WARNING);
+    return gi;
+}
+
+static bool uf_mask(const GlyphInfo *g, unsigned char m[UF_SLOT * UF_SLOT])
+{
+    memset(m, 0, UF_SLOT * UF_SLOT);
+    if (!g->image.data || g->image.width > UF_SLOT || g->image.height > UF_SLOT) return false;
+    const unsigned char *p = g->image.data;
+    for (int y = 0; y < g->image.height; y++) for (int x = 0; x < g->image.width; x++) m[y * UF_SLOT + x] = p[y * g->image.width + x] > 127;
+    return true;
+}
+
+static void uf_flush(void)
+{
+    rlDrawRenderBatchActive();   /* quads of the batch refer to the old slots */
+    uf.n = 0;
+    memset(uf.hash, 0xFF, sizeof uf.hash);
+}
+
+static const ThUfG *uf_get(int32_t cp)
+{
+    if (!uf.ok) return NULL;
+    unsigned h = ((unsigned)cp * 2654435761u) >> 20;
+    for (int pass = 0; pass < 2; pass++) {
+        while (uf.hash[h] >= 0) { if (uf.g[uf.hash[h]].cp == cp) return &uf.g[uf.hash[h]]; h = (h + 1) & (UF_HASH - 1); }
+        if (uf.n < UF_MAX) break;
+        uf_flush();
+        h = ((unsigned)cp * 2654435761u) >> 20;
+    }
+    int f = cp >= 0x10000, n = 0;
+    ThUfG *e = &uf.g[uf.n];
+    *e = (ThUfG){ .cp = cp, .slot = (short)uf.n };
+    GlyphInfo *gi = uf_rasterise(f, &cp, &n);
+    /* raylib answers n == 0 (and glyphs that are not initialised) for a code point the file lacks: nothing of it may be read or freed */
+    if (gi && n == 1 && gi[0].image.data) {
+        unsigned char m[UF_SLOT * UF_SLOT];
+        bool has = uf_mask(&gi[0], m);
+        int ink = 0;
+        for (int i = 0; i < UF_SLOT * UF_SLOT; i++) ink += m[i];
+        e->adv = (short)((gi[0].advanceX + 4) / 8 * 8);
+        e->ox = (short)gi[0].offsetX; e->oy = (short)gi[0].offsetY; e->w = (short)gi[0].image.width; e->h = (short)gi[0].image.height;
+        if (has && ink) {
+            unsigned char px[UF_SLOT * UF_SLOT * 4];
+            for (int i = 0; i < UF_SLOT * UF_SLOT; i++) { px[4 * i] = px[4 * i + 1] = px[4 * i + 2] = 255; px[4 * i + 3] = m[i] ? 255 : 0; }
+            UpdateTextureRec(uf.tex, (Rectangle){ (float)(uf.n % UF_COLS * UF_SLOT), (float)(uf.n / UF_COLS * UF_SLOT), UF_SLOT, UF_SLOT }, px);
+            /* shows: has ink, a width and is not a control */
+            e->show = e->adv > 0 && cp > 0x20 && !(cp >= 0x7F && cp <= 0xA0) && cp != 0xAD;
+        }
+    }
+    if (gi) { if (n == 1) UnloadFontData(gi, 1); else MemFree(gi); }
+    if (!e->adv) e->adv = cp == 0x3000 ? 16 : 8;
+    uf.hash[h] = (short)uf.n++;
+    return e;
+}
+
+static void uf_load(void)
+{
+    static const char *rel[2] = { TH_FONT_UNI_PATH, TH_FONT_UNIUP_PATH };
+    for (int i = 0; i < 2; i++) {
+        const char *p = th_asset(rel[i]);
+        if (p) uf.file[i] = LoadFileData(p, &uf.size[i]);
+    }
+    if (!uf.file[0] && !uf.file[1]) return;
+    Image im = GenImageColor(UF_COLS * UF_SLOT, UF_COLS * UF_SLOT, BLANK);
+    uf.tex = LoadTextureFromImage(im);
+    UnloadImage(im);
+    SetTextureFilter(uf.tex, TEXTURE_FILTER_POINT);
+    uf.ok = uf.tex.id != 0;
+    uf_flush();
 }
 
 /* Integer rectangle from a float rectangle (snapped to the pixel grid). */
@@ -79,12 +185,12 @@ void Theme_Load(void)
 
     th_build_codepoints();
 
-    theme.ui = th_load_font(TH_FONT_UI_PATH, TH_SIZE_BODY, TH_SEGOE_RATIO);
-    theme.head = th_load_font(TH_FONT_SEMI_PATH, TH_SIZE_HEAD, TH_SEGOE_RATIO);
-    theme.cap = th_load_font(TH_FONT_SEMI_PATH, TH_SIZE_CAP, TH_SEGOE_RATIO);
-    theme.small = th_load_font(TH_FONT_UI_PATH, TH_SIZE_SMALL, TH_SEGOE_RATIO);
-    theme.mono = th_load_font(TH_FONT_MONO_PATH, TH_SIZE_MONO, 1.0f);
-    theme.monos = th_load_font(TH_FONT_MONO_PATH, TH_SIZE_MONO_SMALL, 1.0f);
+    theme.missing[0] = 0;
+    theme.ui = th_load_font(TH_FONT_UI_PATH, TH_SIZE_BODY);
+    theme.head = th_load_font(TH_FONT_SEMI_PATH, TH_SIZE_HEAD);
+    theme.cap = th_load_font(TH_FONT_SEMI_PATH, TH_SIZE_CAP);
+    theme.small = th_load_font(TH_FONT_UI_PATH, TH_SIZE_SMALL);
+    uf_load();
     theme.loaded = true;
 
 }
@@ -92,7 +198,7 @@ void Theme_Load(void)
 void Theme_Unload(void)
 {
     Font def = GetFontDefault();
-    Font *fonts[] = { &theme.ui, &theme.head, &theme.cap, &theme.small, &theme.mono, &theme.monos };
+    Font *fonts[] = { &theme.ui, &theme.head, &theme.cap, &theme.small };
 
     /* Only fonts loaded from files are unloaded; the default font is shared. */
     for (size_t i = 0; i < sizeof(fonts) / sizeof(fonts[0]); i++) {
@@ -100,6 +206,9 @@ void Theme_Unload(void)
         *fonts[i] = (Font){ 0 };
     }
 
+    if (uf.tex.id) UnloadTexture(uf.tex);
+    UnloadFileData(uf.file[0]); UnloadFileData(uf.file[1]);
+    uf.ok = false; uf.tex = (Texture2D){ 0 }; uf.file[0] = uf.file[1] = NULL;
     theme.loaded = false;
 }
 
@@ -111,11 +220,111 @@ static Vector2 th_measure(const Font *f, const char *text) { return MeasureTextE
 void Th_Text(const char *text, float x, float y, Color c) { th_draw(&theme.ui, text, x, y, c); }
 void Th_TextHead(const char *text, float x, float y, Color c) { th_draw(&theme.head, text, x, y, c); }
 void Th_TextSmall(const char *text, float x, float y, Color c) { th_draw(&theme.small, text, x, y, c); }
-void Th_TextMono(const char *text, float x, float y, Color c) { th_draw(&theme.mono, text, x, y, c); }
 Vector2 Th_Measure(const char *text) { return th_measure(&theme.ui, text); }
 Vector2 Th_MeasureHead(const char *text) { return th_measure(&theme.head, text); }
 Vector2 Th_MeasureSmall(const char *text) { return th_measure(&theme.small, text); }
-Vector2 Th_MeasureMono(const char *text) { return th_measure(&theme.mono, text); }
+
+/* Unifont text and glyph captions */
+
+static bool th_hover(Rectangle r);
+
+static void uf_draw(const ThUfG *g, float x, float y, int scale, Color c)
+{
+    if (g->w <= 0 || g->h <= 0 || !(g->w <= UF_SLOT && g->h <= UF_SLOT)) return;
+    Rectangle src = { (float)(g->slot % UF_COLS * UF_SLOT), (float)(g->slot / UF_COLS * UF_SLOT), (float)g->w, (float)g->h };
+    DrawTexturePro(uf.tex, src, (Rectangle){ x + g->ox * scale, y + g->oy * scale, (float)(g->w * scale), (float)(g->h * scale) }, (Vector2){ 0, 0 }, 0, c);
+}
+
+static float th_uni(const char *text, float x, float y, Color c, int scale, bool draw)
+{
+    if (!uf.ok) {   /* no Unifont: the small face (the default font when that is missing too) */
+        if (draw) th_draw(&theme.small, text, x, y, c);
+        return th_measure(&theme.small, text).x;
+    }
+    float x0 = roundf(x), y0 = roundf(y), w = 0;
+    for (int i = 0; text[i];) {
+        int sz = 0, cp = GetCodepoint(text + i, &sz);
+        i += sz > 0 ? sz : 1;
+        const ThUfG *g = uf_get(cp);
+        if (!g) continue;
+        if (draw) uf_draw(g, x0 + w, y0, scale, c);
+        w += g->adv * scale;
+    }
+    return w;
+}
+void  Th_TextUni(const char *text, float x, float y, Color c) { th_uni(text, x, y, c, 1, true); }
+float Th_MeasureUni(const char *text) { return th_uni(text, 0, 0, WHITE, 1, false); }
+
+bool Th_CodeVisible(int32_t cp)
+{
+    const ThUfG *g = px_code_is_codepoint(cp) ? uf_get(cp) : NULL;
+    return g && g->show;
+}
+
+/* the U+XXXX / #n / - text of a code */
+static void th_code_text(int32_t cp, char *out, size_t n)
+{
+    if (px_code_is_uncoded(cp)) snprintf(out, n, "#%d", (int)(cp - PX_CODE_UNCODED_FIRST));
+    else if (cp >= 0) snprintf(out, n, "U+%04X", (unsigned)cp);
+    else snprintf(out, n, "-");
+}
+
+float Th_CodeW(int32_t cp) { char t[16]; th_code_text(cp, t, sizeof t); return th_uni(t, 0, 0, WHITE, 1, false); }
+
+void Th_CodeDraw(int32_t cp, Rectangle area, Color c, bool hover, int scale)
+{
+    char t[16];
+    ThUfG *g = px_code_is_codepoint(cp) ? (ThUfG *)uf_get(cp) : NULL;
+    bool img = g && g->show && !hover;
+    if (g) g->form = img ? 1 : 2;
+    th_code_text(cp, t, sizeof t);
+    float w = img ? (float)(g->adv * scale) : th_uni(t, 0, 0, WHITE, scale, false), h = (float)(TH_UNI_H * scale);
+    float x = floorf(area.x + (area.width - w) / 2), y = floorf(area.y + (area.height - h) / 2);
+    if (img) uf_draw(g, x, y, scale, c);
+    else th_uni(t, x, y, c, scale, true);
+}
+
+int Th_CodeForm(int32_t cp) { const ThUfG *g = px_code_is_codepoint(cp) ? uf_get(cp) : NULL; return g ? g->form : 0; }
+
+/* Text with "U+XXXX" tokens: the length of the token at p (0: none) */
+static int th_tok(const char *p)
+{
+    if (p[0] != 'U' || p[1] != '+') return 0;
+    int n = 2;
+    while (n < 8 && isxdigit((unsigned char)p[n])) n++;
+    return n >= 6 ? n : 0;
+}
+
+static float th_rich(int face, const char *text, float x, float y, Color c, int hov, bool draw)
+{
+    const Font *f = face == TH_F_SMALL ? &theme.small : face == TH_F_HEAD ? &theme.head : &theme.ui;
+    float lh = th_measure(f, "A").y, w = 0;
+    char seg[512];
+    for (const char *p = text; *p;) {
+        size_t k = 0;
+        int tl = 0;
+        while (p[k] && !(tl = th_tok(p + k)) && k < sizeof seg - 1) k++;
+        memcpy(seg, p, k);
+        seg[k] = 0;
+        if (k) { if (draw) th_draw(f, seg, x + w, y, c); w += th_measure(f, seg).x; }
+        p += k;
+        if (tl) {
+            char tk[10];
+            snprintf(tk, sizeof tk, "%.*s", tl, p);
+            int32_t cp = (int32_t)strtol(tk + 2, NULL, 16);
+            const ThUfG *g = Th_CodeVisible(cp) ? uf_get(cp) : NULL;
+            float slot = th_uni(tk, 0, 0, WHITE, 1, false);
+            bool hv = hov < 0 ? th_hover((Rectangle){ x + w, y, slot, lh }) : hov > 0, shown = g && !hv;
+            Rectangle a = { x + w, y, shown ? (float)g->adv : slot, lh };   /* the character sits at the left of its slot */
+            if (draw) Th_CodeDraw(cp, a, c, hv, 1);
+            w += hov == 0 ? a.width : slot;   /* hov 0 (a label centred by its caller): the width as drawn; else the slot, so that hovering moves nothing */
+            p += tl;
+        }
+    }
+    return w;
+}
+float Th_MeasureRich(const char *text, int face) { return th_rich(face, text, 0, 0, WHITE, 1, false); }
+float Th_TextRich(const char *text, float x, float y, Color c, int face, int hov) { return th_rich(face, text, roundf(x), roundf(y), c, hov, true); }
 
 /* Crisp lines */
 
@@ -347,7 +556,10 @@ int Th_Segmented(Rectangle r, const ThSeg *g)
         Color tc = dis ? TH_TEXT_OFF : TH_TEXT_DIM;
         if (!dis && i == g->sel) { th_draw_rounded_button(in, TH_PANEL, TH_LINE); tc = TH_ACCENT; }
         else if (hover) { th_draw_rounded_button(in, th_mix(TH_TRACK, WHITE, 0.6f), BLANK); tc = TH_TEXT; }
-        th_draw_label(seg, g->labels[i], tc);
+        if (g->rich) {
+            float lw = th_rich(TH_F_BODY, g->labels[i], 0, 0, tc, over, false), lh = Th_Measure("A").y;
+            th_rich(TH_F_BODY, g->labels[i], seg.x + (seg.width - lw) * 0.5f, seg.y + (seg.height - lh) * 0.5f, tc, over, true);
+        } else th_draw_label(seg, g->labels[i], tc);
         if (over && g->hints && g->hints[i]) { th_tip = g->hints[i]; th_tip_r = seg; }
         if (hover && IsMouseButtonReleased(MOUSE_BUTTON_LEFT)) clicked = i;
     }
@@ -420,9 +632,9 @@ Rectangle Th_Row(float x, float *y, float w, const char *label, const char *valu
     Th_Text(label, x, *y + (TH_ROW_H - Th_Measure("A").y) / 2, TH_TEXT_DIM);
     if (value) {
         char fit[200];
-        bool mono = flags & TH_ROW_MONO;
-        Th_FitText(value, mono ? TH_F_MONO : TH_F_BODY, v.width, fit, sizeof fit);
-        if (mono) Th_TextMono(fit, x + w - Th_MeasureMono(fit).x, *y + (TH_ROW_H - Th_MeasureMono("A").y) / 2 + 1, TH_TEXT);
+        bool mono = flags & TH_ROW_UNI;
+        Th_FitText(value, mono ? TH_F_UNI : TH_F_BODY, v.width, fit, sizeof fit);
+        if (mono) Th_TextUni(fit, x + w - Th_MeasureUni(fit), *y + (TH_ROW_H - TH_UNI_H) / 2, TH_TEXT);
         else Th_Text(fit, x + w - Th_Measure(fit).x, *y + (TH_ROW_H - Th_Measure("A").y) / 2, TH_TEXT);
     }
     *y += value ? TH_ROW_H : TH_ROW_H + TH_GAP / 2;
@@ -545,13 +757,14 @@ float Th_HashShort(const char *kind, const char *hash, float x, float y, int fla
     char h8[10];
     snprintf(h8, sizeof h8, "%.8s", hash && hash[0] ? hash : "no ink");
     bool sm = flags & TH_HASH_SMALL;
-    const Font *kf = sm ? &theme.small : &theme.ui, *mf = sm ? &theme.monos : &theme.mono;
-    float kh = th_measure(kf, "M").y, kw = kind && kind[0] ? th_measure(kf, kind).x + 6 : 0, w = kw + th_measure(mf, h8).x;
+    const Font *kf = sm ? &theme.small : &theme.ui;
+    float kh = th_measure(kf, "M").y, kw = kind && kind[0] ? th_measure(kf, kind).x + 6 : 0, w = kw + Th_MeasureUni(h8);
     if (flags & TH_HASH_RIGHT) x -= w;
     if (flags & TH_HASH_MEASURE) return w;
     if (copyName) th_hash_copy((Rectangle){ x - 4, y - 3, w + 8, kh + 6 }, copyName, hash, kind);
     if (kw) th_draw(kf, kind, x, y, TH_TEXT_DIM);
-    th_draw(mf, h8, x + kw, y + (kh - th_measure(mf, "M").y) / 2 + (sm ? 1 : 2), hash && hash[0] ? (flags & TH_HASH_ACCENT ? TH_ACCENT : TH_TEXT) : TH_TEXT_DIM);
+    /* Unifont's baseline is its row 14: put it on the baseline of the kind word */
+    Th_TextUni(h8, x + kw, y + roundf(TH_NOTO_ASC * (sm ? TH_SIZE_SMALL : TH_SIZE_BODY) - 14), hash && hash[0] ? (flags & TH_HASH_ACCENT ? TH_ACCENT : TH_TEXT) : TH_TEXT_DIM);
     return w;
 }
 
@@ -562,32 +775,35 @@ void Th_HashField(float x, float *y, float w, const char *caption, const char *h
     bool hv = th_hash_copy(r, name, hash, what);
     th_draw_rounded_button(th_snap(r), TH_PANEL_ALT, hv ? TH_ACCENT : TH_LINE);
     const char *t = hash ? (hash[0] ? hash : "no ink") : "not known";
-    Vector2 m = Th_MeasureMono(t);
-    Th_TextMono(t, r.x + (r.width - m.x) / 2, r.y + (r.height - m.y) / 2 + 1, hash && hash[0] ? (flags & TH_HASH_ACCENT ? TH_ACCENT : TH_TEXT) : TH_TEXT_DIM);
+    Th_TextUni(t, r.x + (r.width - Th_MeasureUni(t)) / 2, r.y + (r.height - TH_UNI_H) / 2, hash && hash[0] ? (flags & TH_HASH_ACCENT ? TH_ACCENT : TH_TEXT) : TH_TEXT_DIM);
     *y += TH_ROW_H + TH_GAP;
 }
 
 /* Copy of s shortened with an ellipsis to fit maxW in the face. */
-static const Font *th_face(int face) { return face == TH_F_SMALL ? &theme.small : face == TH_F_MONO ? &theme.mono : face == TH_F_HEAD ? &theme.head : &theme.ui; }
+static const Font *th_face(int face) { return face == TH_F_SMALL ? &theme.small : face == TH_F_HEAD ? &theme.head : &theme.ui; }
+static float th_fw(int face, const char *s)
+{
+    if ((face & 0xFF) == TH_F_UNI) return Th_MeasureUni(s);
+    return face & TH_F_RICH ? th_rich(face & 0xFF, s, 0, 0, WHITE, 1, false) : th_measure(th_face(face & 0xFF), s).x;
+}
 
 void Th_FitText(const char *s, int face, float maxW, char *out, size_t cap)
 {
-    const Font *f = th_face(face & 0xFF);
     snprintf(out, cap, "%s", s);
-    if (th_measure(f, out).x <= maxW) return;
+    if (th_fw(face, out) <= maxW) return;
     size_t len = strlen(s);
     for (size_t n = 1; n < len; n++) {
         if (face & TH_F_TAIL) {   /* the ellipsis and the end of s */
             if (((unsigned char)s[n] & 0xC0) == 0x80) continue;
-            snprintf(out, cap, "\xE2\x80\xA6%s", s + n);
+            snprintf(out, cap, "…%s", s + n);
         } else {
             size_t k = len - n;
             while (k > 0 && ((unsigned char)s[k] & 0xC0) == 0x80) k--;   /* not inside a UTF-8 sequence */
             if (k + 4 > cap) continue;
             memcpy(out, s, k);
-            memcpy(out + k, "\xE2\x80\xA6", 4);
+            memcpy(out + k, "…", 4);
         }
-        if (th_measure(f, out).x <= maxW) return;
+        if (th_fw(face, out) <= maxW) return;
     }
 }
 
@@ -595,7 +811,9 @@ void Th_TextClip(const char *s, float x, float y, float maxW, Color c, int face)
 {
     char buf[512];
     Th_FitText(s, face, maxW, buf, sizeof buf);
-    th_draw(th_face(face & 0xFF), buf, x, y, c);
+    if ((face & 0xFF) == TH_F_UNI) Th_TextUni(buf, x, y, c);
+    else if (face & TH_F_RICH) Th_TextRich(buf, x, y, c, face & 0xFF, -1);
+    else th_draw(th_face(face & 0xFF), buf, x, y, c);
 }
 
 /* Text field and search field.  One field has the keyboard (th_ed); its text is edited in th_ed.buf and handed out by Th_TextValue. */

@@ -1111,6 +1111,16 @@ static const PxtfTypeface *sel_typeface(Browser *b, int *variant)
     return b->scHas ? &b->scCont : NULL;
 }
 
+/* A control that needs the whole width of the panel: its label on a line of its own, the returned rectangle below it. */
+static Rectangle wide_row(float x, float *y, float w, const char *label)
+{
+    Th_Text(label, x, *y, TH_TEXT_DIM);
+    *y += 22;
+    Rectangle r = { x, *y, w, TH_ROW_H };
+    *y += TH_ROW_H + TH_GAP / 2;
+    return r;
+}
+
 static void panel_ui(Browser *b, Rectangle P, BrowserChoice *choice, bool *chosen)
 {
     DrawRectangle((int)P.x, (int)P.y, (int)P.width, (int)P.height, TH_PANEL);
@@ -1208,13 +1218,15 @@ static void panel_ui(Browser *b, Rectangle P, BrowserChoice *choice, bool *chose
         if (!b->tfView[0]) {
         const char *cl[9] = { "Auto", "1", "2", "3", "4", "5", "6", "7", "8" };
         const float cw[9] = { 2.2f, 1, 1, 1, 1, 1, 1, 1, 1 };
-        c = Th_Segmented(Th_Row(x, &y, w, "Columns", NULL, 0), &(ThSeg){ cl, 9, b->cols, 0u, "Cols", cw });
+        c = Th_Segmented(wide_row(x, &y, w, "Columns"), &(ThSeg){ cl, 9, b->cols, 0u, "Cols", cw });
         if (c >= 0) b->cols = c;
         static const char *base[4] = { "Name", "Size", "Format", "Glyphs" };
-        Rectangle sr = Th_Row(x, &y, w, "Sort by", NULL, 0);
-        c = Th_Segmented(sr, &(ThSeg){ base, 4, b->sortKey, 0u, "Sort", (const float[]){ 1.4f, 1, 1.2f, 1.2f } });
+        Rectangle sr = wide_row(x, &y, w, "Sort by");
+        static const float sw4[4] = { 1.4f, 1, 1.2f, 1.2f };
+        c = Th_Segmented(sr, &(ThSeg){ base, 4, b->sortKey, 0u, "Sort", sw4 });
         {   /* direction arrow after the label of the active sort */
-            float sw = sr.width / 4, ax = sr.x + sw * b->sortKey + sw / 2 + Th_Measure(base[b->sortKey]).x / 2 + 9, ay = sr.y + TH_ROW_H / 2;
+            float acc = 0, tot = 4.8f; for (int k = 0; k < b->sortKey; k++) acc += sw4[k];
+            float sw = sr.width * sw4[b->sortKey] / tot, ax = sr.x + sr.width * acc / tot + sw / 2 + Th_Measure(base[b->sortKey]).x / 2 + 9, ay = sr.y + TH_ROW_H / 2;
             float d = b->sortDesc ? 1.0f : -1.0f;
             DrawLineEx((Vector2){ ax - 3, ay - 1.5f * d }, (Vector2){ ax, ay + 1.5f * d }, 1.2f, TH_ACCENT);
             DrawLineEx((Vector2){ ax, ay + 1.5f * d }, (Vector2){ ax + 3, ay - 1.5f * d }, 1.2f, TH_ACCENT);

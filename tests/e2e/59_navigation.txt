@@ -94,16 +94,16 @@ assert nav 4
 assert navactive 2
 assert navseg 0 Test Sans
 assert navseg 1 Italic
-assert navseg 2 A U+0041
+assert navseg 2 U+0041
 shot tests/tmp/shots/59_glyph.png
 
 # next glyph: the caption follows
 key pgup
 wait 14
-assert navseg 2 , U+002C
+assert navseg 2 U+002C
 key pgdn
 wait 14
-assert navseg 2 A U+0041
+assert navseg 2 U+0041
 
 # the style segment returns to the font, the typeface segment to the Typeface view
 click @nav.1
