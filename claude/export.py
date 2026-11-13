@@ -99,7 +99,7 @@ def numbers(sessions):
     new = sorted((first, sid) for sid, first in sessions.items() if sid not in given)
     if new:
         n = max([v for v in given.values() if v] + [0])
-        with NUMBERS.open("a", encoding="utf-8", newline="\r\n") as f:
+        with NUMBERS.open("a", encoding="utf-8", newline="\n") as f:
             for _, sid in new:
                 n += 1
                 given[sid] = n
@@ -138,7 +138,7 @@ def main():
                     out += [text, ""]
                     continue
                 out += [f"### {'Ádám' if kind == 'user' else 'Claude'}" + (f" · {stamp[11:16]} UTC" if stamp else ""), "", text, ""]
-            target, body = HERE / f"{day}-{n}-adam.md", "\n".join(out).replace("\r\n", "\n").replace("\n", "\r\n")          # CRLF, also inside the messages (Adam 2026-11-02)
+            target, body = HERE / f"{day}-{n}-adam.md", "\n".join(out).replace("\r\n", "\n")          # LF, also inside the messages (pxfe is multiplatform, Adam 2026-11-13)
             if not target.exists() or target.read_bytes().decode("utf-8") != body:
                 target.write_bytes(body.encode("utf-8"))
                 written += 1

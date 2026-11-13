@@ -1,6 +1,17 @@
-# cmd needs CRLF batch files; keep them byte for byte
-*.bat -text
-*.a binary
+# pxfe runs on Windows, macOS and Linux: every text file is LF in the repository and in every checkout.
+* text=auto eol=lf
 
-# the hook runs in sh and must keep LF
-.githooks/* eol=lf
+# cmd needs CRLF batch files
+*.bat text eol=crlf
+
+# binaries
+*.a binary
+*.ttf binary
+*.otf binary
+*.png binary
+*.pxfdb binary
+
+# library files are named by the hash of their bytes: never convert them
+*.pxgl -text
+*.pxfm -text
+*.pxtf -text
