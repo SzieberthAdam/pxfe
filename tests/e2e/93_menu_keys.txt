@@ -1,11 +1,11 @@
 # 93. Version 8: the keyboard in menus (Th_Menu): Down / Up move a highlight, Enter picks it, Escape closes; the keys do not reach the view behind the menu.
-# The File menu (Load, Save, Save As, Import Folder, Export to Folder, Quit) on the loaded testdata library; a font card is selected, so a leaked Enter would open it.
+# The menu (New Font, Import Font File, Load, Save, Save As, Import Folder, Export to Folder, Quit) on the loaded testdata library; a font card is selected, so a leaked Enter would open it.
 wait 16
 assert inbrowser 1
 click @card:0
 wait 6
 assert menuhi -1
-# no highlight at first, Down: the first item (New Font), Down again: Load, then Save
+# no highlight at first, Down: the first item (New Font), Down again: Import Font File, then Load
 click @Menu
 wait 6
 assert filemenu 1
@@ -20,13 +20,16 @@ key down
 wait 3
 assert menuhi 2
 shot tests/tmp/shots/93_menu_keys.png
-# Up and Down: Save again, Enter picks it ("No changes to save"), the menu closes, the selected card was not opened
+# Down to Save As, Up: Save, Enter picks it ("No changes to save"), the menu closes, the selected card was not opened
 key down
 wait 3
 assert menuhi 3
+key down
+wait 3
+assert menuhi 4
 key up
 wait 3
-assert menuhi 2
+assert menuhi 3
 key enter
 wait 6
 assert filemenu 0
@@ -39,7 +42,7 @@ wait 6
 assert menuhi -1
 key up
 wait 3
-assert menuhi 6
+assert menuhi 7
 key home
 wait 3
 assert menuhi 0
@@ -55,10 +58,10 @@ wait 3
 assert menuhi 0
 move @file.import
 wait 6
-assert menuhi 4
+assert menuhi 5
 key down
 wait 3
-assert menuhi 5
+assert menuhi 6
 key escape
 wait 6
 assert filemenu 0

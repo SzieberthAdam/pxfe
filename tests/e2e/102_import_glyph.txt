@@ -1,0 +1,86 @@
+# 102. Version 10: an imported font in the glyph view.  The source file lies under every glyph as a font layer; the Layers tab moves and
+# sizes it for the whole font (the glyphs are drawn again) and for the edited glyph alone (its correction draws that glyph again).
+# 102b reloads the saved database.
+wait 16
+importfont testdata/outline/PixelSquare.ttf
+wait 10
+assert docnew 1
+assert glyphs 34
+assert flayer 0 em 10
+assert flayer 0 dx 0
+assert flayer 0 mode 1
+assert glyph U+0048 size 5x7
+assert glyph U+0048 left 0
+click @cell:U+0048
+key enter
+wait 6
+assert editor 1
+click @gtab_Layers
+wait 6
+# the stack: the edited glyph and the font layer under it
+assert l.count 2
+assert l.cur 0
+click @lay_row_1
+wait 4
+assert l.sel 1
+assert l.ink.1 > 0
+shot tests/tmp/shots/102_glyph_layer.png
+# the correction of this glyph: four quarter pixels to the right draw H one pixel to the right, the others stay
+click @lay_gx+
+click @lay_gx+
+click @lay_gx+
+click @lay_gx+
+wait 6
+assert fcorr 0 U+0048 dx 1
+assert glyph U+0048 left 1
+assert glyph U+0048 size 5x7
+assert glyph U+0041 left 0
+assert editor 1
+# reset: back where it was
+click @lay_greset
+wait 6
+assert fcorr 0 U+0048 exists 0
+assert glyph U+0048 left 0
+# the layer's own offset moves every glyph
+click @lay_x+
+click @lay_x+
+click @lay_x+
+click @lay_x+
+wait 6
+assert flayer 0 dx 1
+assert glyph U+0048 left 1
+assert glyph U+0041 left 1
+# the layer's size, in quarter pixels per em
+assert w.lay_size+ 1
+click @lay_size+
+wait 6
+assert flayer 0 em 10.25
+click @lay_size-
+wait 6
+assert flayer 0 em 10
+assert glyph U+0048 size 5x7
+assert glyph U+0048 left 1
+# two pixels drawn by hand above the H (it stands one pixel to the right now: 6 x 8), then the layer moves back: H stays as drawn, the others follow
+drag @ecell:0,0 @ecell:1,0
+wait 4
+click @lay_x-
+click @lay_x-
+click @lay_x-
+click @lay_x-
+wait 6
+assert flayer 0 dx 0
+assert glyph U+0041 left 0
+assert glyph U+0048 size 6x8
+assert fitlastkept 1
+click @Back
+wait 6
+assert editor 0
+# commit and save: the layer is written beside the database under the hash of the committed font
+click @nav.0
+wait 10
+assert storefonts 5
+key s ctrl
+waitfor unsaved == 0 20000
+assert sidecar exists
+assert sqlfile tests/tmp/e2e.pxfdb-settings "select count(*) from layer where follow = 1 and mode = 1 and em = 10" 1
+assert sqlfile tests/tmp/e2e.pxfdb-settings "select count(*) from correction" 0

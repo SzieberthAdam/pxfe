@@ -807,3 +807,136 @@ It is committed like a duplicate.
 The name is only the title of the session: an orphaned font has no name in the database.
 "Add Glyph" in the font view's command bar adds an empty glyph for a code point (or without one).
 Draw it in the glyph view over the layer.
+
+## Version 10: importing a font file
+
+A font file becomes a font of the database: Menu, Import Font File.
+The file stays under the new font as a font layer, and the glyphs are drawn from that layer until they are edited by hand.
+The searches and the drawing are in `src/fit.c` (no raylib), the document logic in `src/fitdoc.inc`.
+
+### What can be imported
+
+- An outline font (`.ttf .otf .ttc .otc .woff .eot .pfb`): its glyphs are drawn as pixels, as a pixel font or as a smooth font.
+- A bitmap font (`.bdf .pcf .fnt .fon .json`, a bitmap strike of a `.ttf`): its pixels are copied as they are, glyphs without a code point are left out.
+  It is always a pixel font, and nothing follows its layer.
+- WOFF2 is not supported.
+
+### The placement
+
+A font layer of an outline file places the outline on the pixels of the font.
+A point (X, Y) of the outline, in font units, lies at the pixel position `x = X * em * aspect / unitsPerEm + dx`, `y = Y * em / unitsPerEm + dy`.
+
+- `em` is the size in pixels per em.
+  It is an absolute size (new in version 10): the layer no longer depends on the font box, so the font box can follow the layer.
+  A layer of version 9 has `em = 0` and keeps its size relative to the font box (`scale`).
+- `aspect` is the width (100 % is square pixels).
+- `dx`, `dy` are the offset in pixels.
+  The buttons of their fields step by a quarter pixel, and any value can be typed (`Th_NumberF`, a comma counts as a point); the same holds for the size.
+- A glyph may have its own correction (offset and size factor), as in version 9.
+
+The same numbers draw the layer in the glyph view and draw the pixels of the glyphs, so what is seen under a glyph is what its pixels were made from.
+
+### Drawing pixels from an outline
+
+Two modes (`mode` of the layer):
+
+- Pixel font: a pixel is inked when its centre is inside the outline.
+  This is exact for a pixel font drawn with outlines, also when its pixels are drawn smaller or larger than a cell, or as dots.
+- Smooth: a pixel is inked when the outline covers at least `threshold` of it (38 % or 50 % from the search, 5 to 95 % by hand).
+  A glyph without an x correction is moved by a quarter pixel step (from half a pixel left to a quarter right) to where its pixels are closest to its coverage, so that stems fall on whole pixels.
+  The layer is drawn moved by as much in the glyph view (`FlLayer_Shift`), so the outline lies where the pixels were made from.
+
+The advance is the advance of the file in pixels, rounded.
+The font box is the ascender and descender of the file in pixels, rounded.
+
+### Finding the grid of a pixel font
+
+`fit_find_grid` is a port of `pixelglyphlib/readers/ttf.py` (`find_grid`), with the same constants.
+It was compared with the Python on the 621 TrueType and OpenType files of the real library: the same grid for all of them, 3 of them with a pitch that differs in the third decimal.
+
+The searches, in order:
+
+- dots: the font is drawn as separate dots of one size, the grid is the lattice of their centres;
+- exact: the common divisor of every coordinate, when it gives at most 256 cells per em;
+- coarser: the coarsest glyph divisor that is close to every coordinate or redraws 95 % of the ink;
+- lattice: evenly spaced cells fitted to where ink starts and ends on each axis, the pixels may be shifted and need not be square;
+- edges: the commonest edge lengths as grids;
+- glyph columns: a lattice whose columns start anew in each glyph (stored as the x correction of each glyph);
+- loose: a lattice for pixels drawn too large or carelessly, only the cores of the cells are compared.
+
+What pxfe adds to the Python:
+
+- When nothing passes, the best lattice that redraws at least 80 % of the ink is offered as a guess; the dialog says so and proposes the smooth mode.
+- The search is fast enough for the dialog: 20 ms for a typical pixel font, 0.8 s for the 57 000 glyphs of GNU Unifont.
+- The comparison found a fault of `outline.c`: a TrueType glyph stands `lsb - xMin` to the right of its own coordinates (the first phantom point), which the reader ignored.
+  It is corrected for simple glyphs; a composite glyph stays where its parts put it, as fontTools draws it, so that the grids agree with pixelglyphlib.
+
+### Finding the size of a font that is no pixel font
+
+`fit_find_size` tries the sizes from 5 to 40 pixels per em in half pixel steps, each with four vertical positions (quarter pixels) and two thresholds.
+The letters and digits are the sample (62 glyphs, or the first 80 glyphs with ink when the font has few of them).
+
+- Each sample glyph has a true shape: its parts and its holes, counted on a large rendering (200 pixels per em).
+- At a size, a glyph is right when its pixels have the same number of parts and of holes: the counter of an A is open, the dot of an i stands apart.
+- The cover of a size is how close the pixels are to the coverage of the outline: `1 - sum |coverage - pixel| / sum max(coverage, pixel)`.
+- The smallest size at which nearly as many glyphs are right as at any size is the base (at most 3.5 % fewer, and with a small sample at most one and a half glyphs fewer).
+- Among the base and the sizes up to two pixels above it, the one with the best score (right glyphs plus half the cover) is taken: there stems and heights tend to fall on whole pixels.
+
+At the size taken, the position is then searched in sixteenths of a pixel with seven thresholds (30 to 55 %); the coarse answer stays unless a finer one scores better.
+
+The search takes about half a second for a font with all letters and digits.
+The size can be set by hand, to any value: in the dialog, and later with "Optimize for This Size" in the Layers tab.
+The position and the threshold are then searched for that size (about 50 ms); the width and the offset X stay as they are.
+
+### The dialog
+
+Menu, Import Font File opens the native file dialog, then the Import Font File dialog:
+
+- Family and Style (from the file, editable) and the face of a collection or the strike of a bitmap font;
+- the switch "This is a pixel font": on when a sure grid was found, off otherwise; it cannot be switched on when no grid was found, and a bitmap font is always one;
+- what the search found (the grid and how it was found, or the size, the font box and how many sample glyphs keep their shape);
+- a preview of a sample drawn as the import will draw it;
+- for a smooth font the size in half pixels and "Best Size";
+- "Make a typeface with these names".
+
+Import makes a new document (no original, like New Font): the font, the typeface (one variant with the names of the file: family, style, full name, version, copyright, designer, licence and so on; HASH is the hash of the file), and the font layer.
+A typeface whose text the strict reader would refuse is first cut down to family and style, and left out when even that fails.
+The document is committed into memory like a duplicate, and Save writes the layer into the settings sidecar under the hash of the committed font.
+
+### Glyphs that follow a layer
+
+One font layer of a font may have `follow` set.
+It must be an outline file with an absolute size.
+
+- When the size, width, offset, mode or threshold of that layer changes, or the correction of a glyph, every glyph that still is what the layer drew before is drawn again (`FitTick` in `fitdoc.inc`, once per frame).
+- A glyph edited by hand is not what the layer drew, so it stays as it is.
+  Nothing is stored for this: the earlier drawing is made again from a copy of the layer's settings at the last redraw and compared (ink, position, advance).
+- The font box follows while ascent and descent are what the layer gave.
+- "Redraw All" draws every glyph from the layer again, also those edited by hand.
+- Undo and redo take the layer's settings along with the font, so the two never disagree.
+- An original is read-only: the placement of the layer its glyphs follow cannot be changed (the fields are off, a change made elsewhere is put back with a notice), or a duplicate could no longer tell which glyphs the layer drew.
+  Colour, opacity and visibility stay program settings; a duplicate follows as before.
+- Switching "Draw the glyphs from this layer" on redraws nothing: the font as it is is the starting point.
+  A layer with a relative size gets its present size as the absolute size.
+
+### Where the settings are
+
+The font view's panel has a fourth tab, Layers.
+It lists the font layers of the open font.
+For the layer the glyphs follow (or the first outline layer) it has Size (px/em), Width (%), Offset X and Y, the follow switch, Smooth or Pixel font, Threshold, "Optimize for This Size" (smooth mode), "Find Best Fit" (the search of the import again, for the mode chosen) and "Redraw All".
+It tells how many glyphs follow, are edited by hand, or are not in the file.
+
+The glyph view's Layers tab edits the same layer: its offset and its size (px/em for an absolute size) for the whole font, and the correction of the edited glyph.
+
+### Storage
+
+The settings sidecar has schema version 2: the `layer` table gets `em`, `aspect`, `follow`, `mode` and `threshold`.
+A version 1 file is upgraded in memory when it is opened and on disk at the next save.
+
+### Not done
+
+- Kerning, cap height and x-height of the file are not imported.
+- A family of several files is not imported as one typeface with several variants: each file gives its own typeface.
+- A negative advance (a glyph left of its origin) is imported as advance 0.
+- When the face of the followed layer is changed, or its file changes on disk, no glyph is what the layer drew before, so all count as edited by hand until Redraw All.
+- The searches run on the UI thread: the window does not answer for their length (under a second, except for very large fonts).

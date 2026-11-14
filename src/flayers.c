@@ -79,12 +79,15 @@ FlLayer *FlLayer_New(const FsLayer *init)
     l->s = *init;
     l->s.id = 0;
     if (!(l->s.scale > 0)) l->s.scale = 1.0f;
+    if (!(l->s.aspect > 0)) l->s.aspect = 1.0f;
+    if (!(l->s.threshold > 0)) l->s.threshold = 0.5f;
     l->serial = nextSerial++;
     return l;
 }
 
 static void close_src(FlLayer *l)
 {
+    l->snap.valid = false;
     if (l->ol) { outline_close(l->ol); l->ol = NULL; }
     if (l->bm) { bm_close(l->bm); l->bm = NULL; }
     cache_drop(l->serial);
@@ -102,6 +105,7 @@ FlLayer *FlLayer_Copy(const FlLayer *l)
 {
     FlLayer *c = FlLayer_New(&l->s);
     if (!c) return NULL;
+    c->origin = l->origin ? l->origin : l->serial;
     if (l->ncorr) {
         c->corr = (FlCorr *)malloc(sizeof(FlCorr) * (size_t)l->ncorr);
         if (!c->corr) { FlLayer_Free(c); return NULL; }
@@ -148,14 +152,17 @@ bool FlDoc_Load(FlDoc *d, FSettings *fs, const char *hash)
     for (int i = 0; i < n; i++) {
         FlLayer *l = FlLayer_New(&all[i]);
         if (!l) return false;
-        int32_t codes[512];
-        int nc = fs_list_corrections(fs, all[i].id, codes, 512);
-        for (int k = 0; k < nc && k < 512; k++) {
+        int nc = fs_list_corrections(fs, all[i].id, NULL, 0);
+        int32_t *codes = nc > 0 ? (int32_t *)malloc(sizeof(int32_t) * (size_t)nc) : NULL;
+        if (nc > 0 && !codes) { FlLayer_Free(l); return false; }
+        if (nc > 0) { int got = fs_list_corrections(fs, all[i].id, codes, nc); if (got < nc) nc = got; }
+        for (int k = 0; k < nc; k++) {
             FsCorrection c;
             if (!fs_get_correction(fs, all[i].id, codes[k], &c)) continue;
             FlCorr fc = {codes[k], c.dx, c.dy, c.dsize, c.hidden};
             FlLayer_SetCorr(l, codes[k], &fc);
         }
+        free(codes);
         FlDoc_Add(d, l, -1);
     }
     return true;
@@ -233,9 +240,56 @@ void FlLayer_Place(const FlLayer *l, int32_t code, FlPlace *out)
     out->dx = l->s.dx + (c ? c->dx : 0);
     out->dy = l->s.dy + (c ? c->dy : 0);
     out->hidden = c && c->hidden;
+    out->dsize = c ? c->dsize : 1.0f;
     float s = l->s.scale * (c ? c->dsize : 1.0f);
     bool bitmap = l->state == FL_OK && !l->outline && l->s.kind == 1;
     out->scale = bitmap ? (float)fl_bitmap_k(s) : s;
+}
+
+float FlLayer_Em(const FlLayer *l, int fontPx, const FlPlace *p)
+{
+    float em = l->s.em > 0 ? l->s.em : (float)fontPx * l->s.scale;
+    return em * (p && p->dsize > 0 ? p->dsize : 1.0f);
+}
+
+void FlLayer_FitParams(const FlLayer *l, int fontPx, FitParams *out)
+{
+    out->em = FlLayer_Em(l, fontPx, NULL);
+    out->aspect = l->s.aspect > 0 ? l->s.aspect : 1.0f;
+    out->dx = l->s.dx;
+    out->dy = l->s.dy;
+    out->threshold = l->s.threshold > 0 ? l->s.threshold : 0.5f;
+    out->mode = l->s.mode ? FIT_PIXEL : FIT_SMOOTH;
+}
+
+bool FlLayer_FitCorr(const FlLayer *l, int32_t code, FitCorr *out)
+{
+    const FlCorr *c = FlLayer_Corr(l, code);
+    out->dx = c ? c->dx : 0;
+    out->dy = c ? c->dy : 0;
+    out->dsize = c ? c->dsize : 1.0f;
+    return c != NULL;
+}
+
+float FlLayer_Shift(FlLayer *l, int32_t code, int fontPx)
+{
+    if (!l->s.follow || l->s.mode || l->s.kind != 1 || l->state != FL_OK || !l->outline || !(l->s.em > 0)) return 0;
+    FitParams p;
+    FitCorr c;
+    FlLayer_FitParams(l, fontPx, &p);
+    FlLayer_FitCorr(l, code, &c);
+    if (l->snap.valid && l->snap.code == code && !memcmp(&l->snap.p, &p, sizeof p) && !memcmp(&l->snap.c, &c, sizeof c)) return l->snap.shift;
+    FitBitmap b;
+    float shift = 0;
+    int gi = outline_glyph_index(l->ol, code);
+    if (gi > 0 && fit_render_shift(l->ol, gi, &p, &c, &b, &shift) == 0) fit_bitmap_free(&b);
+    else shift = 0;
+    l->snap.valid = true;
+    l->snap.code = code;
+    l->snap.p = p;
+    l->snap.c = c;
+    l->snap.shift = shift;
+    return shift;
 }
 
 /* ------------------------------------------------------------------ opening the file */
@@ -441,14 +495,16 @@ static Texture2D make_texture(const OutlineBitmap *b)
 
 static void draw_outline(FlLayer *l, int32_t code, int ox, int oy, int z, int fontPx, const FlPlace *p, Color tint)
 {
-    float em = (float)fontPx * p->scale * (float)z;
-    if (em < 1.0f || em > FL_MAX_EM) return;
-    int key = (int)lroundf(em * 8.0f);
+    float em = FlLayer_Em(l, fontPx, p) * (float)z, aspect = l->s.aspect > 0 ? l->s.aspect : 1.0f;
+    if (em < 1.0f || em > FL_MAX_EM || em * aspect < 1.0f || em * aspect > FL_MAX_EM) return;
+    int emKey = (int)lroundf(em * 8.0f);
+    int key = emKey + 20000 * (int)lroundf(aspect * 512.0f);   /* a stretched layer has its own textures */
     CacheEnt *c = cache_find(l->serial, code, key);
     if (!c) {
         OutlineBitmap b;
         memset(&b, 0, sizeof b);
-        int rc = outline_rasterize(l->ol, code, (float)key / 8.0f, 0, 0, &b, NULL, 0);
+        int gi = outline_glyph_index(l->ol, code);
+        int rc = gi > 0 ? outline_rasterize_glyph_xy(l->ol, gi, (float)emKey / 8.0f * aspect, (float)emKey / 8.0f, 0, 0, &b, NULL, 0) : OUTLINE_MISSING;
         long pix = rc == OUTLINE_OK ? (long)b.w * b.h : 0;
         c = cache_slot(pix);
         if (!c) { outline_bitmap_free(&b); return; }
@@ -466,7 +522,8 @@ static void draw_outline(FlLayer *l, int32_t code, int ox, int oy, int z, int fo
         outline_bitmap_free(&b);
     }
     if (!c->tex.id) return;
-    DrawTexture(c->tex, ox + (int)lroundf(p->dx * (float)z) + c->left, oy - (int)lroundf(p->dy * (float)z) - c->top, tint);
+    float shift = FlLayer_Shift(l, code, fontPx);   /* where the pixels of the glyph were made from */
+    DrawTexture(c->tex, ox + (int)lroundf((p->dx + shift) * (float)z) + c->left, oy - (int)lroundf(p->dy * (float)z) - c->top, tint);
 }
 
 static void draw_bitmap(FlLayer *l, int32_t code, int ox, int oy, int z, const FlPlace *p, Color tint)

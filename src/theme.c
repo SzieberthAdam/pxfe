@@ -834,6 +834,7 @@ static float th_w(const char *s, int a, int b)
 static bool th_accepts(int c, int flags)
 {
     if (c < 32 || c == 127) return false;
+    if (flags & TH_TF_DEC) return (c >= '0' && c <= '9') || c == '-' || c == '.' || c == ',';
     if (flags & TH_TF_NUM) return (c >= '0' && c <= '9') || c == '-';
     if (flags & TH_TF_HEX) return (c >= '0' && c <= '9') || (c >= 'a' && c <= 'f') || (c >= 'A' && c <= 'F') || c == '#';
     return true;
@@ -1027,6 +1028,31 @@ bool Th_Number(Rectangle r, const char *prefix, int val, int lo, int hi, int fla
     } else if ((flags & TH_NUM_WHEEL) && !editing && !off && th_hover(r) && GetMouseWheelMove() != 0) { step = GetMouseWheelMove() > 0 ? 1 : -1; th_wheel_used = true; }
     if (!step) return false;
     int nv = val + step;
+    nv = nv < lo ? lo : nv > hi ? hi : nv;
+    if (nv == val) return false;
+    *out = nv;
+    return true;
+}
+
+bool Th_NumberF(Rectangle r, const char *prefix, float val, float lo, float hi, float step, int flags, float *out)
+{
+    char text[24], n[64];
+    bool off = flags & TH_TF_DISABLED;
+    float shown = roundf(val * 1000.0f) / 1000.0f;
+    snprintf(text, sizeof text, "%g", fabsf(shown) < 0.0005f ? 0.0 : (double)shown);
+    snprintf(n, sizeof n, "%s.value", prefix);
+    bool editing = Th_TextIs(n);
+    int st = Th_Stepper(r, NULL, prefix, editing ? TH_STEP_EDIT : off ? TH_STEP_NO_MINUS | TH_STEP_NO_PLUS : (val <= lo ? TH_STEP_NO_MINUS : 0) | (val >= hi ? TH_STEP_NO_PLUS : 0));
+    int f = Th_TextField(Th_StepperValue(r), n, text, 12, TH_TF_DEC | TH_TF_BARE | TH_TF_COMMIT | TH_TF_SELECT | (flags & TH_TF_DISABLED), NULL);
+    float nv = val;
+    if (f & (TH_TF_ENTER | TH_TF_BLUR)) {
+        char buf[32], *end = NULL;
+        snprintf(buf, sizeof buf, "%.30s", Th_TextValue());
+        for (char *q = buf; *q; q++) if (*q == ',') *q = '.';
+        double v = strtod(buf, &end);
+        if (end != buf && v == v) nv = (float)v;
+    } else if (st && !off) nv = roundf((val + (float)st * step) * 10000.0f) / 10000.0f;   /* no drift after many steps */
+    else return false;
     nv = nv < lo ? lo : nv > hi ? hi : nv;
     if (nv == val) return false;
     *out = nv;

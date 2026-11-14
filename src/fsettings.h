@@ -7,7 +7,7 @@
  * Key of everything: the font's pxfm hash, 32 lowercase hex characters.  Layer ids are unique in the file and never reused
  * (AUTOINCREMENT), a layer's corrections belong to its id.
  *
- * Schema, schema_version = 1:
+ * Schema, schema_version = 2 (a version 1 file is upgraded in memory when it is opened, and on disk at the next save):
  *   meta(key TEXT PRIMARY KEY, value TEXT NOT NULL)              'format' = 'pxfe-settings', 'schema_version' = '1'
  *   layer(id INTEGER PRIMARY KEY AUTOINCREMENT,
  *         font TEXT NOT NULL,                  pxfm hash of the edited font
@@ -18,7 +18,13 @@
  *         scale REAL NOT NULL,                 1.0 = natural size (outline: the edited font's pixel size; bitmap: the strike size)
  *         dx REAL NOT NULL, dy REAL NOT NULL,  pixels of the edited font, y up
  *         r, g, b INTEGER NOT NULL, opacity INTEGER NOT NULL (0..100), visible INTEGER NOT NULL (0/1),
- *         label TEXT NOT NULL)
+ *         label TEXT NOT NULL,
+ *         em REAL NOT NULL DEFAULT 0,          version 2.  > 0: the size of an outline in pixels per em, whatever the font box is
+ *                                              (then `scale` is not used); 0: the size is the font box times `scale`
+ *         aspect REAL NOT NULL DEFAULT 1,      width of an outline: pixels per em across = size * aspect
+ *         follow INTEGER NOT NULL DEFAULT 0,   1: the glyphs of the font are DRAWN from this layer (fit.h) while they are not edited by hand
+ *         mode INTEGER NOT NULL DEFAULT 0,     how they are drawn: 0 smooth (coverage >= threshold), 1 pixel font (the centre of a pixel)
+ *         threshold REAL NOT NULL DEFAULT 0.5)
  *   correction(font TEXT NOT NULL, layer INTEGER NOT NULL, code INTEGER NOT NULL, dx REAL, dy REAL,
  *              dsize REAL NOT NULL,              factor multiplied onto the layer's scale, 1.0 = none
  *              hidden INTEGER NOT NULL, PRIMARY KEY (layer, code))
@@ -35,7 +41,7 @@
 #include <stdbool.h>
 #include <stdint.h>
 
-#define FS_SCHEMA_VERSION 1
+#define FS_SCHEMA_VERSION 2
 #define FS_ERR_LEN 256
 #define FS_HASH_LEN 33         /* 32 hex characters + NUL */
 #define FS_PATH_LEN 1100
@@ -57,6 +63,11 @@ typedef struct FsLayer {
     int opacity;               /* 0..100 */
     int visible;               /* 0/1 */
     char label[FS_LABEL_LEN];
+    float em;                  /* > 0: pixels per em of an outline (absolute); 0: the font box times scale */
+    float aspect;              /* > 0, 1.0 = square */
+    int follow;                /* 0/1: the font's glyphs are drawn from this layer */
+    int mode;                  /* 0 smooth, 1 pixel font (FIT_* of fit.h) */
+    float threshold;           /* coverage that inks a pixel in smooth mode */
 } FsLayer;
 
 typedef struct FsCorrection {
@@ -65,7 +76,8 @@ typedef struct FsCorrection {
     int hidden;
 } FsCorrection;
 
-/* a layer with the defaults: kind 0, scale 1, no offset, colour 0,0,0, opacity 100, visible, position -1 (bottom) */
+/* a layer with the defaults: kind 0, scale 1, no offset, colour 0,0,0, opacity 100, visible, position -1 (bottom), em 0, aspect 1,
+ * follow 0, mode 0, threshold 0.5 */
 FsLayer fs_layer_default(void);
 FsCorrection fs_correction_default(void);
 

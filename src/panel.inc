@@ -1,6 +1,7 @@
 /* panel.inc - the right-hand panel of the font view, included by main.c.  A segmented control at its top picks the tab:
  * Font (every PXM_* metric is an optional row: a "stated" checkbox and a spinner, RATIO as two spinners, MONOSPACED as a
- * switch), Glyph (the selection, the "Find in Library" link and the glyph usage) and Similar (similar fonts and typefaces).
+ * switch), Glyph (the selection, the "Find in Library" link and the glyph usage), Similar (similar fonts and typefaces) and Layers
+ * (the font layers and the glyphs drawn from one of them, fitdoc.inc).
  * The tab is only changed by the user and is kept in pxfe.ini.  All editing is disabled in an original.
  * The content of a tab scrolls.  DrawTypefaceTab, the typeface's fields, is the Typeface tab of the library views (browser.c). */
 
@@ -230,8 +231,8 @@ static void DrawMetricsPanel(Rectangle p)
     /* the tab control: Font | Glyph | Similar */
     int tab = panelTab;
     {
-        static const char *labels[3] = {"Font", "Glyph", "Similar"};
-        int c = Th_Segmented((Rectangle){p.x + 8, p.y + 8, p.width - 16, TH_ROW_H}, &(ThSeg){ labels, 3, tab, 0u, "ptab" });
+        static const char *labels[4] = {"Font", "Glyph", "Similar", "Layers"};
+        int c = Th_Segmented((Rectangle){p.x + 8, p.y + 8, p.width - 16, TH_ROW_H}, &(ThSeg){ labels, 4, tab, 0u, "ptab" });
         if (c >= 0) { PanelSetTab(c); tab = c; }
         Th_HLine(p.x + 1, p.x + p.width, p.y + PANEL_TABS_H - 1, TH_LINE);
     }
@@ -304,8 +305,10 @@ static void DrawMetricsPanel(Rectangle p)
         if (selCount == 1) {   /* the finder on this code point (also Ctrl+Shift+F and the toolbar) */
             FindRow(px, &y, insCode);
         }
+    } else if (tab == 3) {
+        DrawFontLayersTab(px, &y);   /* fitdoc.inc: the font layers and the glyphs drawn from one of them */
     }
-    if (insight && tab >= 1) {
+    if (insight && tab >= 1 && tab <= 2) {
         int mask = 0;
         static char hasKey[2][33];
         static bool hasVal[2];

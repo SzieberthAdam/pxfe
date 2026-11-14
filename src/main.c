@@ -22,6 +22,7 @@
 #include "editor.h"
 #include "layers.h"
 #include "flayers.h"
+#include "fit.h"
 #include "fsettings.h"
 #include "winfile.h"
 
@@ -144,7 +145,11 @@ static bool FlPending(void);                    /* font layers (below) */
 static bool FsDirty(void);
 static void CmdAddGlyph(void);
 static void NewFontOpen(void);
-static int panelTab = 0;               /* tab of the right-hand panel: 0 Font, 1 Glyph, 2 Similar (kept in pxfe.ini) */
+static void ImportFontOpen(void);
+static FlLayer *FollowCopy(void);          /* fitdoc.inc: the settings of the layer the glyphs are drawn from, for an undo snapshot */
+static void FollowRestore(FlLayer *snap);
+static void FitSnapDrop(void);
+static int panelTab = 0;               /* tab of the right-hand panel: 0 Font, 1 Glyph, 2 Similar, 3 Layers (kept in pxfe.ini) */
 
 /* ------------------------------------------------------------------------------------------------
  * Small utilities
@@ -248,13 +253,15 @@ static int WrapLines(const char *text, float maxW, char lines[][160], int maxLin
  * Undo stack, selection
  * ---------------------------------------------------------------------------------------------- */
 static PxFont *undoStack[UNDO_MAX + 1], *redoStack[UNDO_MAX + 1];
+static FlLayer *undoFit[UNDO_MAX + 1], *redoFit[UNDO_MAX + 1];   /* beside each snapshot: the settings its glyphs were drawn with (fitdoc.inc), or NULL */
 static int undoN = 0, redoN = 0;
 static int lastUndoKey = 0;
 static double lastUndoTime = 0;
 
 static void StackClear(PxFont **st, int *n)
 {
-    for (int i = 0; i < *n; i++) { px_font_free(st[i]); free(st[i]); }
+    FlLayer **fit = st == undoStack ? undoFit : redoFit;
+    for (int i = 0; i < *n; i++) { px_font_free(st[i]); free(st[i]); FlLayer_Free(fit[i]); fit[i] = NULL; }
     *n = 0;
 }
 
@@ -296,9 +303,12 @@ static void PushUndo(int key)
     if (!px_font_copy(s, &font)) { free(s); return; }
     if (undoN == UNDO_MAX) {
         px_font_free(undoStack[0]); free(undoStack[0]);
+        FlLayer_Free(undoFit[0]);
         memmove(&undoStack[0], &undoStack[1], sizeof(PxFont *) * (UNDO_MAX - 1));
+        memmove(&undoFit[0], &undoFit[1], sizeof(FlLayer *) * (UNDO_MAX - 1));
         undoN--;
     }
+    undoFit[undoN] = FollowCopy();
     undoStack[undoN++] = s;
 }
 
@@ -359,15 +369,21 @@ static void DoUndoRedo(bool redo)
     PxFont **from = redo ? redoStack : undoStack;
     int *fn = redo ? &redoN : &undoN;
     PxFont **to = redo ? undoStack : redoStack;
+    FlLayer **fromFit = redo ? redoFit : undoFit, **toFit = redo ? undoFit : redoFit;
     int *tn = redo ? &undoN : &redoN;
     if (*fn == 0) return;
     PxFont *cur = (PxFont *)malloc(sizeof(PxFont));
     if (!px_font_copy(cur, &font)) { free(cur); return; }
+    FlLayer *curFit = FollowCopy();
     PxFont *s = from[--(*fn)];
+    FlLayer *sFit = fromFit[*fn];
+    fromFit[*fn] = NULL;
     px_font_free(&font);
     font = *s;
     free(s);
+    toFit[*tn] = curFit;
     to[(*tn)++] = cur;
+    FollowRestore(sFit);   /* the layer the glyphs are drawn from gets the settings this font was drawn with */
     needHash = true;
     lastUndoKey = 0;
     SelResize();
@@ -485,7 +501,7 @@ static void IniSetLastDb(const char *path) { IniSetApp("lastPxfdb", path); }
 
 static void PanelSetTab(int tab)   /* a click on the tab control: remembered in pxfe.ini */
 {
-    if (tab == panelTab || tab < 0 || tab > 2) return;
+    if (tab == panelTab || tab < 0 || tab > 3) return;
     panelTab = tab;
     panelScroll = 0;
     char v[8];
@@ -679,6 +695,7 @@ static void AdoptDocument(PxFont *nf, PxtfTypeface *nc, int variant, bool ro, co
     needHash = true;
     EnsureHashes();
     FlOpenDoc(ro);
+    FitSnapDrop();
     SnapGlyphHashes();
     selN = 0;
     SelClear();
@@ -715,6 +732,7 @@ static void DropDocument(void)
     modified = false;
     docIsNew = false;
     FlDocSet(NULL);
+    FitSnapDrop();
     LiveDupsRetire();
     dupCommit.valid = false;
     SnapGlyphHashes();
@@ -858,6 +876,7 @@ static void DuplicateToEdit(void)
         else pxtf_free(&nc);
     }
     readOnly = false;
+    FitSnapDrop();
     snprintf(title, sizeof title, "Duplicate of %.200s", origTitle);
     dupCommit.valid = false;
     StackClear(undoStack, &undoN);
@@ -2237,17 +2256,19 @@ static void DrawFileMenu(void)
     if (!fileMenu.open) return;
     const char *nodb = "No database is loaded";
     int off = store ? 0 : TH_MI_OFF;
-    ThMenuItem it[7] = {
-        {"New Font\xE2\x80\xA6", NULL, "file.new", nodb, off | TH_MI_SEP}, {"Load\xE2\x80\xA6", "Ctrl+O", "file.load"}, {"Save", "Ctrl+S", "file.save", nodb, off}, {"Save As\xE2\x80\xA6", "Ctrl+Shift+S", "file.saveas", nodb, off | TH_MI_SEP},
+    ThMenuItem it[8] = {
+        {"New Font\xE2\x80\xA6", NULL, "file.new", nodb, off}, {"Import Font File\xE2\x80\xA6", NULL, "file.importfont", nodb, off | TH_MI_SEP},
+        {"Load\xE2\x80\xA6", "Ctrl+O", "file.load"}, {"Save", "Ctrl+S", "file.save", nodb, off}, {"Save As\xE2\x80\xA6", "Ctrl+Shift+S", "file.saveas", nodb, off | TH_MI_SEP},
         {"Import Folder\xE2\x80\xA6", NULL, "file.import"}, {"Export to Folder\xE2\x80\xA6", NULL, "file.export", nodb, off | TH_MI_SEP}, {"Quit", NULL, "file.quit"}};
-    switch (Th_Menu(&(ThMenu){it, 7, .x = fileMenu.anchor.x, .y = fileMenu.anchor.y + fileMenu.anchor.height + 4, .w = 276, .keep = fileMenu.anchor}, &fileMenu.open)) {
+    switch (Th_Menu(&(ThMenu){it, 8, .x = fileMenu.anchor.x, .y = fileMenu.anchor.y + fileMenu.anchor.height + 4, .w = 276, .keep = fileMenu.anchor}, &fileMenu.open)) {
     case 0: NewFontOpen(); break;
-    case 1: Guard(G_LOAD_DIALOG, ""); break;
-    case 2: SaveDb(); break;
-    case 3: SaveAsDialog(); break;
-    case 4: Guard(G_IMPORT_DIALOG, ""); break;
-    case 5: ExportStart(); break;
-    case 6: RequestQuit(); break;
+    case 1: ImportFontOpen(); break;
+    case 2: Guard(G_LOAD_DIALOG, ""); break;
+    case 3: SaveDb(); break;
+    case 4: SaveAsDialog(); break;
+    case 5: Guard(G_IMPORT_DIALOG, ""); break;
+    case 6: ExportStart(); break;
+    case 7: RequestQuit(); break;
     default: break;
     }
 }
@@ -2276,7 +2297,7 @@ static void DrawInfoBar(Rectangle r)
         if (Th_Duplicate(db, false, 0, "Make an editable copy of this font  (the original stays untouched)")) DuplicateToEdit();
     } else {
         char s[400];
-        snprintf(s, sizeof s, docIsNew ? "%s \xC2\xB7 new font, no typeface" : "%s \xC2\xB7 editable duplicate of Font", title);
+        snprintf(s, sizeof s, docIsNew ? (hasCont ? "%s \xC2\xB7 new font and typeface" : "%s \xC2\xB7 new font, no typeface") : "%s \xC2\xB7 editable duplicate of Font", title);
         Th_Text(s, x, ty, TH_TEXT);
         x += Th_Measure(s).x + 8;
         x += Th_HashShort(NULL, origHash, x, ty, 0, "hash_font") + 16;
@@ -2285,6 +2306,15 @@ static void DrawInfoBar(Rectangle r)
         else if (docIsNew) Th_Text("not in the database until it is committed", x, ty, TH_TEXT_DIM);
     }
 }
+
+static int FontPx(void)   /* the pixel size of the open font: its box */
+{
+    int a, b;
+    px_font_box(&font, &a, &b);
+    return a + b > 0 ? a + b : 16;
+}
+
+#include "fitdoc.inc"
 
 static void DrawGlyphPanel(Rectangle p);
 #include "panel.inc"
@@ -2639,7 +2669,7 @@ static void DrawModal(int W, int H)
  * ---------------------------------------------------------------------------------------------- */
 static void HandleShortcuts(void)
 {
-    if (modal.kind != M_NONE || xd.open || nf.open || (Th_TextIs(NULL) && !Th_TextIs("Filter") && !Th_TextIs("finder.search")) || Sample_TextFocused()) return;   /* a text field owns the keyboard (the library and finder searches leave the navigation keys) */
+    if (modal.kind != M_NONE || xd.open || nf.open || fimp.open || (Th_TextIs(NULL) && !Th_TextIs("Filter") && !Th_TextIs("finder.search")) || Sample_TextFocused()) return;   /* a text field owns the keyboard (the library and finder searches leave the navigation keys) */
     bool ctrl = IsKeyDown(KEY_LEFT_CONTROL) || IsKeyDown(KEY_RIGHT_CONTROL);
     bool shift = IsKeyDown(KEY_LEFT_SHIFT) || IsKeyDown(KEY_RIGHT_SHIFT);
     bool alt = IsKeyDown(KEY_LEFT_ALT) || IsKeyDown(KEY_RIGHT_ALT);
@@ -2750,7 +2780,7 @@ int main(int argc, char **argv)
     Th_HoverFn = Hov;
     Th_NoticeFn = HashNotice;
     Sample_LoadIni(IniPath());   /* the shared sample text and the font view strip settings */
-    { char v[8]; if (IniGetApp("fontTab", v, sizeof v)) { int t = atoi(v); panelTab = t < 0 || t > 2 ? 0 : t; } }
+    { char v[8]; if (IniGetApp("fontTab", v, sizeof v)) { int t = atoi(v); panelTab = t < 0 || t > 3 ? 0 : t; } }
 
     px_font_init(&font);
     pxtf_init(&cont);
@@ -2785,6 +2815,8 @@ int main(int argc, char **argv)
         }
         int W = GetScreenWidth(), H = GetScreenHeight();
         EnsureHashes();
+        FitTick();                       /* the layer the glyphs are drawn from changed: they are drawn again */
+        EnsureHashes();
         if (FlPending()) FlSync();       /* the font layers changed: they go into the settings under the font's hash */
         if (!shotPath && !job.active) HandleShortcuts();
 
@@ -2792,7 +2824,7 @@ int main(int argc, char **argv)
         ClearBackground(TH_BG);
         /* the mouse button that opened a document (a double click) is still down: its release must not hit the new view */
         if (swallowMouse && !IsMouseButtonDown(MOUSE_BUTTON_LEFT) && !IsMouseButtonReleased(MOUSE_BUTTON_LEFT)) swallowMouse = false;
-        bool baseBlocked = modal.kind != M_NONE || xd.open || nf.open || job.active || swallowMouse;
+        bool baseBlocked = modal.kind != M_NONE || xd.open || nf.open || fimp.open || job.active || swallowMouse;
         uiBlocked = baseBlocked || fileMenu.open || moreMenu.open;   /* an open menu owns the mouse: nothing below it reacts */
         Th_SetInputBlocked(uiBlocked);
         hintText = NULL;
@@ -2896,6 +2928,7 @@ int main(int argc, char **argv)
         }
         DrawExportDialog(W, H);
         DrawNewFontDialog(W, H);
+        DrawImportFontDialog(W, H);
         DrawModal(W, H);
         UpdateTitle();
         EndDrawing();

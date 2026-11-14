@@ -1,0 +1,230 @@
+# 101. Version 10: Menu, Import Font File.  A pixel font drawn with outlines (PixelShift.ttf: the grid is shifted and the pixels are not
+# exactly a cell large, so only the lattice search finds it) becomes a new font and typeface; the file stays as a font layer that the
+# glyphs follow: a change of its size draws them again, a glyph edited by hand stays, Redraw All takes it back, undo restores both.
+wait 16
+assert hasstore 1
+assert storefonts 4
+setdialog fontfile testdata/outline/PixelShift.ttf
+click @Menu
+wait 6
+click @file.importfont
+wait 10
+# the dialog: what the searches found
+assert ifopen 1
+assert ifoutline 1
+assert ifgrid 1
+assert ifpixel 1
+assert ifem100 1000
+assert w.if.preview 1
+shot tests/tmp/shots/101_import_dialog.png
+# as a smooth font the size is searched, and the size control changes it
+click @if.pixel
+wait 4
+assert ifpixel 0
+assert ifem100 > 500
+click @if.pixel
+wait 4
+assert ifpixel 1
+assert ifem100 1000
+click @Import
+wait 12
+assert ifopen 0
+assert docnew 1
+assert readonly 0
+assert hascont 1
+assert title Pixel Shift Regular
+assert glyphs 34
+assert m.ascent 8
+assert m.descent 2
+# the glyphs are the pixels of the design: A is 5 x 7 on the baseline, g goes two rows below it
+assert glyph U+0041 size 5x7
+assert glyph U+0041 advance 6
+assert glyph U+0041 left 0
+assert glyph U+0041 y 0
+assert glyph U+0041 ink 18
+assert glyph U+0067 size 5x7
+assert glyph U+0067 y -2
+assert glyph U+0020 empty
+assert glyph U+0020 advance 6
+# the file is the font's layer, with the placement the grid gave, and the glyphs follow it
+assert flayers 1
+assert flayer 0 kind 1
+assert flayer 0 outline 1
+assert flayer 0 follow 1
+assert flayer 0 mode 1
+assert flayer 0 em 10
+assert flayer 0 aspect 1
+assert flayer 0 dx -0.3
+assert flayer 0 dy 0.2
+assert flayer 0 source PixelShift.ttf
+assert flayer 0 label Pixel Shift
+assert unsaved 1
+# the Layers tab of the font view
+click @ptab_Layers
+wait 6
+assert ptab 3
+assert fitfollow 34
+assert fitkept 0
+shot tests/tmp/shots/101_layers_tab.png
+# twice the size: every glyph is drawn again, the font box follows
+setlayer 0 em 20
+wait 6
+assert flayer 0 em 20
+assert glyph U+0041 size 10x14
+assert glyph U+0041 advance 12
+assert m.ascent 16
+assert m.descent 4
+assert fitchanged 34
+assert fitfollow 34
+# undo puts back the glyphs and the size of the layer
+key z ctrl
+wait 6
+assert flayer 0 em 10
+assert glyph U+0041 size 5x7
+assert m.ascent 8
+assert fitfollow 34
+# redo
+key y ctrl
+wait 6
+assert flayer 0 em 20
+assert glyph U+0041 size 10x14
+key z ctrl
+wait 6
+assert glyph U+0041 size 5x7
+# the stepper of the tab: a quarter pixel more
+click @fl_size+
+wait 6
+assert flayer 0 em 10.25
+click @fl_size-
+wait 6
+assert flayer 0 em 10
+assert glyph U+0041 size 5x7
+assert glyph U+0041 ink 18
+# a glyph edited by hand is no longer what the layer draws: it stays when the size changes
+click @cell:U+0041
+key enter
+wait 6
+assert editor 1
+# (row 0 of the font box is the row above the A: five more pixels)
+drag @ecell:0,0 @ecell:4,0
+wait 4
+assert glyph U+0041 ink 23
+assert glyph U+0041 size 5x8
+click @Back
+wait 6
+assert editor 0
+assert fitkept 1
+assert fitfollow 33
+setlayer 0 em 20
+wait 6
+assert glyph U+0041 size 5x8
+assert glyph U+0041 ink 23
+assert glyph U+0048 size 10x14
+assert fitlastkept 1
+assert fitkept 1
+# Redraw All takes it back
+click @fl_redraw
+wait 6
+assert glyph U+0041 size 10x14
+assert fitkept 0
+assert fitfollow 34
+# a correction of one glyph draws that glyph only
+setlayer 0 em 10
+wait 6
+assert glyph U+0048 size 5x7
+# leaving the font view commits the font and its typeface; Save writes the database and the layer beside it
+click @nav.0
+wait 10
+assert inbrowser 1
+assert storefonts 5
+assert storetypefaces 3
+assert unsaved 1
+key s ctrl
+waitfor unsaved == 0 20000
+assert sidecar exists
+assert sqlfile tests/tmp/e2e.pxfdb-settings "select count(*) from layer" 1
+assert sqlfile tests/tmp/e2e.pxfdb-settings "select follow || '/' || mode || '/' || em from layer" 1/1/10.0
+assert sqlfile tests/tmp/e2e.pxfdb-settings "select source like '%PixelShift.ttf' from layer" 1
+
+# a font that is no pixel font: the size search, smooth mode
+importfont testdata/outline/NotoSub.ttf
+wait 10
+assert docnew 1
+assert hascont 1
+assert flayers 1
+assert flayer 0 follow 1
+assert flayer 0 mode 0
+assert flayer 0 em 9.5
+assert glyphs >= 15
+assert glyph U+0041 exists
+assert fitfollow >= 15
+assert fitkept 0
+# any value can be typed into an offset, and the glyphs are drawn for it
+click @fl_y.value
+wait 3
+type 0.37
+key enter
+wait 6
+assert flayer 0 dy 0.37
+assert fitkept 0
+click @fl_x.value
+wait 3
+type -0,125
+key enter
+wait 6
+assert flayer 0 dx -0.125
+click @fl_x+
+wait 6
+assert flayer 0 dx 0.125
+assert fitkept 0
+# a size typed by hand, then the search for that size: the size stays, the offset X stays, the position is searched
+click @fl_size.value
+wait 3
+type 13.3
+key enter
+wait 6
+assert flayer 0 em 13.3
+click @fl_fitsize
+wait 6
+assert flayer 0 em 13.3
+assert flayer 0 dx 0.125
+assert fitkept 0
+# a threshold change draws the glyphs again
+setlayer 0 threshold 0.2
+wait 6
+assert fitchanged > 0
+assert fitkept 0
+# as a pixel font it has no grid
+importfont testdata/outline/NotoSub.ttf pixel expectfail
+# a fixed size, no typeface
+importfont testdata/outline/NotoSubCff.otf smooth em 20 notypeface
+wait 10
+assert hascont 0
+assert flayer 0 em 20
+assert flayer 0 mode 0
+# the other pixel fonts
+importfont testdata/outline/PixelDots.ttf
+wait 10
+assert flayer 0 mode 1
+assert flayer 0 em 10
+assert glyph U+0041 size 5x7
+assert glyph U+0041 ink 18
+importfont testdata/outline/UnifontSub.otf
+wait 10
+assert flayer 0 mode 1
+assert flayer 0 em 16
+# a bitmap font is copied; nothing follows
+importfont testdata/bitmap/font.bdf
+wait 10
+assert docnew 1
+assert flayers 1
+assert flayer 0 bitmap 1
+assert flayer 0 follow 0
+assert glyphs > 0
+assert fitfollow -1
+# what cannot be read is not imported
+importfont testdata/outline/OFL.txt expectfail
+importfont testdata/outline/nothere.ttf expectfail
+click @nav.0
+wait 10
+assert storefonts 9

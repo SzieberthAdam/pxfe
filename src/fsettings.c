@@ -17,11 +17,13 @@ struct FSettings {
 
 static const char SCHEMA[] =
 "CREATE TABLE meta (key TEXT PRIMARY KEY, value TEXT NOT NULL) WITHOUT ROWID;\n"
-"INSERT INTO meta VALUES ('format', 'pxfe-settings'), ('schema_version', '1');\n"
+"INSERT INTO meta VALUES ('format', 'pxfe-settings'), ('schema_version', '2');\n"
 "CREATE TABLE layer (id INTEGER PRIMARY KEY AUTOINCREMENT, font TEXT NOT NULL, pos INTEGER NOT NULL, kind INTEGER NOT NULL,\n"
 "  source TEXT NOT NULL, face INTEGER NOT NULL, file_size INTEGER NOT NULL, file_mtime INTEGER NOT NULL, scale REAL NOT NULL,\n"
 "  dx REAL NOT NULL, dy REAL NOT NULL, r INTEGER NOT NULL, g INTEGER NOT NULL, b INTEGER NOT NULL, opacity INTEGER NOT NULL,\n"
 "  visible INTEGER NOT NULL, label TEXT NOT NULL,\n"
+"  em REAL NOT NULL DEFAULT 0, aspect REAL NOT NULL DEFAULT 1, follow INTEGER NOT NULL DEFAULT 0,\n"
+"  mode INTEGER NOT NULL DEFAULT 0, threshold REAL NOT NULL DEFAULT 0.5,\n"
 "  CHECK (kind IN (0, 1) AND scale > 0 AND opacity BETWEEN 0 AND 100 AND visible IN (0, 1)));\n"
 "CREATE INDEX layer_by_font ON layer (font, pos);\n"
 "CREATE TABLE correction (font TEXT NOT NULL, layer INTEGER NOT NULL REFERENCES layer, code INTEGER NOT NULL,\n"
@@ -50,6 +52,8 @@ FsLayer fs_layer_default(void) {
     memset(&l, 0, sizeof l);
     l.position = -1;
     l.scale = 1.0f;
+    l.aspect = 1.0f;
+    l.threshold = 0.5f;
     l.opacity = 100;
     l.visible = 1;
     return l;
@@ -204,6 +208,19 @@ FSettings *fs_open(const char *path, char err[FS_ERR_LEN]) {
             return NULL;
         }
     }
+    if (pr == PROBE_OK && query_int(fs, prep(fs, "SELECT value FROM meta WHERE key='schema_version'"), 0) < 2) {
+        /* version 1 -> 2: the placement of an imported font (DESIGN.md "Version 10"); the file itself changes at the next save */
+        if (!exec(fs, "ALTER TABLE layer ADD COLUMN em REAL NOT NULL DEFAULT 0;"
+                      "ALTER TABLE layer ADD COLUMN aspect REAL NOT NULL DEFAULT 1;"
+                      "ALTER TABLE layer ADD COLUMN follow INTEGER NOT NULL DEFAULT 0;"
+                      "ALTER TABLE layer ADD COLUMN mode INTEGER NOT NULL DEFAULT 0;"
+                      "ALTER TABLE layer ADD COLUMN threshold REAL NOT NULL DEFAULT 0.5;"
+                      "UPDATE meta SET value='2' WHERE key='schema_version';")) {
+            if (err) snprintf(err, FS_ERR_LEN, "%.100s: cannot upgrade the settings: %.100s", path, fs->err);
+            fs_close(fs);
+            return NULL;
+        }
+    }
     snprintf(fs->path, sizeof fs->path, "%s", path);
     return fs;
 }
@@ -281,9 +298,14 @@ static void read_layer(sqlite3_stmt *st, FsLayer *l) {
     l->opacity = sqlite3_column_int(st, 14);
     l->visible = sqlite3_column_int(st, 15);
     t = (const char *)sqlite3_column_text(st, 16); snprintf(l->label, sizeof l->label, "%s", t ? t : "");
+    l->em = (float)sqlite3_column_double(st, 17);
+    l->aspect = (float)sqlite3_column_double(st, 18);
+    l->follow = sqlite3_column_int(st, 19);
+    l->mode = sqlite3_column_int(st, 20);
+    l->threshold = (float)sqlite3_column_double(st, 21);
 }
 
-#define LAYER_COLS "id,font,pos,kind,source,face,file_size,file_mtime,scale,dx,dy,r,g,b,opacity,visible,label"
+#define LAYER_COLS "id,font,pos,kind,source,face,file_size,file_mtime,scale,dx,dy,r,g,b,opacity,visible,label,em,aspect,follow,mode,threshold"
 
 static int clampi(int v, int lo, int hi) { return v < lo ? lo : v > hi ? hi : v; }
 
@@ -294,7 +316,7 @@ static bool check_layer(FSettings *fs, const FsLayer *l) {
     return true;
 }
 
-static bool bind_layer_values(sqlite3_stmt *st, int p, const FsLayer *l) {   /* kind..label, 14 values from index p */
+static bool bind_layer_values(sqlite3_stmt *st, int p, const FsLayer *l) {   /* kind..threshold, 19 values from index p */
     sqlite3_bind_int(st, p++, l->kind);
     txt(st, p++, l->source);
     sqlite3_bind_int(st, p++, l->face);
@@ -309,6 +331,11 @@ static bool bind_layer_values(sqlite3_stmt *st, int p, const FsLayer *l) {   /* 
     sqlite3_bind_int(st, p++, clampi(l->opacity, 0, 100));
     sqlite3_bind_int(st, p++, l->visible ? 1 : 0);
     txt(st, p++, l->label);
+    sqlite3_bind_double(st, p++, l->em > 0 ? l->em : 0);
+    sqlite3_bind_double(st, p++, l->aspect > 0 ? l->aspect : 1);
+    sqlite3_bind_int(st, p++, l->follow ? 1 : 0);
+    sqlite3_bind_int(st, p++, l->mode ? 1 : 0);
+    sqlite3_bind_double(st, p++, l->threshold > 0 ? l->threshold : 0.5);
     return true;
 }
 
@@ -358,8 +385,8 @@ int fs_add_layer(FSettings *fs, const char *hash, const FsLayer *init) {
     int pos = init->position;
     if (pos < 0 || pos > n) pos = n;
     if (!shift(fs, hash, pos, BIG, 1)) goto fail;
-    sqlite3_stmt *st = prep(fs, "INSERT INTO layer (font,pos,kind,source,face,file_size,file_mtime,scale,dx,dy,r,g,b,opacity,visible,label)"
-                                " VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)");
+    sqlite3_stmt *st = prep(fs, "INSERT INTO layer (font,pos,kind,source,face,file_size,file_mtime,scale,dx,dy,r,g,b,opacity,visible,label,"
+                                "em,aspect,follow,mode,threshold) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)");
     if (!st) goto fail;
     txt(st, 1, hash);
     sqlite3_bind_int(st, 2, pos);
@@ -377,10 +404,10 @@ fail:
 bool fs_update_layer(FSettings *fs, const FsLayer *l) {
     if (!check_layer(fs, l)) return false;
     sqlite3_stmt *st = prep(fs, "UPDATE layer SET kind=?,source=?,face=?,file_size=?,file_mtime=?,scale=?,dx=?,dy=?,r=?,g=?,b=?,"
-                                "opacity=?,visible=?,label=? WHERE id=?");
+                                "opacity=?,visible=?,label=?,em=?,aspect=?,follow=?,mode=?,threshold=? WHERE id=?");
     if (!st) return false;
     bind_layer_values(st, 1, l);
-    sqlite3_bind_int(st, 15, l->id);
+    sqlite3_bind_int(st, 20, l->id);
     if (!finish(fs, st)) return false;
     if (sqlite3_changes(fs->db) != 1) return seterr(fs, "no layer %d", l->id);
     fs->gen++;
@@ -477,8 +504,8 @@ bool fs_copy_font(FSettings *fs, const char *fromHash, const char *toHash) {
     sqlite3_finalize(st);
     if (!remove_font_rows(fs, toHash)) goto fail;
     for (int i = 0; i < k; i++) {
-        st = prep(fs, "INSERT INTO layer (font,pos,kind,source,face,file_size,file_mtime,scale,dx,dy,r,g,b,opacity,visible,label)"
-                      " SELECT ?,pos,kind,source,face,file_size,file_mtime,scale,dx,dy,r,g,b,opacity,visible,label FROM layer WHERE id=?");
+        st = prep(fs, "INSERT INTO layer (font,pos,kind,source,face,file_size,file_mtime,scale,dx,dy,r,g,b,opacity,visible,label,em,aspect,follow,mode,threshold)"
+                      " SELECT ?,pos,kind,source,face,file_size,file_mtime,scale,dx,dy,r,g,b,opacity,visible,label,em,aspect,follow,mode,threshold FROM layer WHERE id=?");
         if (!st) goto fail;
         txt(st, 1, toHash);
         sqlite3_bind_int(st, 2, ids[i]);

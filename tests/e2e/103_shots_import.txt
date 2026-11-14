@@ -1,0 +1,42 @@
+# 103. Screenshots of version 10 (not in run_all.bat): the Import Font File dialog on a font that is no pixel font, the imported
+# font with the Layers tab, and its glyph view with the outline under the pixels.
+#   copy testdata\lib.pxfdb tests\tmp\shotdb.pxfdb
+#   tests\tmp\pxfe_e2e.exe tests\tmp\shotdb.pxfdb --ini tests\tmp\shot.ini --play tests\e2e\103_shots_import.txt
+# The shots go to tests\tmp\imp.
+wait 16
+setdialog fontfile assets/fonts/noto-sans/NotoSans-Regular.ttf
+click @Menu
+wait 6
+shot tests/tmp/imp/1_menu.png
+click @file.importfont
+wait 10
+assert ifopen 1
+assert ifpixel 0
+shot tests/tmp/imp/2_dialog_smooth.png
+click @if.size+
+wait 4
+click @if.size+
+wait 4
+shot tests/tmp/imp/3_dialog_size.png
+click @if.best
+wait 4
+click @Import
+wait 12
+assert docnew 1
+click @ptab_Layers
+wait 6
+shot tests/tmp/imp/4_font_layers.png
+click @cell:U+0041
+key enter
+wait 6
+click @gtab_Layers
+wait 6
+click @lay_row_1
+wait 6
+shot tests/tmp/imp/5_glyph_A.png
+click @Back
+wait 6
+click @cell:U+0067
+key enter
+wait 8
+shot tests/tmp/imp/6_glyph_g.png

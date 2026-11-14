@@ -1,6 +1,6 @@
 # pxfe handoff (2026-11-13)
 
-Versions 5 to 9 are implemented: Load, Save, Import, Export (5), navigation (6), views (7), the design system with Noto Sans and GNU Unifont (8), and font layers (9).
+Versions 5 to 10 are implemented: Load, Save, Import, Export (5), navigation (6), views (7), the design system with Noto Sans and GNU Unifont (8), font layers (9), and importing a font file (10).
 The design is in [DESIGN.md](DESIGN.md), one section per version; "Version 5: Load, Save, Import, Export" replaces the storage tiers, the save pipeline and the drafts of version 4.
 pxfe is meant to run on Windows, macOS and Linux; today it builds on Windows only (`build.bat`, `vendor/sqlite3/libsqlite3.a`, `src/winfile.c`).
 The files of `handoff/` are the reports of the version 4 agents, kept for history.
@@ -8,8 +8,8 @@ The files of `handoff/` are the reports of the version 4 agents, kept for histor
 ## State
 
 - `build.bat e2e` builds with no warnings.
-- `build.bat test` passes: 136 pxfont, 248 outline, 143 bmsrc, 102 fsettings, 101 pxtf and 162 store checks, 0 failed.
-- `tests\e2e\run_all.bat` passes: 71 scripts, 0 failed (version 9 added 95 to 99, 97b, 97c and 97d).
+- `build.bat test` passes: 136 pxfont, 248 outline, 143 bmsrc, 86 fit, 110 fsettings, 101 pxtf and 162 store checks, 0 failed.
+- `tests\e2e\run_all.bat` passes: 74 scripts, 0 failed (version 10 added 101, 102 and 102b).
 - `tests\e2e\run_reallib.bat` loads `pixelglyphlib\pxfdb.pxfdb` read-only and imports the folder into `tests\tmp\real.pxfdb`; see the report of the last run for its timings.
 - Plain `build.bat` fails only at the link step when a running `pxfe.exe` locks the file; closing it is enough.
 
@@ -137,3 +137,29 @@ Licence record of what the version added:
 - `src/outline.c` has its own inflate (structured after zlib's puff, written for this project); no zlib or sinfl is vendored.
 - `testdata/outline` (the list is in `testdata/outline/README.txt`): subsets and conversions of Noto Sans (SIL OFL 1.1, `OFL.txt` beside them), a Unifont subset (GPLv2 or later with the font embedding exception, and OFL 1.1), and a Type 1 font written by `tests/gen_outline_fonts.py`.
 - `testdata/bitmap` (`testdata/bitmap/README.txt`): tiny hand-made fonts made by `tests/gen_bitmap_fonts.py`, public domain (CC0 1.0); no real font file is copied.
+
+## Version 10: importing a font file
+
+The design is in the last section of [DESIGN.md](DESIGN.md), "Version 10: importing a font file".
+Menu, Import Font File makes a new font (and typeface) from an outline or bitmap font file.
+The file stays under the font as a font layer, and the glyphs are drawn from that layer until they are edited by hand.
+
+- New files: `src/fit.c` and `.h` (the grid of a pixel font, the size of a font that is none, drawing a glyph as pixels; no raylib), `src/fitdoc.inc` (the follow engine, the Layers tab of the font view, the import dialog; included by `main.c`), `tests/test_fit.c`, `tests/fit_tool.c`, `tests/gen_pixel_fonts.py`.
+- Changed: `src/outline.c` and `.h` (`outline_glyph_shape`, `outline_rasterize_glyph_xy`, `outline_name`; a simple TrueType glyph now stands `lsb - xMin` to the right, as fontTools draws it), `src/fsettings.c` and `.h` (schema version 2: `em`, `aspect`, `follow`, `mode`, `threshold`; a version 1 file is upgraded when opened), `src/flayers.c` and `.h` (absolute size, width, `FlLayer_FitParams`), `src/layers.c` (Size in px/em for an absolute size), `src/main.c` (the menu item, undo with the layer's settings, `FitTick`), `src/panel.inc` (the fourth tab, Layers), `src/play.inc`.
+- `fit_find_grid` is a port of `pixelglyphlib/readers/ttf.py`.
+  It gives the same grid as the Python for the 621 TrueType and OpenType files of `pixelglyphlib\sourcefiles` (3 of them with a pitch that differs in the third decimal).
+  When nothing passes, the best lattice is offered as a guess.
+- `fit_find_size` is new: the smallest size at which the letters and digits keep their parts and holes, then the best of the next two pixels.
+- `tests\fit_tool.exe grid|size|show <font>` shows what the searches give for a file (the build line is in `tests/fit_tool.c`).
+
+Things to know:
+
+- A glyph follows the layer while it is exactly what the layer draws; nothing is stored for that.
+  A glyph whose pixels were edited and edited back follows again.
+- The follow layer needs an absolute size (`em > 0`); switching follow on for a version 9 layer turns its relative size into one.
+- Undo restores the layer's settings with the font; a redraw is one undo step for all glyphs (steps within 0.8 s are one step).
+- The searches and the redraw run on the UI thread: Noto Sans Regular (3094 glyphs) is searched in about a second and redrawn in a fraction of one.
+- Not done: kerning, cap height and x-height of the file; a family of several files as one typeface; WOFF2.
+- Size and offsets take any typed value (`Th_NumberF` in `theme.c`); "Optimize for This Size" keeps the size and searches position and threshold.
+- A review by a second agent found ten points; fixed are: all corrections come back from the sidecar (the reader stopped at 512), an undo snapshot is only put back on the layer it was taken from, the placement of an original's followed layer is locked, a NaN or huge coordinate is refused, implied TrueType points no longer count as coordinates of the font, a negative advance becomes 0, a failed realloc in `sb_contour`, and the size search allows a small sample one glyph of slack.
+  Open: a change of the followed layer's face or file makes every glyph count as edited by hand; serif faces get sizes near 19 px per em (Times New Roman), because their hairlines break below that.

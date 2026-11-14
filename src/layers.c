@@ -582,17 +582,11 @@ static int body_h(const Layers *l, const Layer *a)
     return h;
 }
 
-/* a stepper that shows a decimal value: offsets of an outline layer go in quarter pixels, the others in whole pixels */
+/* a decimal number box: the buttons step (quarter pixels for an outline layer, whole pixels for the others), any value can be typed */
 static bool fstep(Rectangle r, const char *prefix, float *v, float step, float lo, float hi)
 {
-    char t[24];
-    float shown = roundf(*v * 100.0f) / 100.0f;
-    snprintf(t, sizeof t, "%g", fabsf(shown) < 0.001f ? 0.0 : (double)shown);
-    int st = Th_Stepper(r, t, prefix, (*v <= lo ? TH_STEP_NO_MINUS : 0) | (*v >= hi ? TH_STEP_NO_PLUS : 0));
-    if (!st) return false;
-    float nv = roundf((*v + (float)st * step) / step) * step;
-    nv = nv < lo ? lo : (nv > hi ? hi : nv);
-    if (nv == *v) return false;
+    float nv;
+    if (!Th_NumberF(r, prefix, *v, lo, hi, step, 0, &nv)) return false;
     *v = nv;
     return true;
 }
@@ -754,8 +748,13 @@ float Layers_DrawPanel(Layers *l, Rectangle area, Rectangle vis)
             }
             if (is_file(a)) {
                 bool bitmap = a->fl->state == FL_OK && !a->fl->outline;
-                vr = Th_Row(bxo, &by, rw, bitmap ? "Size (x)" : "Size (%)", NULL, 0);
-                if (size_number(a->fl, (Rectangle){vr.x, vr.y, 96, TH_ROW_H}, "lay_size", &a->fl->s.scale) && a->fontLevel) touch(l);
+                if (!bitmap && a->fl->s.em > 0) {   /* an absolute size (an imported font's source): pixels per em, in quarter pixels */
+                    vr = Th_Row(bxo, &by, rw, "Size (px/em)", NULL, 0);
+                    if (fstep((Rectangle){vr.x, vr.y, 96, TH_ROW_H}, "lay_size", &a->fl->s.em, 0.25f, 2, 400) && a->fontLevel) touch(l);
+                } else {
+                    vr = Th_Row(bxo, &by, rw, bitmap ? "Size (x)" : "Size (%)", NULL, 0);
+                    if (size_number(a->fl, (Rectangle){vr.x, vr.y, 96, TH_ROW_H}, "lay_size", &a->fl->s.scale) && a->fontLevel) touch(l);
+                }
             }
             if (a->fontLevel) {   /* the correction of the edited glyph */
                 Th_Section("THIS GLYPH", bxo, &by, rw, 0, NULL);

@@ -293,6 +293,18 @@ static bool GetInt(const char *name, long *v)
     else if (!strcmp(name, "variant")) *v = contVariant;
     else if (!strcmp(name, "xdopen")) *v = xd.open;                                                  /* the Export dialog */
     else if (!strcmp(name, "nfopen")) *v = nf.open;                                                  /* the New Font dialog */
+    else if (!strcmp(name, "ifopen")) *v = fimp.open;                                                /* the Import Font File dialog */
+    else if (!strcmp(name, "ifpixel")) *v = fimp.pixel;                                              /* its choice: a pixel font */
+    else if (!strcmp(name, "ifgrid")) *v = fimp.hasGrid ? (fimp.grid.sure ? 1 : 2) : 0;              /* a grid was found (2: only a guess) */
+    else if (!strcmp(name, "ifoutline")) *v = fimp.outline;
+    else if (!strcmp(name, "ifem100")) { FitParams p; memset(&p, 0, sizeof p); if (fimp.probe && fimp.outline && !fimp.err[0]) ImpParams(&p); *v = (long)lroundf(p.em * 100.0f); }
+    else if (!strcmp(name, "fitfollow") || !strcmp(name, "fitkept") || !strcmp(name, "fitabsent")) {   /* glyphs that are what the follow layer draws / edited by hand / not in its file */
+        FlLayer *l = FollowLayer();
+        if (!l) *v = -1;
+        else { FitStatsUpdate(l); *v = name[3] == 'f' ? fitStats.follow : name[3] == 'k' ? fitStats.kept : fitStats.absent; }
+    }
+    else if (!strcmp(name, "fitchanged")) *v = fitLastChanged;                                       /* glyphs the last redraw changed */
+    else if (!strcmp(name, "fitlastkept")) *v = fitLastKept;                                         /* glyphs the last redraw left alone (edited by hand) */
     else if (!strcmp(name, "docnew")) *v = docIsNew;                                                 /* the open font was made by New Font */
     else if (!strcmp(name, "flayers")) *v = flDoc ? flDoc->n : 0;                                    /* font layers of the open font */
     else if (!strcmp(name, "fsdirty")) *v = FsDirty();                                               /* the settings differ from the sidecar file */
@@ -344,7 +356,7 @@ static bool GetInt(const char *name, long *v)
     else if (!strcmp(name, "usage")) *v = insight ? Insight_UsageFontCount(insight) : -2;        /* fonts holding the selected glyphs; -1 loading */
     else if (!strcmp(name, "usagevar")) *v = insight ? Insight_UsageVariantCount(insight) : -2;     /* typeface variants naming those fonts; -1 loading */
     else if (!strcmp(name, "usagecode")) *v = insight ? Insight_UsageCodeFonts(insight) : -2;       /* fonts that hold the glyph under the code of the selected glyph / the finder; -1 none */
-    else if (!strcmp(name, "ptab")) *v = panelTab;                                                   /* tab of the font view's right panel: 0 Font, 1 Glyph, 2 Similar */
+    else if (!strcmp(name, "ptab")) *v = panelTab;                                                   /* tab of the font view's right panel: 0 Font, 1 Glyph, 2 Similar, 3 Layers */
     else if (!strcmp(name, "fside")) *v = finder ? Finder_SideTab(finder) : -2;                        /* side panel of the Glyphs view: 0 View, 1 Usage */
     else if (!strcmp(name, "fzoom")) *v = finder ? Finder_Zoom(finder) : -2;
     else if (!strcmp(name, "fcellfonts")) *v = finder ? Finder_CellFonts(finder, 0) : -2;           /* the "N fonts" of the first finder cell */
@@ -518,6 +530,11 @@ static bool FlField(FlLayer *fl, const char *f, double *num, const char **str)
     else if (!strcmp(f, "dx")) *num = fl->s.dx;
     else if (!strcmp(f, "dy")) *num = fl->s.dy;
     else if (!strcmp(f, "scale")) *num = fl->s.scale;
+    else if (!strcmp(f, "em")) *num = fl->s.em;
+    else if (!strcmp(f, "aspect")) *num = fl->s.aspect;
+    else if (!strcmp(f, "follow")) *num = fl->s.follow;
+    else if (!strcmp(f, "mode")) *num = fl->s.mode;
+    else if (!strcmp(f, "threshold")) *num = fl->s.threshold;
     else if (!strcmp(f, "color")) *num = (fl->s.r << 16) | (fl->s.g << 8) | fl->s.b;
     else if (!strcmp(f, "size")) *num = (double)fl->s.fileSize;
     else if (!strcmp(f, "mtime")) *num = (double)fl->s.fileMtime;
@@ -962,8 +979,9 @@ static void PlayExecLine(const char *line)
         else if (!strcmp(t[1], "pxfdb")) snprintf(dlgDbPath, sizeof dlgDbPath, "%s", t[2]);
         else if (!strcmp(t[1], "save")) snprintf(dlgSavePath, sizeof dlgSavePath, "%s", t[2]);
         else if (!strcmp(t[1], "layerfile")) snprintf(dlgLayerPath, sizeof dlgLayerPath, "%s", t[2]);
+        else if (!strcmp(t[1], "fontfile")) snprintf(dlgFontPath, sizeof dlgFontPath, "%s", t[2]);
         else PLAY_FAIL("setdialog kind '%s'", t[1]);
-        if (na >= 3 && !strcmp(t[2], "none")) { dlgFolderPath[0] = dlgDbPath[0] = dlgSavePath[0] = dlgLayerPath[0] = 0; }
+        if (na >= 3 && !strcmp(t[2], "none")) { dlgFolderPath[0] = dlgDbPath[0] = dlgSavePath[0] = dlgLayerPath[0] = dlgFontPath[0] = 0; }
     } else if (!strcmp(c, "addlayerfile")) {
         /* addlayerfile <path> [face] [font|session] [expectfail]: what the Add Layer popover does after the file dialog (the face, strike or
          * .fon font index; a font layer by default).  expectfail: the layer must NOT be added (a missing or unreadable file). */
@@ -983,6 +1001,53 @@ static void PlayExecLine(const char *line)
             char err[200];
             int r = Layers_AddFile(L, t[1], face, fontLevel, err, (int)sizeof err);
             if (expectFail ? r >= 0 : r < 0) PLAY_FAIL("addlayerfile %s: %s", t[1], r < 0 ? err : "was added");
+        }
+    } else if (!strcmp(c, "importfont")) {
+        /* importfont <path> [auto|pixel|smooth] [face N] [em X] [notypeface] [expectfail]: what Menu, Import Font File does after its file
+         * dialog and the Import button (auto: what the dialog proposes; em: the size of a smooth font, as the dialog's size control). */
+        if (na < 2) PLAY_FAIL("importfont <path> [auto|pixel|smooth] [face N] [em X] [notypeface] [expectfail]");
+        else {
+            int face = 0, mode = -1;
+            float em = 0;
+            bool tf = true, expectFail = false;
+            for (int i = 2; i < na; i++) {
+                if (!strcmp(t[i], "pixel")) mode = 1;
+                else if (!strcmp(t[i], "smooth")) mode = 0;
+                else if (!strcmp(t[i], "auto")) mode = -1;
+                else if (!strcmp(t[i], "notypeface")) tf = false;
+                else if (!strcmp(t[i], "expectfail")) expectFail = true;
+                else if (!strcmp(t[i], "face") && i + 1 < na) face = atoi(t[++i]);
+                else if (!strcmp(t[i], "em") && i + 1 < na) em = (float)atof(t[++i]);
+            }
+            ImpAnalyze(t[1], face);
+            fimp.typeface = tf;
+            bool ok = fimp.probe && !fimp.err[0];
+            if (ok && mode == 1 && !(fimp.outline ? fimp.hasGrid : true)) ok = false;
+            if (ok && mode >= 0 && fimp.outline) fimp.pixel = mode == 1;
+            if (ok && em > 0 && fimp.outline && !fimp.pixel) {
+                FitSizeOpts o = {0, 0, em};
+                if (fit_find_size(fimp.probe->ol, &o, &fimp.smooth, &fimp.rep, NULL, 0) != 1) ok = false;
+            }
+            if (ok) ok = ImportFontCreate();
+            else PlayLog("  importfont: %s", fimp.err[0] ? fimp.err : "no pixel grid");
+            if (!ok) ImpFree();
+            if (expectFail ? ok : !ok) PLAY_FAIL("importfont %s: %s", t[1], ok ? "was imported" : "failed");
+        }
+    } else if (!strcmp(c, "setlayer")) {
+        /* setlayer <i> em|aspect|dx|dy|threshold|mode|follow <value>: a font layer's placement, as the Layers tab of the font view sets it */
+        FlLayer *fl = na > 3 && flDoc && atoi(t[1]) >= 0 && atoi(t[1]) < flDoc->n ? flDoc->v[atoi(t[1])] : NULL;
+        float v = na > 3 ? (float)atof(t[3]) : 0;
+        if (!fl) PLAY_FAIL("setlayer <i> <field> <value>");
+        else {
+            if (!strcmp(t[2], "em")) fl->s.em = v;
+            else if (!strcmp(t[2], "aspect")) fl->s.aspect = v;
+            else if (!strcmp(t[2], "dx")) fl->s.dx = v;
+            else if (!strcmp(t[2], "dy")) fl->s.dy = v;
+            else if (!strcmp(t[2], "threshold")) fl->s.threshold = v;
+            else if (!strcmp(t[2], "mode")) fl->s.mode = v != 0;
+            else if (!strcmp(t[2], "follow")) fl->s.follow = v != 0;
+            else PLAY_FAIL("setlayer field '%s'", t[2]);
+            flDoc->rev++;
         }
     } else if (!strcmp(c, "setclip")) {   /* setclip <text>: the clipboard (
  is a new line), for Ctrl+V */

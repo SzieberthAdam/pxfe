@@ -160,6 +160,11 @@ call :fresh
 call :run 98_fl_orig "%DB% --font %H1%"
 call :fresh
 call :run 99_fl_dup_commit "%DB% --font %H1%"
+call :fresh
+call :run 101_import_font "%DB%"
+call :fresh
+call :run 102_import_glyph "%DB%"
+call :run 102b_import_reload "%DB%"
 
 echo.
 echo %RUNS% scripts run, %FAILS% failed

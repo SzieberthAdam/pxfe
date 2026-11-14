@@ -1,0 +1,48 @@
+# 102b. Second process after 102: the imported font is in the database with its typeface, and its layer comes back from the sidecar.
+# The original is read-only (nothing is drawn again); a duplicate follows the layer as before, and the glyph that was edited by hand
+# is still told apart.
+wait 16
+assert storefonts 5
+assert storetypefaces 3
+assert sidecar exists
+# the typeface "Pixel Square" is the first box
+dblclick @card:0
+wait 12
+assert infont 1
+assert readonly 1
+assert title Pixel Square Regular
+assert hascont 1
+assert glyphs 34
+assert flayers 1
+assert flayer 0 follow 1
+assert flayer 0 mode 1
+assert flayer 0 em 10
+assert flayer 0 outline 1
+assert flayer 0 source PixelSquare.ttf
+assert glyph U+0041 size 5x7
+assert glyph U+0048 size 6x8
+# an original does not change with its layer
+setlayer 0 em 20
+wait 6
+assert glyph U+0041 size 5x7
+assert modified 0
+setlayer 0 em 10
+wait 6
+# a duplicate does
+click @Duplicate_to_Edit
+wait 6
+assert readonly 0
+click @ptab_Layers
+wait 6
+assert fitfollow 33
+assert fitkept 1
+setlayer 0 em 20
+wait 6
+assert glyph U+0041 size 10x14
+assert glyph U+0048 size 6x8
+assert modified 1
+key z ctrl
+wait 6
+assert glyph U+0041 size 5x7
+assert flayer 0 em 10
+assert modified 0

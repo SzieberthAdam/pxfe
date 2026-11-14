@@ -1,10 +1,10 @@
 @echo off
 rem Builds pxfe.exe (and the core unit tests) with the w64devkit GCC bundled with raylib (C:\raylib).
 rem   build.bat         - build pxfe.exe
-rem   build.bat test    - build and run the quick core tests (test_pxfont, test_pxtf with library index and loader, test_store)
+rem   build.bat test    - build and run the quick core tests (test_pxfont, test_outline, test_bmsrc, test_fit, test_fsettings,
+rem                       test_pxtf with library index and loader, test_store)
 rem   build.bat libtest [root] [--quick] - build and run tests\test_library.exe: round trip of a whole real library (text files and
 rem                       store), the store built from the files against the real pxfdb, timings, similarity (slow: minutes)
-rem                       (also test_outline and test_fsettings)
 rem   build.bat debug   - build pxfe.exe with a console window and -g
 rem   build.bat e2e     - build tests\tmp\pxfe_e2e.exe (console, -g) for tests\e2e\run_all.bat; leaves pxfe.exe alone
 cd /d "%~dp0"
@@ -44,11 +44,15 @@ gcc tests\test_bmsrc.c src\bmsrc.c -o tests\test_bmsrc.exe -O1 -g %CFLAGS%
 if errorlevel 1 (echo Test build failed & exit /b 1)
 gcc tests\test_fsettings.c src\fsettings.c %SQL% -o tests\test_fsettings.exe -O0 -g %CFLAGS%
 if errorlevel 1 (echo Test build failed & exit /b 1)
+gcc tests\test_fit.c src\fit.c src\outline.c -o tests\test_fit.exe -O1 -g %CFLAGS%
+if errorlevel 1 (echo Test build failed & exit /b 1)
 tests\test_pxfont.exe
 if errorlevel 1 exit /b 1
 tests\test_outline.exe
 if errorlevel 1 exit /b 1
 tests\test_bmsrc.exe
+if errorlevel 1 exit /b 1
+tests\test_fit.exe
 if errorlevel 1 exit /b 1
 tests\test_fsettings.exe
 if errorlevel 1 exit /b 1

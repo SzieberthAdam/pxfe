@@ -27,7 +27,8 @@ static void seterr(char *err, int n, const char *fmt, ...) {
 /* ===================================================================== path (outline in font units) */
 
 enum { V_MOVE, V_LINE, V_QUAD, V_CUBIC };
-typedef struct { u8 t; float x, y, cx, cy, cx1, cy1; } Vert;   /* end point x,y; controls c, c1 */
+typedef struct { u8 t, imp; float x, y, cx, cy, cx1, cy1; } Vert;   /* end point x,y; controls c, c1; imp: the end point is implied
+                                                                       (the middle of two TrueType controls), no point of the font */
 typedef struct { Vert *v; int n, cap; int oom; } Path;
 
 static void path_free(Path *p) { free(p->v); memset(p, 0, sizeof *p); }
@@ -43,9 +44,10 @@ static void path_add(Path *p, int t, double x, double y, double cx, double cy, d
         p->v = nv; p->cap = nc;
     }
     v = &p->v[p->n++];
-    v->t = (u8)t; v->x = (float)x; v->y = (float)y; v->cx = (float)cx; v->cy = (float)cy; v->cx1 = (float)cx1; v->cy1 = (float)cy1;
+    v->t = (u8)t; v->imp = 0; v->x = (float)x; v->y = (float)y; v->cx = (float)cx; v->cy = (float)cy; v->cx1 = (float)cx1; v->cy1 = (float)cy1;
 }
 #define P_MOVE(p, x, y)  path_add(p, V_MOVE, x, y, 0, 0, 0, 0)
+#define P_IMPLIED(p) do { if (!(p)->oom && (p)->n > 0) (p)->v[(p)->n - 1].imp = 1; } while (0)
 #define P_LINE(p, x, y)  path_add(p, V_LINE, x, y, 0, 0, 0, 0)
 #define P_QUAD(p, cx, cy, x, y) path_add(p, V_QUAD, x, y, cx, cy, 0, 0)
 #define P_CUBIC(p, c1x, c1y, c2x, c2y, x, y) path_add(p, V_CUBIC, x, y, c1x, c1y, c2x, c2y)
@@ -438,16 +440,17 @@ static int glyf_load(const Outline *f, int g, Path *p, int depth, int *budget) {
             else if (fl[e] & 1) { sx = xs[e]; sy = ys[e]; first = s; last = e - 1; }
             else { sx = (xs[s] + xs[e]) * 0.5; sy = (ys[s] + ys[e]) * 0.5; first = s; last = e; }
             P_MOVE(p, sx, sy);
+            if (!(fl[s] & 1) && !(fl[e] & 1)) P_IMPLIED(p);
             for (k = first; k <= last; k++) {
                 if (fl[k] & 1) {
                     if (have) P_QUAD(p, cx, cy, xs[k], ys[k]); else P_LINE(p, xs[k], ys[k]);
                     have = 0;
                 } else {
-                    if (have) P_QUAD(p, cx, cy, (cx + xs[k]) * 0.5, (cy + ys[k]) * 0.5);
+                    if (have) { P_QUAD(p, cx, cy, (cx + xs[k]) * 0.5, (cy + ys[k]) * 0.5); P_IMPLIED(p); }
                     cx = xs[k]; cy = ys[k]; have = 1;
                 }
             }
-            if (have) P_QUAD(p, cx, cy, sx, sy);
+            if (have) { P_QUAD(p, cx, cy, sx, sy); P_IMPLIED(p); }   /* back at the start, which the move already named */
         }
         rc = 0;
     done:
@@ -1592,20 +1595,20 @@ static int steps_for(double dd, double k) {
     return n < 1 ? 1 : n > 100 ? 100 : n;
 }
 
-static void flatten(const Path *p, double s, double fx, double fy, Poly *q) {
+static void flatten(const Path *p, double s, double sy, double fx, double fy, Poly *q) {
     double cx = fx, cy = fy;   /* current point in px */
     int i;
     q->minx = q->miny = 1e30; q->maxx = q->maxy = -1e30;
     for (i = 0; i < p->n && !q->bad; i++) {
         const Vert *v = &p->v[i];
-        double X = v->x * s + fx, Y = v->y * s + fy;
+        double X = v->x * s + fx, Y = v->y * sy + fy;
         if (v->t == V_MOVE) { poly_new(q); poly_pt(q, X, Y); }
         else {
             int k, n;
             if (q->nc == 0) { poly_new(q); poly_pt(q, cx, cy); }
             if (v->t == V_LINE) poly_pt(q, X, Y);
             else if (v->t == V_QUAD) {
-                double qx = v->cx * s + fx, qy = v->cy * s + fy;
+                double qx = v->cx * s + fx, qy = v->cy * sy + fy;
                 double ddx = cx - 2 * qx + X, ddy = cy - 2 * qy + Y;
                 n = steps_for(sqrt(ddx * ddx + ddy * ddy), 2.5);
                 for (k = 1; k <= n; k++) {
@@ -1613,7 +1616,7 @@ static void flatten(const Path *p, double s, double fx, double fy, Poly *q) {
                     poly_pt(q, u * u * cx + 2 * u * t * qx + t * t * X, u * u * cy + 2 * u * t * qy + t * t * Y);
                 }
             } else {
-                double ax = v->cx * s + fx, ay = v->cy * s + fy, bx = v->cx1 * s + fx, by = v->cy1 * s + fy;
+                double ax = v->cx * s + fx, ay = v->cy * sy + fy, bx = v->cx1 * s + fx, by = v->cy1 * sy + fy;
                 double d1x = cx - 2 * ax + bx, d1y = cy - 2 * ay + by, d2x = ax - 2 * bx + X, d2y = ay - 2 * by + Y;
                 double dd = fmax(sqrt(d1x * d1x + d1y * d1y), sqrt(d2x * d2x + d2y * d2y));
                 n = steps_for(dd, 7.5);
@@ -1706,22 +1709,46 @@ static int fill(const Poly *q, int left, int top, int w, int h, u8 *out) {
     return 0;
 }
 
-static int glyph_poly(const Outline *f, int g, float px, float fx, float fy, Poly *q, double *adv, char *err, int errsz) {
-    Path p;
-    double wx = 0, s;
+static int glyph_path(const Outline *f, int g, Path *p, double *wx, char *err, int errsz) {
     int rc;
-    memset(q, 0, sizeof *q);
-    memset(&p, 0, sizeof p);
+    memset(p, 0, sizeof *p);
+    *wx = 0;
     if (!f) { seterr(err, errsz, "no font"); return -1; }
-    if (!(px >= 0.5f && px <= 8192.0f) || !(fabsf(fx) < 1e4f) || !(fabsf(fy) < 1e4f)) { seterr(err, errsz, "bad size or offset"); return -1; }
     if (g < 0 || g >= outline_glyph_count(f)) { seterr(err, errsz, "bad glyph index"); return -1; }
-    if (f->t1) rc = t1_load_glyph(f, g, &p, &wx);
-    else if (f->isCFF) { rc = cff_load(f, g, &p); wx = outline_advance(f, g); }
-    else { int budget = 256; rc = glyf_load(f, g, &p, 0, &budget); wx = outline_advance(f, g); }
-    if (rc < 0 || p.oom) { path_free(&p); seterr(err, errsz, "bad glyph data (glyph %d)", g); return -1; }
+    if (f->t1) rc = t1_load_glyph(f, g, p, wx);
+    else if (f->isCFF) { rc = cff_load(f, g, p); *wx = outline_advance(f, g); }
+    else {
+        int budget = 256;
+        size_t off, len;
+        rc = glyf_load(f, g, p, 0, &budget);
+        *wx = outline_advance(f, g);
+        /* The pen is where the left side bearing of hmtx puts it: the glyph stands (lsb - xMin) right of its own coordinates
+           (the first phantom point; what a rasteriser of TrueType and fontTools do).  Nearly every font has lsb == xMin.
+           A composite glyph is left where its parts put it, as fontTools (and so pixelglyphlib) draws it. */
+        if (rc >= 0 && !p->oom && p->n > 0 && f->nhm > 0 && glyf_range(f, g, &off, &len) == 0 && len >= 10 && r16s(f, off) >= 0) {
+            size_t lo = g < f->nhm ? f->hmtx.off + 4 * (size_t)g + 2 : f->hmtx.off + 4 * (size_t)f->nhm + 2 * (size_t)(g - f->nhm);
+            if (lo + 2 <= f->hmtx.off + f->hmtx.len) {
+                int shift = r16s(f, lo) - r16s(f, off + 2), i;
+                if (shift) for (i = 0; i < p->n; i++) { p->v[i].x += (float)shift; p->v[i].cx += (float)shift; p->v[i].cx1 += (float)shift; }
+            }
+        }
+    }
+    if (rc < 0 || p->oom) { path_free(p); seterr(err, errsz, "bad glyph data (glyph %d)", g); return -1; }
+    return 0;
+}
+
+/* px: pixels per em along y; pxx: along x (a stretched glyph) */
+static int glyph_poly(const Outline *f, int g, float pxx, float px, float fx, float fy, Poly *q, double *adv, char *err, int errsz) {
+    Path p;
+    double wx = 0, s, sx;
+    memset(q, 0, sizeof *q);
+    if (!f) { seterr(err, errsz, "no font"); return -1; }
+    if (!(px >= 0.5f && px <= 8192.0f) || !(pxx >= 0.5f && pxx <= 8192.0f) || !(fabsf(fx) < 1e4f) || !(fabsf(fy) < 1e4f)) { seterr(err, errsz, "bad size or offset"); return -1; }
+    if (glyph_path(f, g, &p, &wx, err, errsz) < 0) return -1;
     s = (double)px / (double)outline_units_per_em(f);
-    *adv = wx * s;
-    flatten(&p, s, fx, fy, q);
+    sx = (double)pxx / (double)outline_units_per_em(f);
+    *adv = wx * sx;
+    flatten(&p, sx, s, fx, fy, q);
     path_free(&p);
     if (q->bad) { poly_free(q); seterr(err, errsz, "glyph is too large or out of memory"); return -1; }
     return 0;
@@ -1749,7 +1776,7 @@ int outline_glyph_bbox(const Outline *f, int g, float px, float fx, float fy, in
     Poly q;
     double adv = 0;
     int l, t, ww, hh, rc;
-    if (glyph_poly(f, g, px, fx, fy, &q, &adv, err, errsz) < 0) return OUTLINE_ERROR;
+    if (glyph_poly(f, g, px, px, fx, fy, &q, &adv, err, errsz) < 0) return OUTLINE_ERROR;
     rc = poly_box(&q, &l, &t, &ww, &hh, err, errsz);
     poly_free(&q);
     if (rc < 0) return OUTLINE_ERROR;
@@ -1761,13 +1788,13 @@ int outline_glyph_bbox(const Outline *f, int g, float px, float fx, float fy, in
     return OUTLINE_OK;
 }
 
-int outline_rasterize_glyph(const Outline *f, int g, float px, float fx, float fy, OutlineBitmap *out, char *err, int errsz) {
+int outline_rasterize_glyph_xy(const Outline *f, int g, float pxx, float px, float fx, float fy, OutlineBitmap *out, char *err, int errsz) {
     Poly q;
     double adv = 0;
     int rc;
     if (!out) { seterr(err, errsz, "no output"); return OUTLINE_ERROR; }
     memset(out, 0, sizeof *out);
-    if (glyph_poly(f, g, px, fx, fy, &q, &adv, err, errsz) < 0) return OUTLINE_ERROR;
+    if (glyph_poly(f, g, pxx, px, fx, fy, &q, &adv, err, errsz) < 0) return OUTLINE_ERROR;
     out->advance = (float)adv;
     rc = poly_box(&q, &out->left, &out->top, &out->w, &out->h, err, errsz);
     if (rc < 0) { poly_free(&q); out->advance = 0; return OUTLINE_ERROR; }
@@ -1785,6 +1812,10 @@ int outline_rasterize_glyph(const Outline *f, int g, float px, float fx, float f
     return OUTLINE_OK;
 }
 
+int outline_rasterize_glyph(const Outline *f, int g, float px, float fx, float fy, OutlineBitmap *out, char *err, int errsz) {
+    return outline_rasterize_glyph_xy(f, g, px, px, fx, fy, out, err, errsz);
+}
+
 int outline_rasterize(const Outline *f, int cp, float px, float fx, float fy, OutlineBitmap *out, char *err, int errsz) {
     int g = outline_glyph_index(f, cp);
     if (out) memset(out, 0, sizeof *out);
@@ -1796,4 +1827,124 @@ void outline_bitmap_free(OutlineBitmap *b) {
     if (!b) return;
     free(b->pix);
     memset(b, 0, sizeof *b);
+}
+
+/* ===================================================================== names and shapes */
+
+int outline_name(const Outline *f, int id, char *out, int outsz) {
+    if (!out || outsz <= 0) return 0;
+    out[0] = 0;
+    if (!f || id < 0) return 0;
+    if (f->t1) {
+        if (id == 1) snprintf(out, (size_t)outsz, "%s", f->family);
+        else if (id == 2) snprintf(out, (size_t)outsz, "%s", f->style);
+        return (int)strlen(out);
+    }
+    return name_string(f, (unsigned)id, out, outsz);
+}
+
+void outline_shape_free(OutlineShape *s) {
+    if (!s) return;
+    free(s->start); free(s->pstart); free(s->x); free(s->y); free(s->curved); free(s->px); free(s->py);
+    memset(s, 0, sizeof *s);
+}
+
+typedef struct { OutlineShape *s; int cap, ccap, pcap, bad; } ShapeB;
+
+static void sb_pt(ShapeB *b, double x, double y) {
+    OutlineShape *s = b->s;
+    if (b->bad) return;
+    if (!(fabs(x) <= 1e6 && fabs(y) <= 1e6)) { b->bad = 1; return; }   /* also NaN and infinity: no font has such a point */
+    if (s->n >= b->cap) {
+        int nc = b->cap ? b->cap * 2 : 128;
+        float *nx = (float *)realloc(s->x, (size_t)nc * sizeof(float)), *ny;
+        if (nx) s->x = nx;
+        ny = (float *)realloc(s->y, (size_t)nc * sizeof(float));
+        if (ny) s->y = ny;
+        if (!nx || !ny) { b->bad = 1; return; }
+        b->cap = nc;
+    }
+    s->x[s->n] = (float)x; s->y[s->n] = (float)y; s->n++;
+}
+
+static void sb_raw(ShapeB *b, double x, double y) {
+    OutlineShape *s = b->s;
+    if (b->bad) return;
+    if (!(fabs(x) <= 1e6 && fabs(y) <= 1e6)) { b->bad = 1; return; }
+    if (s->np >= b->pcap) {
+        int nc = b->pcap ? b->pcap * 2 : 128;
+        float *nx = (float *)realloc(s->px, (size_t)nc * sizeof(float)), *ny;
+        if (nx) s->px = nx;
+        ny = (float *)realloc(s->py, (size_t)nc * sizeof(float));
+        if (ny) s->py = ny;
+        if (!nx || !ny) { b->bad = 1; return; }
+        b->pcap = nc;
+    }
+    s->px[s->np] = (float)x; s->py[s->np] = (float)y; s->np++;
+}
+
+static void sb_contour(ShapeB *b) {
+    OutlineShape *s = b->s;
+    if (b->bad) return;
+    if (s->nc + 1 >= b->ccap) {
+        int nc = b->ccap ? b->ccap * 2 : 16;
+        int *ns = (int *)realloc(s->start, (size_t)nc * sizeof(int)), *ps;
+        unsigned char *cv;
+        if (ns) s->start = ns;
+        ps = (int *)realloc(s->pstart, (size_t)nc * sizeof(int));
+        if (ps) s->pstart = ps;
+        cv = (unsigned char *)realloc(s->curved, (size_t)nc);
+        if (cv) s->curved = cv;
+        if (!ns || !ps || !cv) { b->bad = 1; return; }
+        b->ccap = nc;
+    }
+    s->start[s->nc] = s->n;
+    s->pstart[s->nc] = s->np;
+    s->curved[s->nc] = 0;
+    s->nc++;
+}
+
+int outline_glyph_shape(const Outline *f, int g, int steps, OutlineShape *out, char *err, int errsz) {
+    Path p;
+    ShapeB b;
+    double wx = 0, cx = 0, cy = 0;
+    int i, k;
+    if (!out) { seterr(err, errsz, "no output"); return OUTLINE_ERROR; }
+    memset(out, 0, sizeof *out);
+    if (steps < 1) steps = 1;
+    if (steps > 64) steps = 64;
+    if (glyph_path(f, g, &p, &wx, err, errsz) < 0) return OUTLINE_ERROR;
+    memset(&b, 0, sizeof b);
+    b.s = out;
+    out->advance = (int)floor(wx + 0.5);
+    for (i = 0; i < p.n && !b.bad; i++) {
+        const Vert *v = &p.v[i];
+        if (v->t == V_MOVE || out->nc == 0) {
+            sb_contour(&b);
+            if (v->t != V_MOVE) sb_pt(&b, cx, cy);
+        }
+        if (v->t == V_MOVE || v->t == V_LINE) { sb_pt(&b, v->x, v->y); if (!v->imp) sb_raw(&b, v->x, v->y); }
+        else if (v->t == V_QUAD) {
+            if (!b.bad) out->curved[out->nc - 1] = 1;
+            sb_raw(&b, v->cx, v->cy);
+            if (!v->imp) sb_raw(&b, v->x, v->y);   /* an implied point between two controls is no point of the font */
+            for (k = 1; k <= steps; k++) {
+                double t = (double)k / steps, u = 1 - t;
+                sb_pt(&b, u * u * cx + 2 * u * t * v->cx + t * t * v->x, u * u * cy + 2 * u * t * v->cy + t * t * v->y);
+            }
+        } else {
+            if (!b.bad) out->curved[out->nc - 1] = 1;
+            sb_raw(&b, v->cx, v->cy); sb_raw(&b, v->cx1, v->cy1); sb_raw(&b, v->x, v->y);
+            for (k = 1; k <= steps; k++) {
+                double t = (double)k / steps, u = 1 - t;
+                sb_pt(&b, u * u * u * cx + 3 * u * u * t * v->cx + 3 * u * t * t * v->cx1 + t * t * t * v->x,
+                          u * u * u * cy + 3 * u * u * t * v->cy + 3 * u * t * t * v->cy1 + t * t * t * v->y);
+            }
+        }
+        cx = v->x; cy = v->y;
+    }
+    path_free(&p);
+    if (!b.bad && out->nc) { out->start[out->nc] = out->n; out->pstart[out->nc] = out->np; }
+    if (b.bad) { outline_shape_free(out); seterr(err, errsz, "bad glyph coordinates or out of memory"); return OUTLINE_ERROR; }
+    return OUTLINE_OK;
 }

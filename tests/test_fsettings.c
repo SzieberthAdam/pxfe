@@ -311,6 +311,49 @@ static void test_errors(void) {
     printf("      (%s)\n", err);
     remove(C);
 
+    /* a version 1 file (no em, aspect, follow, mode, threshold) is upgraded when it is opened */
+    sqlite3_open(C, &db);
+    sqlite3_exec(db,
+        "CREATE TABLE meta (key TEXT PRIMARY KEY, value TEXT NOT NULL) WITHOUT ROWID;"
+        "INSERT INTO meta VALUES ('format', 'pxfe-settings'), ('schema_version', '1');"
+        "CREATE TABLE layer (id INTEGER PRIMARY KEY AUTOINCREMENT, font TEXT NOT NULL, pos INTEGER NOT NULL, kind INTEGER NOT NULL,"
+        "  source TEXT NOT NULL, face INTEGER NOT NULL, file_size INTEGER NOT NULL, file_mtime INTEGER NOT NULL, scale REAL NOT NULL,"
+        "  dx REAL NOT NULL, dy REAL NOT NULL, r INTEGER NOT NULL, g INTEGER NOT NULL, b INTEGER NOT NULL, opacity INTEGER NOT NULL,"
+        "  visible INTEGER NOT NULL, label TEXT NOT NULL,"
+        "  CHECK (kind IN (0, 1) AND scale > 0 AND opacity BETWEEN 0 AND 100 AND visible IN (0, 1)));"
+        "CREATE INDEX layer_by_font ON layer (font, pos);"
+        "CREATE TABLE correction (font TEXT NOT NULL, layer INTEGER NOT NULL REFERENCES layer, code INTEGER NOT NULL,"
+        "  dx REAL NOT NULL, dy REAL NOT NULL, dsize REAL NOT NULL, hidden INTEGER NOT NULL, PRIMARY KEY (layer, code)) WITHOUT ROWID;"
+        "INSERT INTO layer (font,pos,kind,source,face,file_size,file_mtime,scale,dx,dy,r,g,b,opacity,visible,label)"
+        "  VALUES ('" HA "',0,1,'old.ttf',0,10,20,1.25,0.5,-1,1,2,3,80,1,'Old');", NULL, NULL, NULL);
+    sqlite3_close(db);
+    fs = fs_open(C, err);
+    CHECK(fs != NULL, "a version 1 file opens");
+    if (fs) {
+        FsLayer v[2];
+        CHECK(fs_list_layers(fs, HA, v, 2) == 1 && v[0].scale == 1.25f && v[0].dx == 0.5f && strcmp(v[0].label, "Old") == 0, "version 1 layer is read");
+        CHECK(v[0].em == 0 && v[0].aspect == 1 && v[0].follow == 0 && v[0].mode == 0 && v[0].threshold == 0.5f, "version 1 layer gets the defaults of version 2");
+        CHECK(!fs_dirty(fs), "the upgrade alone does not make the settings unsaved");
+        v[0].em = 13.5f; v[0].aspect = 0.75f; v[0].follow = 1; v[0].mode = 1; v[0].threshold = 0.375f;
+        CHECK(fs_update_layer(fs, &v[0]) && fs_save(fs), "the new fields are written");
+        fs_close(fs);
+        fs = fs_open(C, err);
+        FsLayer w[2];
+        CHECK(fs && fs_list_layers(fs, HA, w, 2) == 1 && w[0].em == 13.5f && w[0].aspect == 0.75f && w[0].follow == 1 && w[0].mode == 1 && w[0].threshold == 0.375f,
+              "the new fields come back from the file");
+        if (fs) {
+            CHECK(fs_copy_font(fs, HA, HB) && fs_list_layers(fs, HB, w, 2) == 1 && w[0].em == 13.5f && w[0].follow == 1, "a copied layer keeps the new fields");
+            fs_close(fs);
+        }
+        sqlite3_open(C, &db);
+        sqlite3_stmt *st = NULL;
+        sqlite3_prepare_v2(db, "SELECT value FROM meta WHERE key='schema_version'", -1, &st, NULL);
+        CHECK(sqlite3_step(st) == SQLITE_ROW && atoi((const char *)sqlite3_column_text(st, 0)) == 2, "the saved file is version 2");
+        sqlite3_finalize(st);
+        sqlite3_close(db);
+    }
+    remove(C);
+
     /* an empty handle at a corrupt path: save must not clobber a foreign file */
     write_text(C, "precious data that is not a settings file");
     FSettings *e = fs_new_empty();

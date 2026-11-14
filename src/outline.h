@@ -81,10 +81,37 @@ int outline_rasterize(const Outline *f, int codepoint, float px, float fx, float
                       OutlineBitmap *out, char *err, int errsz);
 int outline_rasterize_glyph(const Outline *f, int glyph, float px, float fx, float fy,
                             OutlineBitmap *out, char *err, int errsz);
+/* The same with its own size along x: pxx pixels per em across, px pixels per em up (a stretched glyph; the advance follows pxx). */
+int outline_rasterize_glyph_xy(const Outline *f, int glyph, float pxx, float px, float fx, float fy,
+                               OutlineBitmap *out, char *err, int errsz);
 void outline_bitmap_free(OutlineBitmap *b);
 
 /* The pixel box rasterising would produce (same left/top/w/h, no allocation of pixels), also the advance in px. */
 int outline_glyph_bbox(const Outline *f, int glyph, float px, float fx, float fy,
                        int *left, int *top, int *w, int *h, float *advance, char *err, int errsz);
+
+/* ---- names ---- */
+
+/* A string of the name table by its ID (0 copyright, 1 family, 2 style, 4 full name, 5 version, 7 trademark, 8 vendor, 9 designer,
+   10 description, 11 vendor URL, 12 designer URL, 13 licence, 14 licence URL), UTF-8.  Returns its length, 0 when the font has
+   none (a Type 1 font knows 1 and 2 only). */
+int outline_name(const Outline *f, int id, char *out, int outsz);
+
+/* ---- the outline itself (for the grid search of fit.h) ---- */
+
+typedef struct OutlineShape {
+    int nc;                 /* contours */
+    int *start;             /* nc + 1 entries: contour c is the points start[c] .. start[c+1]-1, closed (last to first) */
+    float *x, *y; int n;    /* the points in font units, y up; a curve is `steps` straight pieces */
+    unsigned char *curved;  /* per contour: it has a curve */
+    float *px, *py; int np; /* the points the font itself names: ends of lines and curves and their control points */
+    int *pstart;            /* nc + 1 entries: the named points of contour c are pstart[c] .. pstart[c+1]-1 */
+    int advance;            /* font units */
+} OutlineShape;
+
+/* The contours of a glyph (composites resolved) in font units.  OUTLINE_OK (a blank glyph has nc == 0) or OUTLINE_ERROR.
+   Release with outline_shape_free. */
+int outline_glyph_shape(const Outline *f, int glyph, int steps, OutlineShape *out, char *err, int errsz);
+void outline_shape_free(OutlineShape *s);
 
 #endif

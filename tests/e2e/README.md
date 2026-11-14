@@ -104,7 +104,16 @@ One command per line, `#` starts a comment.
   Add Layer popover: `@lay_src_File`, `@lay_choose` (`@Choose…`), `@lay_file`, `@lay_face+`, `@lay_face-`, `@lay_mode_Outlines`, `@lay_mode_Bitmap_strikes`, `@lay_scope_This_glyph_only`, `@lay_scope_Font_layer`.
 - New Font and Add Glyph: Menu, `@file.new` opens the dialog (`assert nfopen 1`): `@nf.name`, `@nf.style`, `@nf.size±`, `@nf.ascent±`, `@nf.descent±` (also `.value`), `@Create`, `@Cancel`.
   The font view's command bar has `@Add_Glyph` (the code in the dialog: type it, then `@Add`).
-  The Menu now has New Font first: Down from nothing lands on it (`menuhi 0`), Load is 1, Save 2, Save As 3, Import Folder 4, Export to Folder 5, Quit 6.
+  The Menu has New Font first: Down from nothing lands on it (`menuhi 0`), Import Font File is 1, Load 2, Save 3, Save As 4, Import Folder 5, Export to Folder 6, Quit 7.
+- Import Font File (version 10): Menu, `@file.importfont` opens the file dialog (`setdialog fontfile <path>` answers it), then the dialog (`assert ifopen 1`).
+  Its state: `ifoutline`, `ifgrid` (0 no grid, 1 a sure grid, 2 a guess), `ifpixel` (the switch), `ifem100` (the size the import would use, in hundredths of a pixel per em).
+  Its widgets: `@if.family`, `@if.style`, `@if.face±`, `@if.pixel`, `@if.size±` and `@if.best` (a smooth font), `@if.typeface`, `@if.preview`, `@Import`, `@Cancel`.
+  `importfont <path> [auto|pixel|smooth] [face N] [em X] [notypeface] [expectfail]` does what the dialog does after the file dialog and Import.
+  `assert flayer <i> em|aspect|follow|mode|threshold <value>` read the placement of a font layer; `setlayer <i> em|aspect|dx|dy|threshold|mode|follow <value>` sets it as the Layers tab does.
+  The glyphs that follow a layer: `fitfollow` (glyphs that are what the layer draws), `fitkept` (edited by hand), `fitabsent` (not in the file), all -1 when no layer is followed; `fitchanged` and `fitlastkept` are what the last redraw changed and left alone.
+  The Layers tab of the font view is `@ptab_Layers` (`ptab` 3): `@fl_size±`, `@fl_width±`, `@fl_x±`, `@fl_y±`, `@fl_follow`, `@fl_mode_Smooth`, `@fl_mode_Pixel_font`, `@fl_thr±`, `@fl_fitsize`, `@fl_fit`, `@fl_redraw`.
+  Size and offsets are decimal number boxes: `click @fl_y.value`, `type 0.37`, `key enter` sets any value (also `@lay_x.value`, `@lay_gx.value`, `@lay_size.value` in the glyph view and `@if.size.value` in the dialog).
+  `assert flayer` compares for equality only (no `>=`).
 - `assert w.<widget> 0|1`: a widget of that name was drawn in the last frame (for the hidden rows).
   `assert pixel <target> [dx dy] RRGGBB` reads the screen.
   `$GHASH` and `$GOHASH` in a script are the pxgl hash of the glyph being edited, now and when the font was opened.
@@ -159,6 +168,11 @@ The environment variable `PXFE_TRACE=1` prints one `TRACE load ...` or `TRACE im
   98: layers on an original (read-only) font: the `.pxfdb` is byte for byte unchanged (`copyfile` before, `assert samefile` after), the sidecar is written, the layers survive Duplicate to Edit.
   99: a duplicate with layers, a pixel edit and the commit: the layers are under the new hash and the original's stay.
 - 100 (not in `run_all.bat`): font layer screenshots at 1400 x 900 in `tests\tmp\fl` (`shot_newfont`, `shot_glyph_empty`, `shot_glyph_pixels`, `shot_popover_file`, `shot_missing`); the command is in the first lines of the script.
+- 101, 102 and 102b (version 10, Import Font File):
+  101: the dialog on a pixel font whose grid only the lattice search finds (`testdata\outline\PixelShift.ttf`), the new font and typeface, its layer, the Layers tab of the font view, a size change that draws every glyph again, undo and redo of it, a glyph edited by hand that stays, Redraw All, the commit and Save (the sidecar holds `follow`, `mode`, `em`); then a smooth font, a fixed size, a font of dots, GNU Unifont, a bitmap font, and files that cannot be imported.
+  102: the glyph view of an imported font: the correction of one glyph draws that glyph again, the layer's offset and size draw every glyph again, a hand edit is kept; commit and Save.
+  102b: a second process: the font, its typeface and its layer come back; the original does not change with its layer, a duplicate does, and the hand-edited glyph is still told apart.
+- 103 (not in `run_all.bat`): screenshots of version 10 in `tests\tmp\imp` (the menu, the dialog on Noto Sans Regular, the Layers tab of the font view, two glyph views with the outline under the pixels); the command is in the first lines of the script.
 - 93: the keyboard in menus (Down, Up, Home, Enter, Escape on the File menu; the highlight follows the mouse; Enter does not reach the selected card behind the menu; `assert menuhi N`).
 - 59: the navigation bar (Menu, Typefaces | Fonts | Glyphs, the Typeface, Font and Glyph views, Alt+Left); 59b: a font without a typeface ("Orphaned").
 - 58: the red Delete Font and Delete Typeface buttons of the browser's side panel, end to end (confirmation, Cancel, rewritten typeface, emptied typeface, orphaned glyphs, the Fonts tab).

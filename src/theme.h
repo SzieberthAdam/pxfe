@@ -167,6 +167,7 @@ int Th_StepperHover(void);
 #define TH_TF_COMMIT   64
 #define TH_TF_SELECT   128   /* a click that gives the keyboard selects the whole text */
 #define TH_TF_REVERT   256   /* Escape puts back the text from when the field got the keyboard (reported as TH_TF_CHANGED) */
+#define TH_TF_DEC      512   /* digits, '-', '.' and ',' only: a decimal number */
 #define TH_TF_CHANGED 1
 #define TH_TF_ENTER   2      /* Enter or Tab */
 #define TH_TF_ESC     4
@@ -188,6 +189,9 @@ void        Th_TextClip(const char *s, float x, float y, float maxW, Color c, in
  * the view the wheel was taken this frame).  Registers "<prefix>-", "<prefix>+" and "<prefix>.value".  True and *out when the value changes. */
 #define TH_NUM_WHEEL 0x10000
 bool Th_Number(Rectangle r, const char *prefix, int val, int lo, int hi, int flags, int *out);
+/* The same for a decimal value: the buttons add or take `step`, and ANY value can be typed (a comma counts as a point); shown with up to
+ * three decimals. */
+bool Th_NumberF(Rectangle r, const char *prefix, float val, float lo, float hi, float step, int flags, float *out);
 bool Th_WheelUsed(void);
 
 /* Checkbox, switch and dropdown.  Th_Check: a box with a tick and its label on the right; Th_Switch: a pill with a knob; both toggle *v on a click

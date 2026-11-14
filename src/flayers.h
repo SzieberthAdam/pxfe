@@ -12,7 +12,8 @@
  *
  * PLACEMENT.  The source glyph's baseline origin (pen x = 0, baseline y = 0) sits on the edited glyph's origin; the layer's (dx, dy) in
  * pixels of the edited font (y up) moves it, and a per-glyph correction (dx, dy, dsize, hidden) adds to that.
- * SIZE.  Outline: the glyph is drawn at  fontPx * scale * dsize  pixels per em, fontPx = the edited font's pixel size = its ascent +
+ * SIZE.  Outline: a layer with s.em > 0 (an imported font's source, DESIGN.md "Version 10") is drawn at  em * dsize  pixels per em and
+ * s.aspect times as wide; else the glyph is drawn at  fontPx * scale * dsize  pixels per em, fontPx = the edited font's pixel size = its ascent +
  * descent (px_font_box), scale 1.0 = natural size.  Bitmap: whole-pixel multiples only: the strike's pixels are drawn k x k edited
  * pixels, k = round(scale * dsize) clamped to 1 .. FL_MAX_K; scale 1 is the strike's own size (no shrinking).  Database layers: none.
  *
@@ -26,6 +27,7 @@
 
 #include "raylib.h"
 #include "bmsrc.h"
+#include "fit.h"
 #include "fsettings.h"
 #include "outline.h"
 
@@ -44,6 +46,7 @@ typedef struct FlLayer {
     FsLayer s;                   /* what is persisted (id and font unused here) */
     FlCorr *corr; int ncorr, capcorr;   /* the per-glyph corrections, sorted by code, all differ from the defaults */
     int serial;                  /* unique in the run: the key of the texture cache */
+    int origin;                  /* a copy (FlLayer_Copy): the serial of the layer it was copied from, else 0 */
     int state;                   /* FL_*: the file is opened lazily */
     char err[160];               /* why FL_FAILED ("file missing", ...) */
     bool outline;                /* FL_OK: an outline source (else bitmap) */
@@ -54,6 +57,7 @@ typedef struct FlLayer {
     BmSource *bm;
     bool metaChanged;            /* the stored size / mtime was updated by a reload: the owner persists it */
     double checked;              /* GetTime() of the last look at the file's size and time */
+    struct { bool valid; int32_t code; FitParams p; FitCorr c; float shift; } snap;   /* the last answer of FlLayer_Shift */
 } FlLayer;
 
 /* one document's font layers, in stack order (0 = top); rev grows with every change that has to be persisted */
@@ -85,10 +89,20 @@ bool FlLayer_SetFace(FlLayer *l, int face);
 const FlCorr *FlLayer_Corr(const FlLayer *l, int32_t code);
 void          FlLayer_SetCorr(FlLayer *l, int32_t code, const FlCorr *c);
 
-typedef struct FlPlace { float dx, dy; float scale; bool hidden; } FlPlace;
+typedef struct FlPlace { float dx, dy; float scale; bool hidden; float dsize; } FlPlace;   /* dsize: the correction's factor alone */
 /* Where and how big for a glyph: the layer's offset and scale with the code's correction.  scale is the effective one (layer scale *
  * dsize; for a bitmap source a whole number >= 1).  Pure. */
 void FlLayer_Place(const FlLayer *l, int32_t code, FlPlace *out);
+/* The size an outline layer is drawn with, in pixels per em of the edited font: its own em or the font box times its scale, times the
+ * correction of the place (p may be NULL). */
+float FlLayer_Em(const FlLayer *l, int fontPx, const FlPlace *p);
+/* The placement of an outline layer as fit.h draws pixels from it (without the correction of a glyph), and the correction of a code
+ * (false: it has none; out then holds the defaults). */
+void FlLayer_FitParams(const FlLayer *l, int fontPx, FitParams *out);
+bool FlLayer_FitCorr(const FlLayer *l, int32_t code, FitCorr *out);
+/* A layer the glyphs are drawn from in smooth mode moves each glyph by a quarter pixel step to meet the pixels (fit.h): how far, in
+ * pixels of the edited font, for this code (0 for every other layer).  The outline is drawn moved by as much.  Needs FlLayer_Ready. */
+float FlLayer_Shift(FlLayer *l, int32_t code, int fontPx);
 /* Whole number for a bitmap scale */
 int  fl_bitmap_k(float scale);
 
