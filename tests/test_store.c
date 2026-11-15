@@ -186,8 +186,8 @@ static void test_model(void) {
     StoreConn *c = store_conn_open(s);
     PxFont f;
     CHECK(store_load_font(c, H_UNC, NULL, 0, &f, err), "the font with uncoded glyphs loads");
-    CHECK(f.count == 5 && px_font_uncoded_count(&f) == 2 && f.glyphs[3].code == 0xF00000 && f.glyphs[4].code == 0xF00001, "codes F00000 and F00001 after the code points");
-    CHECK(f.defaultCodepoint == 0x48 && !f.hasDanglingDef, "the FFFFFF line is the default glyph (U+0048)");
+    CHECK(f.count == 6 && px_font_uncoded_count(&f) == 2 && f.glyphs[3].code == 0xF00000 && f.glyphs[4].code == 0xF00001, "codes F00000 and F00001 after the code points");
+    CHECK(px_font_default_index(&f) == 5 && f.glyphs[5].code == PX_CODE_DEFAULT, "the FFFFFF line is the last glyph of the font");
     CHECK(px_font_kern(&f, 0x41, 0xF00000) == -1 && px_font_kern(&f, 0xF00001, 0xF00000) == 1, "kerning pairs naming F-codes");
     CHECK(f.hasRatio && f.monospaced && f.glyphs[3].w == 5 && f.glyphs[3].h == 4 && f.glyphs[3].pix[0] == '0', "ratio, monospaced, bitmaps of the uncoded glyphs");
     px_font_free(&f);
@@ -471,56 +471,65 @@ static void test_save(void) {
     px_font_free(&g2);
     px_font_free(&g3);
 
-    /* the replacement of a duplicate's earlier commit */
+    /* editing in place: the font changes its hash, its typeface follows, the old font and its glyphs go */
     CopyFileA(DB, TMP "/sv/c.pxfdb", FALSE);
-    CHECK(store_open_pxfdb(TMP "/sv/c.pxfdb", NULL, &s, err), "replace: load");
+    CHECK(store_open_pxfdb(TMP "/sv/c.pxfdb", NULL, &s, err), "edit: load");
     if (s) {
-        long g0 = count_rows(s, "glyph");
-        StoreSaveResult e1, e2, e3;
-        PxFont f1, f2;
-        shape_font(&f1, "00000\n0...0\n0...0\n0...0\n00000", 6, 5);
-        shape_font(&f2, "00000\n00000\n0...0\n00000\n00000", 6, 5);
-        CHECK(store_save_to_memory(s, &f1, &tf, 1, &e1, err) && e1.newPxfm && e1.newPxtf && count_rows(s, "pxfm") == 5, "replace: the first commit (a font and a typeface)");
-        CHECK(store_save_to_memory(s, &f2, &tf, 1, &e2, err) && e2.newPxfm && e2.newPxtf && count_rows(s, "pxfm") == 6, "replace: the second commit would leave an in-between font");
-        CHECK(store_replace_commit(s, &e1, &e2, NULL, 0, err), "replace: the later commit replaces the earlier");
-        CHECK(count_rows(s, "pxfm") == 5 && count_rows(s, "pxtf") == 3 && count_rows(s, "glyph") == g0 + 1, "replace: 5 fonts, 3 typefaces, one new glyph (the earlier font, typeface and glyph are gone)");
+        long g0 = count_rows(s, "glyph"), f0 = count_rows(s, "pxfm"), t0 = count_rows(s, "pxtf");
+        PxFont f;
+        px_font_init(&f);
         StoreConn *cc = store_conn_open(s);
-        CHECK(!store_has_pxfm(cc, e1.pxfm) && !store_has_pxtf(cc, e1.pxtf) && store_has_pxfm(cc, e2.pxfm) && store_has_pxtf(cc, e2.pxtf) && store_has_pxtf(cc, T_SANS), "replace: the earlier ones are gone, the later ones and the original typeface stay");
+        CHECK(store_load_font(cc, H_EXAMPLE, NULL, 0, &f, err), "edit: load the font");
         store_conn_close(cc);
-        CHECK(sql_int(s, "SELECT COUNT(*) FROM pxfm_glyph WHERE glyph IS NOT NULL AND glyph NOT IN (SELECT hash FROM glyph)") == 0, "replace: no dangling glyph line");
-        /* an earlier commit that equals an original that existed stays */
-        PxFont orig;
-        px_font_init(&orig);
+        StoreEditResult er;
+        CHECK(store_edit_in_place(s, H_EXAMPLE, NULL, NULL, NULL, &er, err) && strcmp(er.pxfm, H_EXAMPLE) == 0 && er.nMoved == 0 && count_rows(s, "pxfm") == f0, "edit: nothing changed, nothing done");
+        f.m[PXM_ASCENT]++;
+        CHECK(store_edit_in_place(s, H_EXAMPLE, &f, T_SANS, NULL, &er, err), "edit: the font edited in place");
+        CHECK(strcmp(er.pxfm, H_EXAMPLE) != 0 && er.nMoved == 1 && strcmp(er.movedFrom[0], T_SANS) == 0 && strcmp(er.pxtf, er.movedTo[0]) == 0 && strcmp(er.pxtf, T_SANS) != 0, "edit: a new font hash, the typeface has a new one");
         cc = store_conn_open(s);
-        CHECK(store_load_font(cc, H_EXAMPLE, NULL, 0, &orig, err), "replace: load an original font");
+        CHECK(!store_has_pxfm(cc, H_EXAMPLE) && store_has_pxfm(cc, er.pxfm) && !store_has_pxtf(cc, T_SANS) && store_has_pxtf(cc, er.pxtf), "edit: the old font and typeface are gone, the new ones are there");
+        PxtfTypeface nt;
+        pxtf_init(&nt);
+        CHECK(store_load_typeface(cc, er.pxtf, &nt, err) && pxtf_find_variant(&nt, 1) && strcmp(pxtf_find_variant(&nt, 1)->pxfm, er.pxfm) == 0 && nt.count == 2, "edit: variant 1 of the typeface names the new font, variant 2 is as it was");
         store_conn_close(cc);
-        CHECK(store_save_to_memory(s, &orig, NULL, 0, &e3, err) && !e3.newPxfm && !e3.newPxtf, "replace: committing an original unchanged is no new font");
-        CHECK(store_replace_commit(s, &e3, &e2, NULL, 0, err) && count_rows(s, "pxfm") == 5, "replace: an earlier commit that equalled an original is not deleted");
-        /* a duplicate without a typeface */
-        StoreSaveResult n1, n2;
-        PxFont f3;
-        shape_font(&f3, "0.0.0\n.0.0.\n0.0.0\n.0.0.\n0.0.0", 6, 5);
-        CHECK(store_save_to_memory(s, &f1, NULL, 0, &n1, err) && n1.newPxfm && !n1.pxtf[0] && store_save_to_memory(s, &f3, NULL, 0, &n2, err) && count_rows(s, "pxfm") == 7, "replace: two commits without a typeface");
-        CHECK(store_replace_commit(s, &n1, &n2, NULL, 0, err) && count_rows(s, "pxfm") == 6 && !store_has_pxfm(store_main_conn(s), n1.pxfm), "replace: the earlier font goes");
-        /* another live duplicate holds the same commit: nothing goes, and the ownership passes to it */
-        StoreSaveResult o1, o2, o3;
-        PxFont f4;
-        shape_font(&f4, "00000\n0.0.0\n00000\n0.0.0\n00000", 6, 5);
-        long pf = count_rows(s, "pxfm"), pt = count_rows(s, "pxtf");
-        CHECK(store_save_to_memory(s, &f4, &tf, 1, &o1, err) && o1.newPxfm && o1.newPxtf, "replace: first duplicate commits a new font");
-        CHECK(store_save_to_memory(s, &f4, &tf, 1, &o2, err) && !o2.newPxfm && !o2.newPxtf && count_rows(s, "pxfm") == pf + 1, "replace: the second duplicate gets the same font");
-        CHECK(store_save_to_memory(s, &f2, &tf, 1, &o3, err), "replace: the first duplicate moves on");
-        StoreSaveResult *oth[1] = { &o2 };
-        CHECK(store_replace_commit(s, &o1, &o3, oth, 1, err) && store_has_pxfm(store_main_conn(s), o1.pxfm) && store_has_pxtf(store_main_conn(s), o1.pxtf), "replace: the font and typeface the other duplicate holds stay");
-        CHECK(o2.newPxfm && o2.newPxtf, "replace: the ownership passed to the other duplicate");
-        CHECK(store_replace_commit(s, &o2, &o3, NULL, 0, err) && !store_has_pxfm(store_main_conn(s), o2.pxfm) && count_rows(s, "pxfm") == pf && count_rows(s, "pxtf") == pt, "replace: when the other duplicate moves on, they go");
-        /* a font that a remaining typeface names stays */
-        StoreSaveResult p1, p2;
-        CHECK(store_save_to_memory(s, &f4, &tf, 1, &p1, err) && p1.newPxfm, "replace: a commit whose typeface will stay");
-        p1.newPxtf = false;
-        CHECK(store_save_to_memory(s, &f2, &tf, 1, &p2, err) && store_replace_commit(s, &p1, &p2, NULL, 0, err) && store_has_pxfm(store_main_conn(s), p1.pxfm), "replace: a font named by a remaining typeface is kept");
-        px_font_free(&f4);
-        px_font_free(&orig); px_font_free(&f1); px_font_free(&f2); px_font_free(&f3);
+        CHECK(count_rows(s, "pxfm") == f0 && count_rows(s, "pxtf") == t0 && count_rows(s, "glyph") == g0, "edit: the same number of fonts, typefaces and glyphs (the glyphs are shared with the new font)");
+        CHECK(sql_int(s, "SELECT COUNT(*) FROM pxfm_glyph WHERE glyph IS NOT NULL AND glyph NOT IN (SELECT hash FROM glyph)") == 0, "edit: no dangling glyph line");
+        /* a glyph edited: the glyph only the old font had goes */
+        char oldH[33];
+        snprintf(oldH, sizeof oldH, "%s", er.pxfm);
+        int gi = px_font_find(&f, 0x41);
+        PxGlyph *g = &f.glyphs[gi];
+        g->pix[0] = g->pix[0] == '0' ? '.' : '0';
+        px_glyph_touch(g);
+        StoreEditResult e2;
+        CHECK(store_edit_in_place(s, oldH, &f, er.pxtf, NULL, &e2, err) && strcmp(e2.pxfm, oldH) != 0 && count_rows(s, "pxfm") == f0 && count_rows(s, "glyph") <= g0 + 1, "edit: a glyph edited: the new bitmap comes, the old font goes");
+        /* only the typeface edited */
+        PxtfTypeface c2;
+        pxtf_init(&c2);
+        cc = store_conn_open(s);
+        CHECK(store_load_typeface(cc, e2.pxtf, &c2, err), "edit: load the typeface");
+        store_conn_close(cc);
+        pxtf_set_text(pxtf_find_variant(&c2, 1), PXTF_FAMILY, "Edited Sans");
+        StoreEditResult e3;
+        CHECK(store_edit_in_place(s, e2.pxfm, NULL, e2.pxtf, &c2, &e3, err) && strcmp(e3.pxfm, e2.pxfm) == 0 && strcmp(e3.pxtf, e2.pxtf) != 0 && count_rows(s, "pxtf") == t0 && store_has_pxfm(store_main_conn(s), e2.pxfm), "edit: a typeface field edit: a new typeface hash, the font stays");
+        /* two typefaces name the font: both follow */
+        PxtfTypeface c3;
+        pxtf_init(&c3);
+        CHECK(pxtf_copy(&c3, &c2), "edit: copy the typeface");
+        pxtf_set_text(pxtf_find_variant(&c3, 1), PXTF_FAMILY, "Twin Sans");
+        StoreSaveResult dummy;
+        PxFont fe;
+        px_font_init(&fe);
+        cc = store_conn_open(s);
+        CHECK(store_load_font(cc, e2.pxfm, NULL, 0, &fe, err), "edit: reload the edited font");
+        store_conn_close(cc);
+        CHECK(store_save_to_memory(s, &fe, &c3, 1, &dummy, err) && count_rows(s, "pxtf") == t0 + 1, "edit: a second typeface names the font");
+        fe.m[PXM_ASCENT]++;
+        StoreEditResult e4;
+        CHECK(store_edit_in_place(s, e2.pxfm, &fe, e3.pxtf, NULL, &e4, err) && e4.nMoved == 2 && count_rows(s, "pxtf") == t0 + 1 && count_rows(s, "pxfm") == f0 &&
+              sql_int(s, "SELECT COUNT(*) FROM pxtf_variant v WHERE v.pxfm NOT IN (SELECT hash FROM pxfm)") == 0, "edit: both typefaces follow, nothing dangles");
+        pxtf_free(&nt); pxtf_free(&c2); pxtf_free(&c3);
+        px_font_free(&f); px_font_free(&fe);
         store_close(s);
     }
     pxtf_free(&tf);
@@ -709,6 +718,56 @@ static void test_deletions(void) {
 
 /* ------------------------------------------------------------------ similarity */
 
+/* The default glyph (FFFFFF) is a glyph of its own: a glyph that appears nowhere else survives save, reload, export and deletion rules */
+static void test_default_glyph(void) {
+    char err[PX_ERR_LEN];
+    rm_rf(TMP "/dg");
+    px_mkdir_p(TMP "/dg");
+    CopyFileA(DB, TMP "/dg/a.pxfdb", FALSE);
+    Store *s = NULL;
+    CHECK(store_open_pxfdb(TMP "/dg/a.pxfdb", NULL, &s, err), "default glyph: open a copy");
+    if (!s) return;
+    PxFont f;
+    shape_font(&f, "00000\n0...0\n0...0\n0...0\n00000", 6, 5);
+    PxGlyph d = make_glyph(7, 1, -1, "0.0\n.0.\n0.0");
+    d.code = PX_CODE_DEFAULT;
+    px_font_add_glyph(&f, &d);
+    px_glyph_free(&d);
+    long glyphs0 = count_rows(s, "glyph");
+    StoreSaveResult r;
+    CHECK(store_save_to_memory(s, &f, NULL, 0, &r, err) && r.newPxfm && r.newGlyphs == 2, "default glyph: the font and both bitmaps (the default's too) are new");
+    CHECK(count_rows(s, "glyph") == glyphs0 + 2, "default glyph: its bitmap is in the glyph table");
+    char q[400];
+    snprintf(q, sizeof q, "SELECT COUNT(*) FROM pxfm_glyph WHERE code = 16777215 AND x = 1 AND y = -1 AND advance = 7 AND pxfm = x'%s'", r.pxfm);
+    CHECK(sql_int(s, q) == 1, "default glyph: one FFFFFF row with its own offsets and advance");
+    StoreConn *c = store_conn_open(s);
+    PxFont l;
+    CHECK(store_load_font(c, r.pxfm, NULL, 0, &l, err) && l.count == f.count && px_font_default_index(&l) == l.count - 1, "default glyph: loads as the last glyph");
+    int di = px_font_default_index(&l);
+    CHECK(di >= 0 && l.glyphs[di].x == 1 && l.glyphs[di].y == -1 && l.glyphs[di].advance == 7 && l.glyphs[di].w == 3 && l.glyphs[di].h == 3 && l.glyphs[di].pix && l.glyphs[di].pix[0] == '0' && l.glyphs[di].pix[1] == '.', "default glyph: the bitmap came back");
+    CHECK(px_font_find(&l, 0x21) >= 0 && l.glyphs[px_font_find(&l, 0x21)].w == 5, "default glyph: the other glyphs are not touched");
+    px_font_free(&l);
+    store_conn_close(c);
+    CHECK(store_save(s, err) && file_sql_int(TMP "/dg/a.pxfdb", "SELECT COUNT(*) FROM pxfm_glyph WHERE code = 16777215") == 3, "default glyph: Save keeps the FFFFFF row (3 fonts have one)");
+    Store *chk = NULL;
+    CHECK(store_open_pxfdb(TMP "/dg/a.pxfdb", NULL, &chk, err) && same_content(s, chk), "default glyph: the reloaded file has the same content");
+    store_close(chk);
+    StoreExportResult xr;
+    /* export and import: the line and the glyph file are there */
+    CHECK(store_export_folder(s, TMP "/dg/out", STORE_EXPORT_APPEND, NULL, &xr, err), "default glyph: export");
+    CHECK(store_import_to_file(TMP "/dg/out", TMP "/dg/b.pxfdb", NULL, err), "default glyph: import of the exported folder");
+    CHECK(file_sql_int(TMP "/dg/b.pxfdb", "SELECT COUNT(*) FROM pxfm_glyph WHERE code = 16777215") == 3 && file_sql_int(TMP "/dg/b.pxfdb", "SELECT COUNT(*) FROM glyph") == file_sql_int(TMP "/dg/a.pxfdb", "SELECT COUNT(*) FROM glyph"), "default glyph: nothing dropped by export and import");
+    /* deleting the font removes the glyph only the default used */
+    StoreDeletePlan p;
+    char hash[33];
+    snprintf(hash, sizeof hash, "%s", r.pxfm);
+    CHECK(store_plan_delete_font(s, hash, &p, err) && p.nGlyphs == 2 && store_apply_delete(s, &p, err), "default glyph: deleting the font removes its glyphs, the default's too");
+    store_plan_free(&p);
+    CHECK(count_rows(s, "glyph") == glyphs0, "default glyph: back to the original glyph rows");
+    px_font_free(&f);
+    store_close(s);
+}
+
 static void test_similarity(void) {
     char err[PX_ERR_LEN];
     CopyFileA(DB, TMP "/store_sim.pxfdb", FALSE);
@@ -756,7 +815,7 @@ static DWORD WINAPI worker_main(LPVOID p) {
     while (!w->stop) {
         PxFont f;
         char err[PX_ERR_LEN];
-        if (store_load_font(c, H_UNC, NULL, 0, &f, err) && f.count == 5) { w->loads++; px_font_free(&f); }
+        if (store_load_font(c, H_UNC, NULL, 0, &f, err) && f.count == 6) { w->loads++; px_font_free(&f); }
         else w->bad++;
         StoreEntryList l;
         if (store_list_fonts(c, &l, err)) store_entry_list_free(&l); else w->bad++;
@@ -804,6 +863,7 @@ int main(void) {
     test_save();
     test_export();
     test_deletions();
+    test_default_glyph();
     test_similarity();
     test_threads();
     printf("\n%d passed, %d failed\n", g_pass, g_fail);

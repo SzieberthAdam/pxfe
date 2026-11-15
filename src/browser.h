@@ -10,13 +10,13 @@ typedef struct Browser Browser; /* opaque, defined in browser.c */
 
 typedef enum {
     BROWSER_NONE = 0,
-    BROWSER_OPEN,       /* open the chosen entry read-only (original) */
-    BROWSER_DUPLICATE,  /* open a duplicate of the chosen entry for editing */
+    BROWSER_OPEN,       /* open the chosen entry */
+    BROWSER_LOCK,       /* flip the lock of the font choice.pxfm (main.c does it) */
     BROWSER_INSIGHT,    /* the user clicked an entry of the "Similar" list: see BrowserChoice.insight */
     BROWSER_DELETE_FONT,     /* delete the font choice.pxfm (Del, context menu); main.c confirms and deletes */
     BROWSER_DELETE_TYPEFACE, /* delete the typeface choice.pxtf (box header or a variant row) */
     BROWSER_OPEN_TYPEFACE,   /* a box header was opened: the browser itself switches to the Typeface view (never returned to main) */
-    BROWSER_DUPLICATE_TYPEFACE /* Duplicate to Edit on the typeface (choice.pxtf, and the selected font choice.pxfm / variant): main.c opens the Typeface view on an editable copy */
+    BROWSER_LOCK_TYPEFACE    /* flip the lock of the typeface choice.pxtf (choice.pxfm / variant: the selected font; main.c opens it to edit the fields) */
 } BrowserAction;
 
 typedef struct BrowserChoice {
@@ -39,15 +39,21 @@ const Library *Browser_Lib(const Browser *b);
 /* The Typeface tab of the side panel is drawn by the application (main.c, panel.inc) with the widgets of the font view: it gets the
  * panel's x and width, the y to draw at (advanced past what it drew) and the pxtf hash of the typeface as the library stores it, and one variant of it. */
 typedef void (*BrowserTypefaceTab)(float x, float width, float *y, const PxtfTypeface *tf, const char *hash, int variant);
-typedef bool (*BrowserTypefaceEditing)(const char *pxtf);   /* the open document is an editable duplicate of this typeface */
+typedef bool (*BrowserTypefaceEditing)(const char *pxtf);   /* the open font's typeface is this one and it is unlocked */
 void     Browser_SetTypefaceTab(BrowserTypefaceTab draw, BrowserTypefaceEditing editing);
 bool     Browser_TypefaceTabShown(const Browser *b);
+
+/* The lock of a font or typeface (true: locked), asked by every lock button the browser draws. */
+typedef bool (*BrowserLocked)(bool typeface, const char *hash);
+void     Browser_SetLockQuery(BrowserLocked locked);
+/* Editing changed hashes: a typeface (and the font) the browser holds (selection, the open Typeface view) follows to the new one. */
+void     Browser_Follow(Browser *b, const char *oldPxtf, const char *newPxtf);
 
 /* Rescan the library (after a commit, a deletion or a load), keeping filters, scroll and selection where possible. */
 void     Browser_Rescan(Browser *b);
 
 /* Per frame, between BeginDrawing/EndDrawing, inside `area`; owns all input inside it.
- * Returns true and fills *choice when the user opened or duplicated an entry. */
+ * Returns true and fills *choice when the user opened an entry or toggled its lock. */
 bool     Browser_UpdateDraw(Browser *b, Rectangle area, BrowserChoice *choice);
 
 /* View settings are loaded from / saved to an ini file (pxfe.ini beside the exe), section [browser]. */

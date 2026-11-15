@@ -1,6 +1,8 @@
 # 97d. The sidecar follows the database: Save writes <db>-settings, Save As writes a new one beside the new file (the old one stays as
 # it was), Import starts with no layers, Export to Folder creates none.  Duplicate of 0820dc69.
 wait 5
+click @Unlock
+wait 4
 addlayerfile testdata/outline/NotoSub.ttf
 wait 6
 key s ctrl

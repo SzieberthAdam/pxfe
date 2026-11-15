@@ -5,8 +5,8 @@
 #include "raylib.h"
 #include "pxfont.h"
 
-/* EDITOR_DUPLICATE: the user clicked "Read-only · Duplicate to Edit" (main.c runs the same action as the font view's). */
-typedef enum { EDITOR_RUNNING = 0, EDITOR_CLOSE, EDITOR_PREV, EDITOR_NEXT, EDITOR_DUPLICATE } EditorResult;
+/* EDITOR_LOCK: the user clicked the padlock (main.c runs the same action as the font view's). */
+typedef enum { EDITOR_RUNNING = 0, EDITOR_CLOSE, EDITOR_PREV, EDITOR_NEXT, EDITOR_LOCK } EditorResult;
 
 typedef struct Editor Editor; /* opaque, defined in editor.c */
 
@@ -35,7 +35,7 @@ int     Editor_Tool(const Editor *e);
 char    Editor_Ink(const Editor *e);
 int     Editor_Zoom(const Editor *e);
 
-/* A read-only editor is a viewer of an original: no tool, advance or move command changes the glyph. */
+/* A read-only editor is a viewer of a locked font: no tool, advance or move command changes the glyph. */
 void    Editor_SetReadOnly(Editor *e, bool readOnly);
 /* The pxgl hash (32 lower-case hex, "" = no ink) the glyph had when the font was opened, or NULL when unknown:
  * the status line shows "pxgl <original> -> <current>" once the bitmap changed.  Call after Editor_Open. */

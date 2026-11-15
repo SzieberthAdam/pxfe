@@ -21,7 +21,7 @@ wait 3
 dblclick @card:0
 wait 8
 assert infont 1
-click @Duplicate_to_Edit
+click @Unlock
 wait 6
 click @ascent+
 wait 6
@@ -51,14 +51,14 @@ assert sqlfile tests/tmp/e2e.pxfdb "select count(*) from pxfm" 4
 click @Fonts
 wait 4
 click @Filter
-type 0820dc
+type Sans Regular
 wait 4
 sleep 600
 click @card:0
 wait 3
 dblclick @card:0
 wait 8
-click @Duplicate_to_Edit
+click @Unlock
 wait 6
 click @ascent+
 wait 6
@@ -70,21 +70,20 @@ waitfor loading = 0 60000
 wait 10
 assert modal none
 assert unsaved 0
-assert sqlfile tests/tmp/e2e.pxfdb "select count(*) from pxfm" 5
-assert storefonts 5
+assert sqlfile tests/tmp/e2e.pxfdb "select count(*) from pxfm" 4
+assert storefonts 4
 # Esc on the prompt cancels
 click @Fonts
 wait 4
 click @Filter
-type 0820dc
+type Sans Regular
 wait 4
 sleep 600
 click @card:0
 wait 3
 dblclick @card:0
 wait 8
-click @Duplicate_to_Edit
-wait 6
+# (the lock state was saved with the database: the font opens unlocked)
 click @ascent+
 wait 6
 click @ascent+

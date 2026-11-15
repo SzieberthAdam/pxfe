@@ -1,11 +1,11 @@
-# 11. Modified is decided by the hash: any edit that is undone, or reverted by hand, clears it; Save has nothing to write.
+# 11. Modified is decided by the hash: any edit that is undone, or reverted by hand, clears it; only the unlock is left to save.
 wait 5
 assert readonly 1
-click @Duplicate_to_Edit
+click @Unlock
 wait 5
 assert readonly 0
 assert modified 0
-assert unsaved 0
+assert unsaved 1
 snapdir tests/tmp/e2elib
 click @ascent+
 wait 3
@@ -14,10 +14,7 @@ assert unsaved 1
 click @ascent-
 wait 3
 assert modified 0
-assert unsaved 0
-key s ctrl
-wait 4
-assert toast No changes to save
+assert unsaved 1
 assert snapdir unchanged
 # delete + undo
 click @cell:U+0041
@@ -43,5 +40,5 @@ assert modified 0
 click @Back
 wait 4
 assert modified 0
-assert unsaved 0
+assert unsaved 1
 assert snapdir unchanged

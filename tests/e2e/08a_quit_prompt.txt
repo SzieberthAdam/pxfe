@@ -1,5 +1,7 @@
 # 8a. Unsaved-changes prompt on window close (testdata copy). Ends with Discard, which must exit the app.
 wait 5
+click @Unlock
+wait 4
 click @ascent+
 wait 3
 assert dirty 1
@@ -11,7 +13,7 @@ shot tests/tmp/shots/08_quit_prompt.png
 click @Cancel
 wait 30
 assert modal none
-assert dirty 1
+assert unsaved 1
 assert m.ascent 7
 # Esc cancels too
 closewindow

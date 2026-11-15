@@ -7,7 +7,7 @@
  * Key of everything: the font's pxfm hash, 32 lowercase hex characters.  Layer ids are unique in the file and never reused
  * (AUTOINCREMENT), a layer's corrections belong to its id.
  *
- * Schema, schema_version = 2 (a version 1 file is upgraded in memory when it is opened, and on disk at the next save):
+ * Schema, schema_version = 3 (a version 1 or 2 file is upgraded in memory when it is opened, and on disk at the next save):
  *   meta(key TEXT PRIMARY KEY, value TEXT NOT NULL)              'format' = 'pxfe-settings', 'schema_version' = '1'
  *   layer(id INTEGER PRIMARY KEY AUTOINCREMENT,
  *         font TEXT NOT NULL,                  pxfm hash of the edited font
@@ -25,6 +25,9 @@
  *         follow INTEGER NOT NULL DEFAULT 0,   1: the glyphs of the font are DRAWN from this layer (fit.h) while they are not edited by hand
  *         mode INTEGER NOT NULL DEFAULT 0,     how they are drawn: 0 smooth (coverage >= threshold), 1 pixel font (the centre of a pixel)
  *         threshold REAL NOT NULL DEFAULT 0.5)
+ *   unlocked(kind INTEGER NOT NULL, hash TEXT NOT NULL, PRIMARY KEY (kind, hash))     version 3.  The fonts (kind 0, pxfm hash) and
+ *            typefaces (kind 1, pxtf hash) the user unlocked for editing; every other one is locked.  The rows follow the hash when
+ *            editing changes it (fs_rename_font, fs_rename_typeface).
  *   correction(font TEXT NOT NULL, layer INTEGER NOT NULL, code INTEGER NOT NULL, dx REAL, dy REAL,
  *              dsize REAL NOT NULL,              factor multiplied onto the layer's scale, 1.0 = none
  *              hidden INTEGER NOT NULL, PRIMARY KEY (layer, code))
@@ -41,7 +44,7 @@
 #include <stdbool.h>
 #include <stdint.h>
 
-#define FS_SCHEMA_VERSION 2
+#define FS_SCHEMA_VERSION 3
 #define FS_ERR_LEN 256
 #define FS_HASH_LEN 33         /* 32 hex characters + NUL */
 #define FS_PATH_LEN 1100
@@ -101,6 +104,14 @@ bool fs_has_any(const FSettings *fs);          /* any layer at all */
 bool fs_has_font(const FSettings *fs, const char *hash);
 bool fs_remove_font(FSettings *fs, const char *hash);                    /* layers and corrections of the font */
 bool fs_copy_font(FSettings *fs, const char *fromHash, const char *toHash);   /* new ids; replaces what toHash had; from == to is an error */
+
+/* the lock (kind 0 font, 1 typeface); locked is the default, so only unlocked ones are stored */
+bool fs_is_unlocked(FSettings *fs, int kind, const char *hash);
+bool fs_set_unlocked(FSettings *fs, int kind, const char *hash, bool unlocked);
+/* everything the font's hash keys follows it to its new hash: layers, corrections, the unlocked row, and layers of other fonts that
+ * use it as their source (what `to` had is replaced).  The same for a typeface's unlocked row. */
+bool fs_rename_font(FSettings *fs, const char *from, const char *to);
+bool fs_rename_typeface(FSettings *fs, const char *from, const char *to);
 
 /* layers.  list: fills out[0..max) sorted by position, returns the number of layers the font has (can be > max), -1 on error */
 int fs_list_layers(FSettings *fs, const char *hash, FsLayer *out, int max);

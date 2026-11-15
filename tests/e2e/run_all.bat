@@ -30,37 +30,37 @@ call :fresh
 call :run 00_smoke "%DB% --font %H1%"
 call :run 01_grid "%REALD% --import-to tests\tmp\real1.pxfdb --font %REALH%"
 call :fresh
-call :run 02_metrics "%DB% --font %H1% --duplicate"
+call :run 02_metrics "%DB% --font %H1%"
 call :fresh
-call :run 03_selection "%DB% --font %H1% --duplicate"
+call :run 03_selection "%DB% --font %H1%"
 call :fresh
-call :run 04_delete "%DB% --font %H1% --duplicate"
+call :run 04_delete "%DB% --font %H1%"
 call :fresh
-call :run 05_clone "%DB% --font %H1% --duplicate"
+call :run 05_clone "%DB% --font %H1%"
 call :fresh
-call :run 06_editor "%DB% --font %H1% --duplicate"
+call :run 06_editor "%DB% --font %H1%"
 call :fresh
-call :run 06b_palette "%DB% --font %H3% --duplicate"
+call :run 06b_palette "%DB% --font %H3%"
 call :fresh
-call :run 06c_noascent "%DB% --font %H2% --duplicate"
+call :run 06c_noascent "%DB% --font %H2%"
 call :fresh
-call :run 07a_save "%DB% --typeface %HTF% --duplicate"
+call :run 07a_save "%DB% --typeface %HTF%"
 call :run 07b_reload "%DB%"
 call :fresh
-call :run 07d_real "%REALD% --import-to tests\tmp\real2.pxfdb --font %REALH% --duplicate"
+call :run 07d_real "%REALD% --import-to tests\tmp\real2.pxfdb --font %REALH%"
 call :fresh
 call :run 07e_nodb ""
 call :fresh
-call :run 08a_quit_prompt "%DB% --font %H1% --duplicate"
+call :run 08a_quit_prompt "%DB% --font %H1%"
 call :fresh
-call :run 08b_quit_save "%DB% --font %H1% --duplicate"
+call :run 08b_quit_save "%DB% --font %H1%"
 call :run 08c_quit_check "%DB%"
 call :fresh
-call :run 08d_quit_clean "%DB% --font %H1% --duplicate"
+call :run 08d_quit_clean "%DB% --font %H1%"
 call :fresh
-call :run 08e_load_prompt "%DB% --font %H1% --duplicate"
+call :run 08e_load_prompt "%DB% --font %H1%"
 call :fresh
-call :run 09_misc "%DB% --font %H1% --duplicate"
+call :run 09_misc "%DB% --font %H1%"
 call :fresh
 call :run 10_readonly "%DB% --typeface %HTF%"
 call :fresh
@@ -68,7 +68,7 @@ call :run 11_notmodified "%DB% --font %H1%"
 call :fresh
 call :run 12_typeface "%DB% --typeface %HTF%"
 call :fresh
-call :run 13_default_kern "%DB% --font %H1% --duplicate"
+call :run 13_default_kern "%DB% --font %H1%"
 call :fresh
 call :run 14_browser "%DB%"
 call :fresh
@@ -82,27 +82,27 @@ call :fresh
 call :run 18_saveas "%DB%"
 call :run 18b_reload_saveas "tests\tmp\e2e_copy.pxfdb"
 call :fresh
-call :run 19_uncoded "%DB% --font %H4% --duplicate"
+call :run 19_uncoded "%DB% --font %H4%"
 call :fresh
 call :run 21_usage_finder "%DB%"
 call :fresh
-call :run 23_modified_prompts "%DB% --font %H1% --duplicate"
+call :run 23_modified_prompts "%DB% --font %H1%"
 call :fresh
 call :run 24_import_flow ""
 call :fresh
 call :run 25_export_empty "%DB%"
 call :fresh
-call :run 26_export_append "%DB% --font %H1% --duplicate"
+call :run 26_export_append "%DB% --font %H1%"
 call :fresh
 call :run 27_export_overwrite "%DB%"
 call :fresh
 call :run 28_export_nobackup "%DB%"
 call :fresh
-call :run 29_dup_replace "%DB% --font %H1% --duplicate"
+call :run 29_edit_replace "%DB% --font %H1%"
 call :fresh
-call :run 31_dup_shared "%DB% --font %H1% --duplicate"
+call :run 31_edit_twice "%DB% --font %H1%"
 call :fresh
-call :run 32_dup_back_to_original "%DB% --font %H1% --duplicate"
+call :run 32_edit_back_to_original "%DB% --font %H1%"
 call :fresh
 call :run 30_delete_save "%DB%"
 call :run 30b_delete_reload "%DB%"
@@ -111,11 +111,11 @@ call :run 40_glyph_bar "%DB% --font %H1%"
 call :fresh
 call :run 41_glyph_panel "%DB% --font %H1%"
 call :fresh
-call :run 42_layers_add "%DB% --font %H1% --duplicate"
+call :run 42_layers_add "%DB% --font %H1%"
 call :fresh
-call :run 43_layers_edit "%DB% --font %H1% --duplicate"
+call :run 43_layers_edit "%DB% --font %H1%"
 call :fresh
-call :run 44_layers_pixels "%DB% --font %H1% --duplicate"
+call :run 44_layers_pixels "%DB% --font %H1%"
 call :fresh
 call :run 45_layers_discover "%DB% --font %H1%"
 call :fresh
@@ -124,9 +124,9 @@ call :fresh
 call :run 51_sample_strip "%DB% --font %H1%"
 call :run 53_sample_persist "%DB% --font %H1%"
 call :fresh
-call :run 52_sample_strip_live "%DB% --font %H1% --duplicate"
+call :run 52_sample_strip_live "%DB% --font %H1%"
 call :fresh
-call :run 52b_glyph_preview "%DB% --font %H1% --duplicate"
+call :run 52b_glyph_preview "%DB% --font %H1%"
 call :fresh
 call :run 54_typeface_boxes "%DB%"
 call :fresh
@@ -136,35 +136,41 @@ call :run 58_delete_ui "%DB%"
 call :fresh
 call :run 59_navigation "%DB%"
 call :fresh
-call :run 59b_navigation_orphan "%DB% --font %H3% --duplicate"
+call :run 59b_navigation_orphan "%DB% --font %H3%"
 call :fresh
 (echo [browser]& echo tab=1& echo sidetab=1) > tests\tmp\e2e.ini
 call :run 61_views "%DB%"
 call :fresh
-call :run 70_unifont "%DB% --font %H1% --duplicate"
+call :run 70_unifont "%DB% --font %H1%"
 call :run 93_menu_keys "%DB%"
 call :fresh
 call :run 94_font_layer_smoke "%DB%"
 call :fresh
 call :run 95_fl_newfont "%DB%"
 call :fresh
-call :run 96_fl_adjust "%DB% --font %H1% --duplicate"
+call :run 96_fl_adjust "%DB% --font %H1%"
 call :fresh
-call :run 97_fl_save "%DB% --font %H1% --duplicate"
+call :run 97_fl_save "%DB% --font %H1%"
 call :run 97b_fl_reload "%DB% --font %H1%"
 call :fresh
-call :run 97c_fl_empty "%DB% --font %H1% --duplicate"
+call :run 97c_fl_empty "%DB% --font %H1%"
 call :fresh
-call :run 97d_fl_saveas "%DB% --font %H1% --duplicate"
+call :run 97d_fl_saveas "%DB% --font %H1%"
 call :fresh
-call :run 98_fl_orig "%DB% --font %H1%"
+call :run 98_fl_locked "%DB% --font %H1%"
 call :fresh
-call :run 99_fl_dup_commit "%DB% --font %H1%"
+call :run 99_fl_edit_commit "%DB% --font %H1%"
 call :fresh
 call :run 101_import_font "%DB%"
 call :fresh
 call :run 102_import_glyph "%DB%"
 call :run 102b_import_reload "%DB%"
+call :fresh
+call :run 104_default_glyph "%DB% --font %H1%"
+call :run 104b_default_reload "%DB% --font 897787da6f47a5d4ad8068bf5bc1bab8"
+call :fresh
+call :run 105_lock "%DB% --font %H1%"
+call :run 105b_lock_reload "%DB% --font 36e0649997646b5da1e22ded4ab8f8db"
 
 echo.
 echo %RUNS% scripts run, %FAILS% failed

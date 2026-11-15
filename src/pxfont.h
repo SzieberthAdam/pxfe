@@ -30,8 +30,9 @@
  *   0 .. 0x10FFFF    a code point;
  *   0xF00000 ..      a glyph with no code point: the first such glyph F00000, the next F00001, ... with NO gap
  *                    (up to FFFFFE); the code names the glyph only inside its font;
- *   0xFFFFFF         only the extra line of the default glyph in the FILE; it is never the code of a glyph in the model
- *                    (the model keeps the default glyph as PxFont.defaultCodepoint).
+ *   0xFFFFFF         the default glyph: a glyph of its own (bitmap, offsets, advance), always the last one; it may
+ *                    repeat a coded glyph or appear nowhere else in the font (pxfm.md calls such a line "ignored",
+ *                    pxfe keeps and shows it).
  * Codes 0x110000 .. 0xEFFFFF do not exist.
  * PX_NO_CODEPOINT (-1) is only the sentinel "none" (no default glyph, glyph not found); it is no glyph's code any more.
  * The UI shows a code point as U+XXXX and an uncoded glyph as #n, n = code - PX_CODE_UNCODED_FIRST. */
@@ -93,15 +94,9 @@ typedef struct PxFont {
     bool hasPalette;               /* COLOR lines present (non-default palette) */
     bool colorUsed[PX_NUM_PIXELS]; /* which pixel chars have a COLOR entry (index = px_pixel_index) */
     uint32_t color[PX_NUM_PIXELS]; /* RRGGBBAA; defaults: '.'=FFFFFFFF, '0'=000000FF, others 000000FF */
-    PxGlyph *glyphs;               /* kept sorted by code (stable): code points, then the uncoded glyphs F00000.. */
+    PxGlyph *glyphs;               /* kept sorted by code (stable): code points, then the uncoded glyphs F00000.., then the default glyph FFFFFF */
     int count, capacity;
-    int32_t defaultCodepoint;      /* code of the default glyph (written as the extra line FFFFFF), or PX_NO_CODEPOINT.
-                                      A file's reader sets only a code point; a program may set an uncoded glyph's code, which
-                                      other readers ignore (valid, "dangling" for them). */
-    /* A FFFFFF line that names no glyph line is valid and ignored by readers; it is kept so that rewriting the file
-     * gives the same bytes.  It is written only while defaultCodepoint is PX_NO_CODEPOINT. */
-    bool hasDanglingDef; int defDx, defDy, defAdvance; char defHash[33]; /* defHash lower-case, "" = no ink */
-    PxKern *kern; int kernCount, kernCap;  /* kerning pairs (codes; an F-code names an uncoded glyph, FFFFFF the default line);
+    PxKern *kern; int kernCount, kernCap;  /* kerning pairs (codes; an F-code names an uncoded glyph, FFFFFF the default glyph);
                                               the writer sorts them, drops value 0 and pairs that name an F-code no glyph has */
     char fileHash[33];             /* hash of the pxfm this font was read from ("" if built in memory) */
 } PxFont;
@@ -133,11 +128,14 @@ int  px_font_add_glyph(PxFont *f, const PxGlyph *g);    /* deep copies g (keepin
 /* Deep copies g and gives it the next code without a code point (F00000 + number of uncoded glyphs); returns its index. */
 int  px_font_add_uncoded(PxFont *f, const PxGlyph *g);
 int  px_font_uncoded_count(const PxFont *f);            /* number of glyphs without a code point */
-/* Removes the glyph.  Its kerning pairs go, and the default glyph becomes none if it was this one.  Removing an
- * UNCODED glyph also renumbers the later F-codes (code - 1): the glyphs, their kerning pairs and the default glyph. */
+/* Removes the glyph (the default glyph too).  Its kerning pairs go.  Removing an
+ * UNCODED glyph also renumbers the later F-codes (code - 1): the glyphs and their kerning pairs. */
 void px_font_remove_glyph(PxFont *f, int index);
 void px_font_sort(PxFont *f);                           /* restore order (stable) */
-void px_font_set_default(PxFont *f, int32_t code);      /* PX_NO_CODEPOINT clears; also clears a dangling FFFFFF line */
+int  px_font_default_index(const PxFont *f);            /* index of the default glyph (code FFFFFF), or -1 */
+/* Makes glyph `src` the default: its bitmap, offsets and advance are copied into the FFFFFF glyph (made when missing).
+ * The copy is independent from then on. */
+bool px_font_set_default_from(PxFont *f, int src);
 /* Set (or, value 0, remove) a kerning pair; keeps pairs unique. */
 void px_font_set_kern(PxFont *f, int32_t first, int32_t second, int value);
 int  px_font_kern(const PxFont *f, int32_t first, int32_t second);   /* 0 if none */

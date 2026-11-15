@@ -25,14 +25,16 @@ The scripts run at 240 frames per second, so two clicks on one spot within 0.4 s
 
 pxfe works on one `.pxfdb` database: Load reads it into memory (an in-memory SQLite store) on a worker thread, with a progress screen.
 
-Memory is changed by committing duplicates and by deleting fonts and typefaces; the file is changed only by Save and Save As (a temp file in the same folder, then a replace).
+Memory is changed by committing edits of unlocked fonts and by deleting fonts and typefaces; the file is changed only by Save and Save As (a temp file in the same folder, then a replace).
 The modified state is a change counter, shown in the window title ("name.pxfdb — modified"), the status bar and the Save button.
 
-An original (opened from the database) is read-only.
-"Duplicate to Edit" makes an editable deep copy.
+Every font and typeface is locked until it is unlocked (the padlock button, script name `@Unlock`; `@Lock` once it is unlocked), and a locked font is read-only.
+An unlocked font is edited in place: its edits change it in the store, and everything that names it follows.
+The lock is kept in the settings sidecar, so a lock change counts as unsaved (`unsaved 1`) while `modified` (the hash) stays 0.
+The scripts that edit a font start with `click @Unlock` and `wait 4`.
 The modified marker of a font depends only on its hash (and that of the typeface).
-A duplicate is committed into memory when its font view is left, and before Save, Export, Load, Import and quit.
-A later commit of the same duplicate replaces the earlier one.
+The edits of an unlocked font are committed into the store when its font view is left, and before Save, Export, Load, Import and quit.
+A later commit replaces the earlier one (there are no in-between fonts), and `modified` is then relative to what the store holds.
 
 Import Folder reads a folder of pxtf, pxfm and pxgl files with strict readers into a new `.pxfdb` and loads it.
 Export to Folder writes memory into a folder: Append adds what is missing, Overwrite deletes the contents of `pxtf/`, `pxfm/` and `pxgl/` first, with an optional backup (the folder's current data imported into a `.pxfdb`).
@@ -47,7 +49,7 @@ One command per line, `#` starts a comment.
 - Two clicks on one spot closer than 0.4 s are a double click: after `dblclick` that opens a view, `sleep 600` before clicking there again.
 - `click`, `dblclick`, `drag`, `move`, `wheel`, `mousedown`, `mouseup`, `key`, `type`, `closewindow` send input.
 - Targets: `@Name` (a widget registered by the frame, spaces become `_`), `@cell:U+0041`, `@cell:#0` (an uncoded glyph), `@cellorigin:U+0041`, `@ecell:x,y` (y is a row of the font box, 0 is its top), `@card:N`, `@fcell:N` (a result of the glyph finder), or two numbers as screen coordinates.
-- `assert <name> [op] <value>` checks state: `glyphs`, `selected`, `modified` (the font differs from its original), `unsaved` (memory differs from the file, or a duplicate has edits that are not in memory), `dbmodified` (the change counter), `duppending`, `readonly`, `hascont`, `m.<metric>`, `has.<metric>`, `ratioa`, `ratiob`, `mono`, `default`, `kerncount`, `undo`, `redo`, `editor`, `inbrowser`, `btotal`, `bvisible`, `c.italic`, and more.
+- `assert <name> [op] <value>` checks state: `glyphs`, `selected`, `modified` (the font differs from what the store holds), `unsaved` (memory differs from the file, or the open font has edits that are not in the store), `dbmodified` (the change counter), `editpending`, `readonly`, `hascont`, `m.<metric>`, `has.<metric>`, `ratioa`, `ratiob`, `mono`, `default`, `kerncount`, `undo`, `redo`, `editor`, `inbrowser`, `btotal`, `bvisible`, `c.italic`, and more.
 - Database state: `hasstore`, `storeimported` (1 when it was just imported), `storefonts`, `storeglyphs`, `storetypefaces`, `loading`, `opentime` (ms), `infont`, `infinder`, `uncoded`.
 - Insight and finder state:
   `usage` (fonts that hold the selected glyphs), `usagevar` (typeface variants that name them), `usagecode` (fonts that hold the single selected glyph under its code, -1 when none), `similar` (entries of the similar list), `insightbusy`.
@@ -62,7 +64,7 @@ One command per line, `#` starts a comment.
   In the Typeface view the rows' buttons are `@tv.open.N`, `@tv.dup.N` and `@tv.delete.N`; `blast` 6 is the opening of a typeface.
 - Panel tabs: `ptab` (right panel of the font view: 0 Font, 1 Glyph, 2 Similar), `bside` (side panel of the browser: 0 View, 1 Similar, 2 Typeface), `fside` (side panel of the Glyphs view: 0 View, 1 Usage).
   The tab buttons are `@ptab_Font`, `@ptab_Glyph`, `@ptab_Similar`, `@bside_View`, `@bside_Typeface`, `@bside_Similar`, `@fside_View`, `@fside_Usage`.
-  The Typeface tab exists in the Typefaces and Typeface views only (version 7); its fields (`@c.family`, `@c.italic`…) and the boxed hash `@hash_typeface_full` are read-only until "Duplicate Typeface to Edit" (`@Duplicate_Typeface_to_Edit` in the tab, `@tv.duptypeface` in the Typeface view's heading) made an editable copy; then `@hash_typeface_orig` shows the original hash beside the current one.
+  The Typeface tab exists in the Typefaces and Typeface views only (version 7); its fields (`@c.family`, `@c.italic`…) and the boxed hash `@hash_typeface_full` are read-only until the typeface lock (`@tf_lock` in the tab and in the Typeface view's heading) unlocked the typeface; then `@hash_typeface_orig` shows the hash in the database beside the current one.
   A script scrolls the panel (`wheel -8 1250 400`) before it clicks a switch, and waits 10 frames after the click (the content changes height with the original hash box).
   The metric widgets (`@ascent+`…) exist only on their tab, so a script clicks the tab first.
 - Zoom (version 7): every zoom is one stepper, `[-] 3x [+]`, registered as `@<prefix>-` and `@<prefix>+`: `@zoom` (font view toolbar), `@ezoom` (glyph view), `@sz` (the sample strip), `@bzoom` (the library views' View tab), `@fzoom` (the Glyphs view's View tab, `fzoom` is its value, default 3).
@@ -77,8 +79,8 @@ One command per line, `#` starts a comment.
   `bvisible` counts variants, `btypefaces` the typefaces of the library (the badge of the tab), `bboxes` counts boxes, `bboxvars<N>` the variants shown in box N, `bselhdr` is 1 while a box header (the typeface) is selected, not a variant row.
   `@card:N` is the N-th visible variant row (in the Fonts tab the N-th card), `@hdr:N` the header of box N.
   `bink<N>` counts the lines of the sample of visible entry N that show ink (-1 until laid out).
-  `blast` is the BrowserAction of the last choice the browser returned (1 open, 2 duplicate, 3 insight, 4 delete font, 5 delete typeface), `assert blastpxfm <hash>` and `assert blastpxtf <hash>` check its hashes (a prefix is enough).
-  Right click: `click @card:0 right`; the side panel's buttons are `@Delete_Font` and `@Delete_Typeface` (`assert w.Delete_Font 0|1`); the context menu items are `@Ctx_Open`, `@Ctx_Duplicate_to_Edit`, `@Ctx_Delete_Font`, `@Ctx_Delete_Typeface`.
+  `blast` is the BrowserAction of the last choice the browser returned (1 open, 2 unused, 3 insight, 4 delete font, 5 delete typeface), `assert blastpxfm <hash>` and `assert blastpxtf <hash>` check its hashes (a prefix is enough).
+  Right click: `click @card:0 right`; the side panel's buttons are `@Delete_Font` and `@Delete_Typeface` (`assert w.Delete_Font 0|1`); the context menu items are `@Ctx_Open`, `@Ctx_Lock`, `@Ctx_Delete_Font`, `@Ctx_Delete_Typeface`.
 - Sample (shared by the browser and the font view): `assert sample <text>` (`\n` is a new line, `-` is empty), `samplelines`, `samplefocus`, `setclip <text>` puts text on the clipboard for Ctrl+V.
   The browser's box is `@Sample`, the strip's `@Sample_Edit`.
   Strip state: `stripzoom`, `striph` (stored height), `stripcollapsed`; widgets `@sz-`, `@sz+`, `@Sample_Resize` (the top edge), `@Sample_Fold`, `@Sample_Preview`, and `@Sample_Origin`, the top left of the first line's font box (for `assert pixel`).
@@ -86,7 +88,7 @@ One command per line, `#` starts a comment.
 - `waitfor <name> <op> <value> [ms]` idles until a state of `assert` holds (default timeout 60 s, a timeout is a failure).
 - `snapdir <dir>` takes the snapshot used by `assert snapdir`.
 - Glyph view (version 4): `gtab` (right panel: 0 Glyph, 1 Usage, 2 Layers; the tab buttons are `@gtab_Glyph`, `@gtab_Usage`, `@gtab_Layers`), `emetrics` (metric lines on), `ehidden` (the edited glyph's layer is hidden), `ezoom`.
-  The bar has `@ezoom-`, `@ezoom+`, `@ezoom.fit`, `@Metrics` and, in an original, the chip `@ro_chip` (Read-only, Duplicate to Edit).
+  The bar has `@ezoom-`, `@ezoom+`, `@ezoom.fit`, `@Metrics` and the lock (`@Unlock` or `@Lock`).
   The panel has `@ghash_orig` and `@ghash_cur` (click copies the full glyph hash, `assert clip <text>` checks the clipboard) and `@glyph_find`.
 - Layers: `assert l.count`, `l.cur` (index of the "Current glyph" row), `l.sel`, `l.pop` (the Add Layer popover is open), `l.focus`, `l.fonts` (fonts in the layer glyph cache) and, per layer N from the top: `l.vis.N`, `l.op.N` (opacity %), `l.dx.N`, `l.dy.N`, `l.color.N` (`0xRRGGBB`), `l.same.N` (follows the edited glyph), `l.this.N` (from this font), `l.code.N`, `l.ink.N` (inked pixels, -1 = not in font).
   Widgets: `@+_Add_Layer`, `@lay_row_N`, `@lay_eye_N`, `@lay_up_N`, `@lay_down_N`, `@lay_del_N`, `@lay_sw_K` (swatches), `@lay_hex`, `@lay_op` (slider), `@lay_opv.value|plus|minus`, `@lay_x.*`, `@lay_y.*`; in the popover `@lay_src_This_font`, `@lay_src_Library_font`, `@lay_search`, `@lay_font_N`, `@lay_same`, `@lay_glyph`, `@Add`, `@Cancel`.
@@ -96,7 +98,7 @@ One command per line, `#` starts a comment.
   `assert flayers N` counts the font layers of the open font, `assert flayer <i> <field> <value>` reads one (i = 0 is the top font layer): `kind` (0 database font, 1 file), `face`, `visible`, `opacity`, `dx`, `dy`, `scale`, `color`, `size`, `mtime`, `ncorr`, `nfaces`, `outline`, `bitmap`, `ok` (numbers) and `source`, `label`, `err` (text; contained).
   `assert fcorr <i> <code> <field> <value>` reads a layer's correction for a code (`exists`, `dx`, `dy`, `dsize`, `hidden`).
   `assert sidecar exists|missing` is the settings file beside the database; `fsdirty` (the settings differ from the file), `fspending` (layers not yet copied into the settings), `fslayers` (layers the settings hold for the open font's current hash), `fshasany`, `flcache` (outline textures cached), `docnew`, `nfopen`.
-  A change of the layers reaches the settings one frame later (`wait 6` before `fsdirty` or `unsaved`), a change of the font's hash (a pixel edit of a duplicate) only at the commit or at Save.
+  A change of the layers reaches the settings one frame later (`wait 6` before `fsdirty` or `unsaved`), a change of the font's hash (a pixel edit of an unlocked font) only at the commit or at Save.
   A settings-only change counts for `unsaved` and the status bar, not for `dbmodified` (that counts the store).
   The sidecar can be read with `assert sqlfile <db>-settings "<query>" <expected>` (tables `layer` and `correction`).
   The stack rows of the Layers tab count font layers too (`assert l.count`, `l.dx.N`, ...); a font layer's row has the tag FONT.
@@ -122,25 +124,25 @@ One command per line, `#` starts a comment.
 - Menu (formerly File) and export dialog: `@Menu`, `@file.load`, `@file.save`, `@file.saveas`, `@file.import`, `@file.export`, `@file.quit`, `@Save`; `assert filemenu`; the dialog has `xdopen`, `xfound_fonts|typefaces|glyphs`, `xbackup`, the widgets `@xd.backup`, `@xd.change`, `@Append`, `@Overwrite`, `@Cancel`; after an export `xw_*` (written), `xs_*` (skipped), `xd_*` (deleted) and `xbackupfailed`.
 - `copyfile`, `writefile`, `delete`, `verifylib <pxfm> <libroot> [N]`, `shot <png>`, `expectquit`.
 
-Command line options for the console build: `--ini <file>`, `--font <hash>`, `--typeface <hash>`, `--duplicate`, `--import-to <pxfdb>`, `--job-hold-ms N` (keep the progress screen at least that long), `--shot-job <png>` with `--shot-job-ms N` (a screenshot of the progress screen), `--play <script>`.
+Command line options for the console build: `--ini <file>`, `--font <hash>`, `--typeface <hash>`, `--unlock`, `--import-to <pxfdb>`, `--job-hold-ms N` (keep the progress screen at least that long), `--shot-job <png>` with `--shot-job-ms N` (a screenshot of the progress screen), `--play <script>`.
 
 The environment variable `PXFE_TRACE=1` prints one `TRACE load ...` or `TRACE import ...` line with the time of every load or import, and `TRACE saveas ...` for Save As.
 
 ## Scripts
 
-- 00 to 06c: read-only original, grid, metrics, selection, delete, clone, glyph editor, palette, font without ASCENT/DESCENT.
+- 00 to 06c: locked font, grid, metrics, selection, delete, clone, glyph editor, palette, font without ASCENT/DESCENT.
   06b and 06c and 02 export to a folder to read the pxfm that a commit made.
-- 07a: Save of a duplicate (file bytes change only at Save, the rows, the replaced second commit), 07b reload; 07d a real font imported from `tests\tmp\reallib`; 07e the empty state, File menu, Load of a missing and of a broken file.
+- 07a: Save of an unlocked font (file bytes change only at Save, the rows, the in-place commit), 07b reload; 07d a real font imported from `tests\tmp\reallib`; 07e the empty state, File menu, Load of a missing and of a broken file.
 - 08a to 08d: unsaved-changes prompt on close (Cancel, Esc, Discard, Save); 08e on Load (Cancel, Discard, Save, Esc, an error).
 - 09: input paths.
-- 10: read-only behaviour and Duplicate to Edit.
+- 10: read-only behaviour of a locked font and Unlock.
 - 11: modified marker by hash.
-- 12: a typeface duplicate (version 7): "Duplicate Typeface to Edit" in the Typeface view, the fields and the italic switch of its Typeface tab, the "*" in the first nav segment, Save writes a new pxtf and no pxfm, the original stays, leaving the view commits.
+- 12: the typeface lock (`@tf_lock`) in the Typeface view, the fields and the italic switch of its Typeface tab, the "*" in the first nav segment, Save writes the typeface under its new pxtf hash (no new pxfm, the old pxtf is gone), leaving the view commits.
 - 13: default glyph and kerning.
-- 14: browser: tabs and counts, filter, sample, zoom, columns, opening a card read-only, Back, Duplicate to Edit, the commit into memory, Save.
+- 14: browser: tabs and counts, filter, sample, zoom, columns, opening a card read-only, Back, the lock of a card, the commit into the store, Save.
 - 15: Import Folder from the File menu (progress, replace prompt, the folder untouched, navigation).
 - 16: Load (File menu, Ctrl+O), the file only read.
-- 17 and 17b: duplicate, edit, Save; reload.
+- 17 and 17b: unlock, edit, Save; reload.
 - 18 and 18b: Save As, later Saves go to the new file, replace prompt, `lastPxfdb` in the ini; reload.
 - 19: uncoded glyphs: `#0` captions, delete renumbers, Clone with "No Code Point".
 - 21: the Similar tab, glyph usage, Find in Library, the glyph finder.
@@ -150,7 +152,8 @@ The environment variable `PXFE_TRACE=1` prints one `TRACE load ...` or `TRACE im
 - 26: Append (existing file and other files untouched, new font committed and written).
 - 27: Overwrite with a backup (backup holds the old data, other files survive, folder equals memory).
 - 28: Overwrite when the backup fails (nothing deleted, second confirmation) and with the backup switched off.
-- 29: a duplicate committed several times leaves one font in memory; editing back to the original drops it.
+- 29: a font committed several times stays one font in the store (29_edit_replace); editing back to the original content gives the original hash again.
+- 31 (31_edit_twice) and 32 (32_edit_back_to_original): the same, with two commits and with an edit undone by hand.
 - 30 and 30b: delete a font and a typeface, Save, reload.
 - 40 to 45: the glyph view (bar, panel, layers); 45 is the discoverability: "Open in Glyph View" in the font view, the bar's `@Layers` toggle (`@Layers_1` when a layer exists), the empty Layers tab with its big `@+_Add_Layer`.
 - 50 to 55: samples, typeface boxes, delete requests of the browser.
@@ -165,13 +168,13 @@ The environment variable `PXFE_TRACE=1` prints one `TRACE load ...` or `TRACE im
   97 and 97b: Save writes the sidecar `<db>-settings` and leaves the `.pxfdb` as it was (`assert samefile`); 97b is a second process that reads layers, order and corrections back, a layer whose file was deleted stays with its settings ("file missing").
   97c: a font without layers leaves no sidecar, removing the last layer and Save deletes it.
   97d: Save As writes a new sidecar and keeps the old one, Export to Folder creates none, Import starts with empty settings.
-  98: layers on an original (read-only) font: the `.pxfdb` is byte for byte unchanged (`copyfile` before, `assert samefile` after), the sidecar is written, the layers survive Duplicate to Edit.
-  99: a duplicate with layers, a pixel edit and the commit: the layers are under the new hash and the original's stay.
+  98: layers on a locked font (98_fl_locked): the `.pxfdb` is byte for byte unchanged (`copyfile` before, `assert samefile` after), the sidecar is written, the layers survive Unlock and move to the new hash with a pixel edit.
+  99: an unlocked font with layers, a pixel edit and the commit (99_fl_edit_commit): the layers are under the new hash and nothing stays under the old one.
 - 100 (not in `run_all.bat`): font layer screenshots at 1400 x 900 in `tests\tmp\fl` (`shot_newfont`, `shot_glyph_empty`, `shot_glyph_pixels`, `shot_popover_file`, `shot_missing`); the command is in the first lines of the script.
 - 101, 102 and 102b (version 10, Import Font File):
   101: the dialog on a pixel font whose grid only the lattice search finds (`testdata\outline\PixelShift.ttf`), the new font and typeface, its layer, the Layers tab of the font view, a size change that draws every glyph again, undo and redo of it, a glyph edited by hand that stays, Redraw All, the commit and Save (the sidecar holds `follow`, `mode`, `em`); then a smooth font, a fixed size, a font of dots, GNU Unifont, a bitmap font, and files that cannot be imported.
   102: the glyph view of an imported font: the correction of one glyph draws that glyph again, the layer's offset and size draw every glyph again, a hand edit is kept; commit and Save.
-  102b: a second process: the font, its typeface and its layer come back; the original does not change with its layer, a duplicate does, and the hand-edited glyph is still told apart.
+  102b: a second process: the font, its typeface and its layer come back; a locked font does not change with its layer, an unlocked one does, and the hand-edited glyph is still told apart.
 - 103 (not in `run_all.bat`): screenshots of version 10 in `tests\tmp\imp` (the menu, the dialog on Noto Sans Regular, the Layers tab of the font view, two glyph views with the outline under the pixels); the command is in the first lines of the script.
 - 93: the keyboard in menus (Down, Up, Home, Enter, Escape on the File menu; the highlight follows the mouse; Enter does not reach the selected card behind the menu; `assert menuhi N`).
 - 59: the navigation bar (Menu, Typefaces | Fonts | Glyphs, the Typeface, Font and Glyph views, Alt+Left); 59b: a font without a typeface ("Orphaned").
@@ -188,8 +191,8 @@ The environment variable `PXFE_TRACE=1` prints one `TRACE load ...` or `TRACE im
 `pixelglyphlib` is only read.
 The script's Save As goes to `tests\tmp\real_saveas.pxfdb`, and `PXFE_TRACE` prints the load, import and save times.
 
-It opens five fonts as originals, one after the other: a FON typeface font with RATIO, a font without ASCENT and DESCENT, the font with the most glyphs, and two more.
-For each one it asserts read-only, not modified, and a current hash that equals the original hash and names a font of the store.
-Then it makes a duplicate, makes no edit, and asserts that Save has nothing to write.
+It opens five locked fonts, one after the other: a FON typeface font with RATIO, a font without ASCENT and DESCENT, the font with the most glyphs, and two more.
+For each one it asserts read-only, not modified, and a current hash that equals the stored hash and names a font of the store.
+Then it unlocks the font, makes no edit, and asserts that nothing changes in the store.
 
 The fonts are chosen by hash, so the script depends on those fonts being in the library.

@@ -1,5 +1,7 @@
-# 32. A duplicate edited to something new and then back to exactly its original: the commit goes and the original stays.
+# 32. An unlocked font edited to something new and then back to exactly its original content: the original hash is back, nothing else is left.
 wait 5
+click @Unlock
+wait 4
 assert readonly 0
 click @ascent+
 wait 6
@@ -7,12 +9,12 @@ click @nav.0
 wait 8
 click @Typefaces
 wait 8
-assert sql "select count(*) from pxfm" 5
+assert sql "select count(*) from pxfm" 4
 key right alt
 wait 6
 click @ascent-
 wait 6
-assert modified 0
+assert modified 1
 click @nav.0
 wait 8
 click @Typefaces

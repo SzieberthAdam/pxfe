@@ -35,7 +35,7 @@ assert navseg 2 Glyphs
 assert bvisible 2
 assert bselhdr 0
 assert w.tv.open.0 1
-assert w.tv.dup.1 1
+assert w.Unlock 1
 assert w.tv.delete.1 1
 assert w.Delete_Typeface 1
 shot tests/tmp/shots/59_typeface.png

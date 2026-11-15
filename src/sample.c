@@ -202,7 +202,7 @@ int Sample_Layout(const PxFont *f, const char *text, int boxAbove, int boxBelow,
     int maxL = maxLines > 0 && maxLines < SAMPLE_MAX_LINES ? maxLines : SAMPLE_MAX_LINES;
     out->runs = (SampleRun *)malloc(sizeof(SampleRun) * (strlen(text) + 2));
     out->nlines = 1;
-    int di = f->defaultCodepoint != PX_NO_CODEPOINT ? px_font_find(f, f->defaultCodepoint) : -1;
+    int di = px_font_default_index(f);
     int bh = f->has[PXM_CAPHEIGHT] && f->m[PXM_CAPHEIGHT] > 0 ? f->m[PXM_CAPHEIGHT] : (a > 2 ? a * 2 / 3 : 3);
     if (bh < 3) bh = 3;
     int bw = bh * 2 / 3;
@@ -231,7 +231,7 @@ int Sample_Layout(const PxFont *f, const char *text, int boxAbove, int boxBelow,
         SampleRun *r = &out->runs[out->nrun++];
         if (gi >= 0) {
             const PxGlyph *g = &f->glyphs[gi];
-            if (g->lazy && g->hash[0] && fallback) out->wantDefault = f->defaultCodepoint;
+            if (g->lazy && g->hash[0] && fallback) out->wantDefault = PX_CODE_DEFAULT;
             r->gi = gi; r->x = pen; r->w = g->w; r->h = g->h;
             pen += g->advance;
         } else {

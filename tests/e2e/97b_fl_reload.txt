@@ -1,7 +1,7 @@
 # 97b. Second process after 97: the layers and the corrections come back from the sidecar, in their order; the layer whose file is gone
-# stays in the list with its settings and says why.  The font is opened as an original (the layers are program settings).
+# stays in the list with its settings and says why.  The font is opened unlocked, as it was saved.
 wait 8
-assert readonly 1
+assert readonly 0
 assert sidecar exists
 assert flayers 3
 assert fslayers 3

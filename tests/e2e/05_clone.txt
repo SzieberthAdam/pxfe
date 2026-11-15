@@ -1,5 +1,7 @@
 # 5. Clone to a new code point through the dialog. Font: duplicate of testdata font 98eae9aa (6 glyphs; A = "..0.." on top).
 wait 5
+click @Unlock
+wait 4
 assert glyphs 6
 # nothing / several selected: error toast, no dialog
 key d ctrl

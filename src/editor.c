@@ -33,7 +33,7 @@ struct Editor {
     EditorBeforeChange before;
     void *user;
     bool changed;
-    bool readOnly;      /* an original: the glyph view is a viewer */
+    bool readOnly;      /* the font is locked: the glyph view is a viewer */
     bool hasOrig;       /* origHash is known (the pxgl hash of this glyph when the font was opened) */
     char origHash[33];
     int above, below;   /* the font box of the current frame */
@@ -85,7 +85,7 @@ static PxGlyph *G(Editor *e)
 static int gtop(const PxGlyph *g) { return -(g->y + g->h); }
 static char gget(const PxGlyph *g, int x, int r) { return px_glyph_get(g, x - g->x, r - gtop(g)); }
 
-/* nothing may change the glyph: an original, or its layer is hidden */
+/* nothing may change the glyph: the font is locked, or its layer is hidden */
 static bool locked(const Editor *e) { return e->readOnly || e->curHidden; }
 
 static void box_update(Editor *e) { px_font_box(e->font, &e->above, &e->below); }
@@ -296,6 +296,7 @@ static void sep(float x, float y, float h) { Th_VLine(x, y + 9, y + h - 9, TH_LI
 
 static void glyph_label(const PxGlyph *g, char *buf, size_t n)
 {
+    if (g->codepoint == PX_CODE_DEFAULT) { snprintf(buf, n, "Default"); return; }
     if (px_code_is_uncoded(g->codepoint)) { snprintf(buf, n, "#%d  (no code point)", g->codepoint - PX_CODE_UNCODED_FIRST); return; }
     if (!px_code_is_codepoint(g->codepoint)) { snprintf(buf, n, "(no code point)"); return; }
     snprintf(buf, n, "U+%04X", (unsigned)g->codepoint);   /* drawn as a glyph caption (Th_TextRich) */
@@ -473,14 +474,8 @@ static float draw_toolbar(Editor *e, Rectangle area)
         lm = Th_MeasureCap("MOVE");
         rx -= lm.x + 8; Th_TextCap("MOVE", rx, y2 + (int)((bh - lm.y) / 2), TH_TEXT_DIM);
     }
-    if (e->readOnly) {   /* between the ink palette and the move controls: the notice (dropped when it does not fit) and the primary button */
-        float lw = Th_Measure("Read-only").x + 8, cw = Th_DuplicateW(false), x0 = px + 8;
-        bool lab = x0 + lw + cw <= rx - 8;
-        Rectangle cr = {x0 + (lab ? lw : 0), y2, cw, bh};
-        if (lab) Th_Text("Read-only", x0, y2 + (int)((bh - Th_Measure("M").y) / 2), TH_TEXT_WARN);
-        Th_Reg("ro_chip", cr);
-        if (Th_Duplicate(cr, false, 0, "An original is read-only: make an editable copy of this font")) e->result = EDITOR_DUPLICATE;
-    }
+    /* between the ink palette and the move controls: the lock of the font */
+    if (Th_Lock(((Rectangle){px + 8, y2, bh, bh}), e->readOnly, e->readOnly ? "The font is locked: unlock it to edit it" : "Lock the font: nothing can change it")) e->result = EDITOR_LOCK;
     return total;
 }
 

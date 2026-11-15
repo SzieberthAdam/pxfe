@@ -1,5 +1,7 @@
 # 3. Selection (works in an original too, here on a duplicate): glyph order is U+0020, U+002C, U+0041, U+0048, U+004D, U+0078 (indices 0..5).
 wait 5
+click @Unlock
+wait 4
 assert selected 0
 click @cell:U+0041
 wait 2
@@ -40,7 +42,7 @@ assert selected 5
 # Ctrl+A selects all, Esc clears
 key a ctrl
 wait 2
-assert selected 6
+assert selected 7
 assert sel U+0020
 shot tests/tmp/shots/03_sel_all.png
 key esc

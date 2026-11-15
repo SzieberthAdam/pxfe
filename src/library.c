@@ -87,7 +87,6 @@ static void add_error(Library *lib, const char *msg) {
 static void info_from_store(LibEntry *e, const StoreEntry *se) {
     LibInfo *in = &e->info;
     memset(in, 0, sizeof *in);
-    in->defaultCodepoint = PX_NO_CODEPOINT;
     if (!(se->hasAscent && se->hasDescent)) return;      /* not ready: the loader derives the box */
     in->ready = true;
     in->glyphCount = se->glyphCount;
@@ -236,10 +235,8 @@ static bool draft_quick(const char *path, Library *lib, LibEntry *e, char err[PX
     if (!raw) return fail(err, "cannot read %s", path);
     LibInfo *in = &e->info;
     memset(in, 0, sizeof *in);
-    in->defaultCodepoint = PX_NO_CODEPOINT;
     bool hasA = false, hasD = false, header = false;
     int a = 0, d = 0, ga = 0, gd = 0;
-    int32_t dflt = PX_NO_CODEPOINT;
     char *ctext = NULL;
     size_t clen = 0, ccap = 0;
     char *p = raw;
@@ -290,10 +287,9 @@ static bool draft_quick(const char *path, Library *lib, LibEntry *e, char err[PX
             int x, y;
             if (sscanf(line + 6, "%d:%d", &x, &y) == 2) { in->hasRatio = true; in->ratioA = x; in->ratioB = y; }
         } else if (strcmp(line, "MONOSPACED") == 0) in->monospaced = true;
-        else if (strncmp(line, "DEFAULT\t", 8) == 0) dflt = (int32_t)strtol(line + 8, NULL, 16);
         else if (strncmp(line, "GLYPH\t", 6) == 0) {
             int x, y, w, h;
-            in->glyphCount++;
+            if (strncmp(line + 6, "FFFFFF", 6) != 0) in->glyphCount++;
             const char *q = strchr(line + 6, '\t');    /* after the code */
             if (q && sscanf(q + 1, "%d,%d\t%*d\t%dx%d", &x, &y, &w, &h) == 4 && w > 0 && h > 0) {
                 if (y + h > ga) ga = y + h;
@@ -308,7 +304,6 @@ static bool draft_quick(const char *path, Library *lib, LibEntry *e, char err[PX
     in->boxExact = true;
     in->above = hasA ? a : ga;
     in->below = hasD ? d : gd;
-    in->defaultCodepoint = dflt;
     if (ctext) {
         PxtfTypeface *c = (PxtfTypeface *)malloc(sizeof *c);
         char e2[PX_ERR_LEN];
@@ -412,14 +407,13 @@ static void font_release_locked(LibFont *f) {
 static void fill_info(const PxFont *f, LibInfo *in) {
     memset(in, 0, sizeof *in);
     in->ready = true;
-    in->glyphCount = f->count;
+    in->glyphCount = f->count - (px_font_default_index(f) >= 0 ? 1 : 0);   /* the default glyph is not counted */
     in->boxStated = f->has[PXM_ASCENT] && f->has[PXM_DESCENT];
     in->boxExact = px_font_box(f, &in->above, &in->below);
     in->monospaced = f->monospaced;
     in->hasRatio = f->hasRatio;
     in->ratioA = f->ratioA;
     in->ratioB = f->ratioB;
-    in->defaultCodepoint = f->defaultCodepoint;
 }
 
 static const int32_t PROBES[] = {0x48, 0x67, 0x70, 0x79, 0x6A, 0x7C, 0x5B, 0x5D, 0xC5, 0xC9, 0xC7};

@@ -1,6 +1,8 @@
 # 19. Uncoded glyphs (testdata font fa96e358: space, A, H, default H, and two glyphs without a code point, #0 and #1).
 # The grid names them "#n", deleting renumbers the rest, "No Code Point" in the clone dialog adds one at the end.
 wait 5
+click @Unlock
+wait 4
 assert glyphs 5
 assert uncoded 2
 assert glyph #0 exists 1
@@ -52,5 +54,5 @@ assert glyph #1 exists 1
 assert caption #1 #1
 assert selected 1
 assert sel #1 1
-# the default glyph (H) stays the default: uncoded glyphs cannot be one
-assert default 72
+# the default glyph is a glyph of its own: a clone does not touch it
+assert default 1

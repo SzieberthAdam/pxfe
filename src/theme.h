@@ -115,13 +115,11 @@ void Th_RectLines(Rectangle r, Color c);                /* 1 px outline inside r
 #define TH_BTN_ICON(i)  (((i) + 1) << 8)
 #define TH_BTN_OFF(enabled) ((enabled) ? 0 : TH_BTN_DISABLED)
 enum { TH_IC_PENCIL, TH_IC_ERASER, TH_IC_LINE, TH_IC_RECT, TH_IC_FILL, TH_IC_PREV, TH_IC_NEXT, TH_IC_LEFT, TH_IC_RIGHT, TH_IC_UP, TH_IC_DOWN,
-       TH_IC_CLOSE, TH_IC_EYE, TH_IC_EYE_OFF, TH_IC_CHEV_DOWN, TH_IC_CHEV_RIGHT, TH_IC_SEARCH };
+       TH_IC_CLOSE, TH_IC_EYE, TH_IC_EYE_OFF, TH_IC_CHEV_DOWN, TH_IC_CHEV_RIGHT, TH_IC_SEARCH, TH_IC_LOCK, TH_IC_UNLOCK };
 bool  Th_Button(Rectangle r, const char *label, int flags, const char *hint);
 #define Th_ButtonDanger(r, label) Th_Button(r, label, TH_BTN_DANGER, NULL)   /* every delete command */
-/* The command that makes an editable copy: always the primary button, one wording (`typeface`: of a typeface).  `off`: TH_BTN_OFF(enabled) or 0. */
-#define Th_DupLabel(typeface) ((typeface) ? "Duplicate Typeface to Edit" : "Duplicate to Edit")
-#define Th_DuplicateW(typeface) Th_ButtonW(Th_DupLabel(typeface))
-#define Th_Duplicate(r, typeface, off, hint) Th_Button(r, Th_DupLabel(typeface), TH_BTN_PRIMARY | (off), hint)
+/* The lock of a font or typeface: one padlock icon button (closed = locked, shown as on when unlocked); true when clicked.  Square, bh x bh. */
+#define Th_Lock(r, locked, hint) Th_Button(r, (locked) ? "Unlock" : "Lock", TH_BTN_ICON((locked) ? TH_IC_LOCK : TH_IC_UNLOCK) | ((locked) ? 0 : TH_BTN_ACTIVE), hint)
 bool  Th_Toggle(Rectangle r, const char *label, bool *on, int flags, const char *hint);
 float Th_ButtonW(const char *label);
 const char *Th_Tip(Rectangle *r);

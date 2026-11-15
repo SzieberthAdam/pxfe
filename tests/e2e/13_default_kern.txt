@@ -1,16 +1,19 @@
-# 13. Default glyph and kerning (font 98eae9aa has KERNING A M -1 and a default glyph U+0020): set default, delete drops the default and the pair, clone does not copy kerning.
+# 13. Default glyph and kerning (font 0820dc69 has KERNING A M -1 and a default glyph that copies the space): set default copies a glyph, deleting that glyph keeps the default and drops its pairs, clone does not copy kerning.
 wait 5
+click @Unlock
+wait 4
 assert kerncount 1
-assert default U+0020
+assert default 1
+assert glyph default empty
 click @cell:U+0048
 assert selected 1
 click @Set_Default
 wait 3
-assert default U+0048
+assert glyph default ink 13
 assert modified 1
 key z ctrl
 wait 3
-assert default U+0020
+assert glyph default empty
 assert modified 0
 click @cell:U+0041
 click @cell:U+0048
@@ -18,14 +21,15 @@ assert selected 1
 assert sel U+0048 1
 click @Set_Default
 wait 3
-assert default U+0048
-# deleting the default glyph drops the default
+assert glyph default ink 13
+# deleting the glyph the default was copied from leaves the default glyph
 key delete
 wait 4
 key enter
 wait 4
 assert glyph U+0048 exists 0
-assert default -1
+assert default 1
+assert glyph default ink 13
 # deleting A drops the kerning pair
 click @cell:U+0041
 assert sel U+0041 1

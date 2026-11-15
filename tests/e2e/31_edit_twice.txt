@@ -1,0 +1,32 @@
+# 31. An unlocked font edited twice, with a commit in between: each commit replaces the font in place (the other fonts stay untouched),
+# and the typeface keeps naming the font of the open document.
+wait 5
+click @Unlock
+wait 4
+assert readonly 0
+assert sql "select count(*) from pxfm" 4
+click @ascent+
+wait 6
+click @nav.0
+wait 8
+click @Typefaces
+wait 8
+assert sql "select count(*) from pxfm" 4
+assert sql "select count(*) from pxfm where ascent = 7" 1
+assert sql "select count(*) from pxfm where lower(hex(hash)) = '0820dc69a21b1cdb3a44d2cff7d884d8'" 0
+# the same font again, edited once more: its first result goes, the second takes its place
+click @card:0 right
+wait 3
+click @Ctx_Open
+wait 8
+assert readonly 0
+click @ascent+
+wait 6
+click @nav.0
+wait 8
+click @Typefaces
+wait 8
+assert sql "select count(*) from pxfm" 4
+assert sql "select count(*) from pxfm where ascent = 7" 0
+assert sql "select count(*) from pxfm where ascent = 8" 1
+assert sql "select count(*) from pxtf_variant where pxfm not in (select hash from pxfm)" 0

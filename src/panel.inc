@@ -2,7 +2,7 @@
  * Font (every PXM_* metric is an optional row: a "stated" checkbox and a spinner, RATIO as two spinners, MONOSPACED as a
  * switch), Glyph (the selection, the "Find in Library" link and the glyph usage), Similar (similar fonts and typefaces) and Layers
  * (the font layers and the glyphs drawn from one of them, fitdoc.inc).
- * The tab is only changed by the user and is kept in pxfe.ini.  All editing is disabled in an original.
+ * The tab is only changed by the user and is kept in pxfe.ini.  All editing is disabled in a locked font.
  * The content of a tab scrolls.  DrawTypefaceTab, the typeface's fields, is the Typeface tab of the library views (browser.c). */
 
 static float panelContentH = 0;
@@ -123,14 +123,14 @@ static const PxtfText kCtOrder[PXTF_TEXT_COUNT] = {
 
 static char tabHash[40];   /* the hash the Typeface tab shows (a test hook) */
 
-/* The open document is a duplicate of the typeface with this pxtf hash (made in the Typefaces or Typeface view): its fields are editable. */
+/* The typeface of the open font is the one with this pxtf hash and it is unlocked: its fields are editable. */
 static bool TypefaceEditing(const char *pxtf)
 {
-    return hasFont && !readOnly && hasCont && pxtf && origContHash[0] && Same(origContHash, pxtf);
+    return hasFont && docStored && !contLocked && hasCont && pxtf && origContHash[0] && Same(origContHash, pxtf);
 }
 
-/* The Typeface tab of the library views (browser.c calls it): one variant of the typeface with this pxtf hash.  Read-only, unless the
- * open document is a duplicate of that typeface: then the fields of its `cont` are edited. */
+/* The Typeface tab of the library views (browser.c calls it): one variant of the typeface with this pxtf hash.  The fields are read-only,
+ * unless the open font's typeface is that one and unlocked: then the fields of its `cont` are edited. */
 static void DrawTypefaceTab(float px, float pw, float *yp, const PxtfTypeface *tf, const char *hash, int variant)
 {
     bool en = TypefaceEditing(hash);
@@ -147,7 +147,7 @@ static void DrawTypefaceTab(float px, float pw, float *yp, const PxtfTypeface *t
     y += 24;
     snprintf(tabHash, sizeof tabHash, "%s", en ? curContHash : hash);
     Th_HashField(px, &y, pw, en ? "TYPEFACE HASH (CURRENT)" : "TYPEFACE HASH", tabHash, "hash_typeface_full", "Typeface", 0);
-    if (en && !Same(curContHash, origContHash)) Th_HashField(px, &y, pw, "TYPEFACE HASH (ORIGINAL)", origContHash, "hash_typeface_orig", "Typeface", 0);
+    if (en && !Same(curContHash, origContHash)) Th_HashField(px, &y, pw, "TYPEFACE HASH (IN THE DATABASE)", origContHash, "hash_typeface_orig", "Typeface", 0);
     for (int k = 0; k < PXTF_TEXT_COUNT; k++) {
         PxtfText t = kCtOrder[k];
         char low[40], nm[48];
@@ -174,7 +174,7 @@ static void GlyphFacts(float px, float *y, const PxGlyph *g, bool character)
     float x = px + 16, w = PANEL_W - 32;
     char cl[64], ch[16] = "—";
     CodeLabel(g->codepoint, cl, sizeof cl);
-    Th_Row(x, y, w, px_code_is_uncoded(g->codepoint) ? "No code point" : "Code point", cl, TH_ROW_UNI);
+    Th_Row(x, y, w, px_code_is_uncoded(g->codepoint) ? "No code point" : g->codepoint == PX_CODE_DEFAULT ? "Glyph" : "Code point", cl, TH_ROW_UNI);
     if (character) {
         int len = 0;
         const char *u = px_code_is_codepoint(g->codepoint) ? CodepointToUTF8(g->codepoint, &len) : "";
@@ -186,7 +186,6 @@ static void GlyphFacts(float px, float *y, const PxGlyph *g, bool character)
     Th_Row(x, y, w, "Advance", TextFormat("%d", g->advance), 0);
     Th_Row(x, y, w, "Bitmap", g->w > 0 ? TextFormat("%d x %d", g->w, g->h) : "empty", 0);
     Th_Row(x, y, w, "Offset x, y", TextFormat("%d, %d", g->x, g->y), 0);
-    Th_Row(x, y, w, "Default glyph", g->codepoint != PX_NO_CODEPOINT && g->codepoint == font.defaultCodepoint ? "yes" : "no", 0);
 }
 
 static void DrawSelectionSection(float px, float *yp)
@@ -272,7 +271,7 @@ static void DrawMetricsPanel(Rectangle p)
 
     if (tab == 0) {
         Th_HashField(px, &y, PANEL_W, readOnly ? "FONT HASH" : "FONT HASH (CURRENT)", readOnly ? origHash : curHash, "hash_font_full", "Font", 0);
-        if (!readOnly && !Same(curHash, origHash)) Th_HashField(px, &y, PANEL_W, "FONT HASH (ORIGINAL)", origHash, "hash_font_orig", "Font", 0);
+        if (!readOnly && !Same(curHash, origHash)) Th_HashField(px, &y, PANEL_W, "FONT HASH (IN THE DATABASE)", origHash, "hash_font_orig", "Font", 0);
         Th_Section("FONT METRICS", px + 16, &y, PANEL_W - 32, 0, NULL);
         static const struct { PxMetric m; Color c; } rows[] = {
             {PXM_ASCENT, TH_M_BOX}, {PXM_DESCENT, TH_M_BOX}, {PXM_LINEGAP, TH_TEXT_DIM}, {PXM_CAPHEIGHT, TH_M_CAP},

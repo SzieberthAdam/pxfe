@@ -1,4 +1,4 @@
-# 17. Save: duplicate a font of a typeface, edit it, Save.  The file's bytes change only at Save; the new rows are in the file.
+# 17. Save: unlock a font of a typeface, edit it, Save.  The file's bytes change only at Save; the new rows are in the file.
 waitfor loading = 0 60000
 wait 5
 assert storefonts 4
@@ -16,13 +16,13 @@ dblclick @card:0
 wait 6
 assert readonly 1
 assert hashname 1
-click @Duplicate_to_Edit
+click @Unlock
 wait 8
 assert readonly 0
 assert modified 0
 assert hascont 1
 assert variant 1
-assert unsaved 0
+assert unsaved 1
 # an edit: ascent, and a stroke in the space glyph
 click @ascent+
 wait 6
@@ -36,15 +36,15 @@ wait 4
 assert modified 1
 assert unsaved 1
 assert wtitle modified
-# leaving the font view commits the duplicate into memory; the file is still as it was
+# leaving the font view commits the edit into the store; the file is still as it was
 click @nav.0
 wait 8
 click @Typefaces
 wait 8
 assert dbmodified 1
 assert wtitle modified
-assert sql "SELECT COUNT(*) FROM pxfm" 5
-assert sql "SELECT COUNT(*) FROM pxtf" 3
+assert sql "SELECT COUNT(*) FROM pxfm" 4
+assert sql "SELECT COUNT(*) FROM pxtf" 2
 assert samefile tests/tmp/e2e.pxfdb tests/tmp/e2e_before.pxfdb
 # Save button
 click @Save
@@ -57,8 +57,8 @@ assert unsaved 0
 assert statusdb saved
 assert snapdir unchanged
 assert sql "SELECT ascent FROM pxfm ORDER BY ascent DESC LIMIT 1" 7
-assert sqlfile tests/tmp/e2e.pxfdb "SELECT COUNT(*) FROM pxfm" 5
-assert sqlfile tests/tmp/e2e.pxfdb "SELECT COUNT(*) FROM pxtf" 3
+assert sqlfile tests/tmp/e2e.pxfdb "SELECT COUNT(*) FROM pxfm" 4
+assert sqlfile tests/tmp/e2e.pxfdb "SELECT COUNT(*) FROM pxtf" 2
 assert sqlfile tests/tmp/e2e.pxfdb "SELECT COUNT(*) FROM pxfm WHERE ascent = 7" 1
 # no temp file is left behind
 assert file tests/tmp/e2e.pxfdb.tmp missing

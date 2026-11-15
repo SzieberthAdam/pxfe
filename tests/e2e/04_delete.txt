@@ -1,5 +1,7 @@
 # 4. Delete with the confirmation dialog. Font: duplicate of testdata font 98eae9aa (6 glyphs).
 wait 5
+click @Unlock
+wait 4
 assert glyphs 6
 # nothing selected: Del does nothing, the toolbar button is disabled
 key delete
@@ -57,7 +59,7 @@ shot tests/tmp/shots/04_delete_many.png
 click @cell:U+004D
 wait 3
 assert modal Delete_glyphs
-assert selected 4
+assert selected 5
 click @Delete
 wait 3
 assert glyphs 0

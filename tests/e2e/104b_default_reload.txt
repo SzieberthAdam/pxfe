@@ -1,0 +1,24 @@
+# 104b. Second process: the database that 104 saved. Its font 897787da has a default glyph (a copy of the x with a bar added) that is last and its own.
+wait 5
+assert default 1
+assert glyphs 6
+assert allglyphs 7
+assert defidx 6
+assert caption default Default
+assert glyph default size 5x5
+assert glyph default advance 6
+assert glyph U+0078 size 5x4
+assert glyph U+0048 ink 13
+assert modified 0
+click @cell:default
+wait 3
+assert selected 1
+shot tests/tmp/shots/104b_default_reload.png
+key enter
+wait 5
+assert editor 1
+assert editor_default 1
+click @Back
+wait 4
+assert editor 0
+assert modified 0

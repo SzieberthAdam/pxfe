@@ -1,8 +1,10 @@
 # 97. Font layers are saved in the sidecar <db>-settings by Save (97b reloads).  Duplicate of 0820dc69 without a pixel edit, so the
 # layers sit under that hash.  Three layers (outline, bitmap, a copy of an outline file that is deleted at the end), a correction of A.
 wait 5
+click @Unlock
+wait 4
 assert sidecar missing
-assert fshasany 0
+assert fshasany 1
 copyfile testdata/outline/NotoSub.ttf tests/tmp/fl/gone.ttf
 addlayerfile testdata/outline/NotoSub.ttf
 addlayerfile testdata/bitmap/font.bdf

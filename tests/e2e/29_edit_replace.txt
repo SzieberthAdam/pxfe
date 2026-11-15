@@ -1,6 +1,8 @@
-# 29. A duplicate is committed into memory when its font view is left; a later commit of the same duplicate replaces the earlier one
-# (no in-between fonts), and editing back to the original drops the commit.
+# 29. An unlocked font is committed into the store, in place, when its font view is left; a later commit replaces the earlier one (no
+# in-between fonts), and editing back to the original content gives the original hash again.
 wait 5
+click @Unlock
+wait 4
 assert readonly 0
 assert sql "select count(*) from pxfm" 4
 assert sql "select count(*) from pxtf" 2
@@ -11,8 +13,8 @@ wait 8
 click @Typefaces
 wait 8
 assert dbmodified 1
-assert sql "select count(*) from pxfm" 5
-assert sql "select count(*) from pxtf" 3
+assert sql "select count(*) from pxfm" 4
+assert sql "select count(*) from pxtf" 2
 assert sql "select count(*) from pxfm where ascent = 7" 1
 # back to the font, another change, leave again: the first commit is replaced
 key right alt
@@ -25,8 +27,8 @@ click @nav.0
 wait 8
 click @Typefaces
 wait 8
-assert sql "select count(*) from pxfm" 5
-assert sql "select count(*) from pxtf" 3
+assert sql "select count(*) from pxfm" 4
+assert sql "select count(*) from pxtf" 2
 assert sql "select count(*) from pxfm where ascent = 7" 0
 assert sql "select count(*) from pxfm where ascent = 8" 1
 # leaving without a change commits nothing more
@@ -36,7 +38,7 @@ click @nav.0
 wait 8
 click @Typefaces
 wait 8
-assert sql "select count(*) from pxfm" 5
+assert sql "select count(*) from pxfm" 4
 # three edits in a row, leaving after each: still one font
 key right alt
 wait 6
@@ -54,9 +56,9 @@ click @nav.0
 wait 8
 click @Typefaces
 wait 8
-assert sql "select count(*) from pxfm" 5
+assert sql "select count(*) from pxfm" 4
 assert sql "select count(*) from pxfm where ascent = 10" 1
-assert sql "select count(*) from pxtf" 3
+assert sql "select count(*) from pxtf" 2
 # leaving through the Glyphs tab commits too
 key right alt
 wait 6
@@ -64,7 +66,7 @@ click @ascent+
 wait 6
 click @Glyphs
 wait 8
-assert sql "select count(*) from pxfm" 5
+assert sql "select count(*) from pxfm" 4
 assert sql "select count(*) from pxfm where ascent = 11" 1
 # edited back to the original: the commit goes away, the database is as loaded
 key right alt
@@ -79,7 +81,7 @@ click @ascent-
 wait 6
 click @ascent-
 wait 6
-assert modified 0
+assert modified 1
 click @nav.0
 wait 8
 click @Typefaces
@@ -87,3 +89,5 @@ wait 8
 assert sql "select count(*) from pxfm" 4
 assert sql "select count(*) from pxtf" 2
 assert dbmodified 1
+assert sql "select count(*) from pxfm where lower(hex(hash)) = '0820dc69a21b1cdb3a44d2cff7d884d8'" 1
+assert sql "select count(*) from pxtf_variant where lower(hex(pxfm)) = '0820dc69a21b1cdb3a44d2cff7d884d8'" 1

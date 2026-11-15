@@ -227,7 +227,7 @@ static void test_library(void) {
     bool got = false;
     for (int i = 0; i < 500 && !got; i++) { got = libloader_poll(L, &r); if (!got) Sleep(10); }
     CHECK(got && r.font && !r.info.failed && r.info.glyphCount == 6, "result arrives with info");
-    CHECK(got && r.info.boxStated && r.info.boxExact && r.info.above == 6 && r.info.below == 2 && r.info.hasRatio == false && r.info.defaultCodepoint == 0x20, "info: stated box, default glyph");
+    CHECK(got && r.info.boxStated && r.info.boxExact && r.info.above == 6 && r.info.below == 2 && r.info.hasRatio == false && true, "info: stated box");
     if (got) {
         const PxFont *f = &r.font->font;
         CHECK(!f->glyphs[px_font_find(f, 0x41)].lazy && !f->glyphs[px_font_find(f, 0x48)].lazy && f->glyphs[px_font_find(f, 0x4D)].lazy, "only the requested glyphs have bitmaps");

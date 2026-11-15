@@ -17,7 +17,7 @@ struct FSettings {
 
 static const char SCHEMA[] =
 "CREATE TABLE meta (key TEXT PRIMARY KEY, value TEXT NOT NULL) WITHOUT ROWID;\n"
-"INSERT INTO meta VALUES ('format', 'pxfe-settings'), ('schema_version', '2');\n"
+"INSERT INTO meta VALUES ('format', 'pxfe-settings'), ('schema_version', '3');\n"
 "CREATE TABLE layer (id INTEGER PRIMARY KEY AUTOINCREMENT, font TEXT NOT NULL, pos INTEGER NOT NULL, kind INTEGER NOT NULL,\n"
 "  source TEXT NOT NULL, face INTEGER NOT NULL, file_size INTEGER NOT NULL, file_mtime INTEGER NOT NULL, scale REAL NOT NULL,\n"
 "  dx REAL NOT NULL, dy REAL NOT NULL, r INTEGER NOT NULL, g INTEGER NOT NULL, b INTEGER NOT NULL, opacity INTEGER NOT NULL,\n"
@@ -28,7 +28,8 @@ static const char SCHEMA[] =
 "CREATE INDEX layer_by_font ON layer (font, pos);\n"
 "CREATE TABLE correction (font TEXT NOT NULL, layer INTEGER NOT NULL REFERENCES layer, code INTEGER NOT NULL,\n"
 "  dx REAL NOT NULL, dy REAL NOT NULL, dsize REAL NOT NULL, hidden INTEGER NOT NULL,\n"
-"  PRIMARY KEY (layer, code)) WITHOUT ROWID;\n";
+"  PRIMARY KEY (layer, code)) WITHOUT ROWID;\n"
+"CREATE TABLE unlocked (kind INTEGER NOT NULL, hash TEXT NOT NULL, PRIMARY KEY (kind, hash)) WITHOUT ROWID;\n";
 
 static bool seterr(FSettings *fs, const char *fmt, ...) {
     va_list ap;
@@ -221,13 +222,22 @@ FSettings *fs_open(const char *path, char err[FS_ERR_LEN]) {
             return NULL;
         }
     }
+    if (pr == PROBE_OK && query_int(fs, prep(fs, "SELECT value FROM meta WHERE key='schema_version'"), 0) < 3) {
+        /* version 2 -> 3: the lock of fonts and typefaces (DESIGN.md "Version 12") */
+        if (!exec(fs, "CREATE TABLE IF NOT EXISTS unlocked (kind INTEGER NOT NULL, hash TEXT NOT NULL, PRIMARY KEY (kind, hash)) WITHOUT ROWID;"
+                      "UPDATE meta SET value='3' WHERE key='schema_version';")) {
+            if (err) snprintf(err, FS_ERR_LEN, "%.100s: cannot upgrade the settings: %.100s", path, fs->err);
+            fs_close(fs);
+            return NULL;
+        }
+    }
     snprintf(fs->path, sizeof fs->path, "%s", path);
     return fs;
 }
 
 bool fs_has_any(const FSettings *fs) {
     FSettings *m = (FSettings *)fs;
-    return query_int(m, prep(m, "SELECT EXISTS (SELECT 1 FROM layer)"), 0) != 0;
+    return query_int(m, prep(m, "SELECT EXISTS (SELECT 1 FROM layer) OR EXISTS (SELECT 1 FROM unlocked)"), 0) != 0;
 }
 
 /* VACUUM INTO path.tmp, then rename over path */
@@ -527,6 +537,68 @@ fail:
     sqlite3_exec(fs->db, "ROLLBACK", NULL, NULL, NULL);
     free(ids);
     return false;
+}
+
+/* ------------------------------------------------------------------ locks and renames */
+
+bool fs_is_unlocked(FSettings *fs, int kind, const char *hash) {
+    sqlite3_stmt *st = prep(fs, "SELECT 1 FROM unlocked WHERE kind=? AND hash=?");
+    if (!st) return false;
+    sqlite3_bind_int(st, 1, kind);
+    txt(st, 2, hash);
+    bool r = sqlite3_step(st) == SQLITE_ROW;
+    sqlite3_finalize(st);
+    return r;
+}
+
+bool fs_set_unlocked(FSettings *fs, int kind, const char *hash, bool unlocked) {
+    if (!valid_hash(hash)) return seterr(fs, "bad hash");
+    if (fs_is_unlocked(fs, kind, hash) == unlocked) return true;
+    sqlite3_stmt *st = prep(fs, unlocked ? "INSERT INTO unlocked VALUES (?, ?)" : "DELETE FROM unlocked WHERE kind=? AND hash=?");
+    if (!st) return false;
+    sqlite3_bind_int(st, 1, kind);
+    txt(st, 2, hash);
+    if (!finish(fs, st)) return false;
+    fs->gen++;
+    return true;
+}
+
+static bool rename_rows(FSettings *fs, const char *sql, const char *a, const char *b) {
+    sqlite3_stmt *st = prep(fs, sql);
+    if (!st) return false;
+    txt(st, 1, a);
+    txt(st, 2, b);
+    return finish(fs, st);
+}
+
+bool fs_rename_font(FSettings *fs, const char *from, const char *to) {
+    if (!valid_hash(from) || !valid_hash(to)) return seterr(fs, "bad font hash");
+    if (strcmp(from, to) == 0) return true;
+    if (!exec(fs, "BEGIN")) return false;
+    /* what the settings hold under `to` is replaced only by what they hold under `from` (the open font syncs its layers under its new
+     * hash before it is committed, and there is nothing under `from` then) */
+    bool ok = (!fs_has_font(fs, from) || remove_font_rows(fs, to)) &&
+        rename_rows(fs, "UPDATE layer SET font=?1 WHERE font=?2", to, from) &&
+        rename_rows(fs, "UPDATE correction SET font=?1 WHERE font=?2", to, from) &&
+        rename_rows(fs, "UPDATE layer SET source=?1 WHERE kind=0 AND source=?2", to, from) &&
+        rename_rows(fs, "DELETE FROM unlocked WHERE kind=0 AND hash=?1", to, from) &&
+        rename_rows(fs, "UPDATE unlocked SET hash=?1 WHERE kind=0 AND hash=?2", to, from) &&
+        exec(fs, "COMMIT");
+    if (!ok) { sqlite3_exec(fs->db, "ROLLBACK", NULL, NULL, NULL); return false; }
+    fs->gen++;
+    return true;
+}
+
+bool fs_rename_typeface(FSettings *fs, const char *from, const char *to) {
+    if (!valid_hash(from) || !valid_hash(to)) return seterr(fs, "bad typeface hash");
+    if (strcmp(from, to) == 0) return true;
+    if (!fs_is_unlocked(fs, 1, from)) return true;
+    if (!exec(fs, "BEGIN")) return false;
+    bool ok = rename_rows(fs, "DELETE FROM unlocked WHERE kind=1 AND hash=?1", to, from) &&
+        rename_rows(fs, "UPDATE unlocked SET hash=?1 WHERE kind=1 AND hash=?2", to, from) && exec(fs, "COMMIT");
+    if (!ok) { sqlite3_exec(fs->db, "ROLLBACK", NULL, NULL, NULL); return false; }
+    fs->gen++;
+    return true;
 }
 
 /* ------------------------------------------------------------------ corrections */

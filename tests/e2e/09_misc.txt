@@ -1,5 +1,7 @@
 # 9. Misc input paths on the testdata copy: spinner hold/wheel, Esc in a metric field inside the editor, hash click, resize.
 wait 5
+click @Unlock
+wait 4
 # wheel over a spinner steps it
 wheel 1 @ascent.value
 wait 3

@@ -1,6 +1,8 @@
-# 97c. No layers, no sidecar: a duplicate with a pixel edit and Save leaves no settings file; a layer makes one (Save), removing the last
-# layer and Save deletes it again.  Duplicate of 0820dc69.
+# 97c. No layers and everything locked, no sidecar: an unlocked font with a pixel edit and Save writes the lock (and nothing else); a layer is
+# added (Save), removing the last layer and locking the font again and Save deletes the file.  0820dc69.
 wait 5
+click @Unlock
+wait 4
 assert sidecar missing
 click @ascent+
 wait 6
@@ -8,8 +10,8 @@ assert unsaved 1
 key s ctrl
 wait 12
 assert unsaved 0
-assert sidecar missing
-assert fshasany 0
+assert sidecar exists
+assert fshasany 1
 # a layer on the committed font (new hash), Save
 addlayerfile testdata/outline/NotoSub.ttf
 wait 6
@@ -29,6 +31,8 @@ click @lay_del_0
 wait 4
 assert flayers 0
 assert unsaved 1
+click @Lock
+wait 6
 key s ctrl
 wait 12
 assert unsaved 0

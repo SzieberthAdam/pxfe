@@ -42,7 +42,6 @@ typedef struct LibInfo {
     int  above, below;       /* the font box rows (px_font_box); size in pixels = above + below */
     bool monospaced;
     bool hasRatio; int ratioA, ratioB;
-    int32_t defaultCodepoint;  /* or PX_NO_CODEPOINT (unknown until the font is loaded) */
 } LibInfo;
 
 typedef struct LibEntry {

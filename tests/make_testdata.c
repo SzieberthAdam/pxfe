@@ -89,7 +89,7 @@ int main(void) {
     add(&f, 0x48, 6, 0, 0, ROWS_H);
     add(&f, 0x4D, 6, 0, 0, ROWS_M);
     add(&f, 0x78, 6, 0, 0, ROWS_X);
-    px_font_set_default(&f, 0x20);
+    px_font_set_default_from(&f, px_font_find(&f, 0x20));
     px_font_set_kern(&f, 0x41, 0x4D, -1);
     save_font(&f, hex[0]);
 
@@ -123,7 +123,7 @@ int main(void) {
     add(&f, 0x48, 6, 0, 0, ROWS_H);
     add_unc(&f, 6, 0, 0, ROWS_X);
     add_unc(&f, 6, 0, 0, ROWS_M);
-    px_font_set_default(&f, 0x48);
+    px_font_set_default_from(&f, px_font_find(&f, 0x48));
     px_font_set_kern(&f, 0x41, 0xF00000, -1);
     px_font_set_kern(&f, 0xF00001, 0xF00000, 1);
     save_font(&f, hex[3]);

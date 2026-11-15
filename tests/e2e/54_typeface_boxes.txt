@@ -106,10 +106,12 @@ assert inbrowser 1
 assert bsel 1
 assert bselpxfm e6109c134eda8d747bac9a3c2a62d204
 
-# ---- Duplicate to Edit on a variant row
+# ---- the lock of a variant row, then Enter opens the font
 click @card:0
 wait 3
-click @Duplicate_to_Edit
+click @Unlock
+wait 4
+key enter
 wait 8
 assert inbrowser 0
 assert readonly 0
@@ -130,7 +132,7 @@ assert bselpxfm 0820dc69a21b1cdb3a44d2cff7d884d8
 key enter
 wait 8
 assert inbrowser 0
-assert readonly 1
+assert readonly 0
 assert ohash 0820dc69a21b1cdb3a44d2cff7d884d8
 key left alt
 wait 6

@@ -3,10 +3,10 @@ waitfor loading = 0 60000
 wait 5
 assert inbrowser 1
 assert hasstore 1
-assert storefonts 5
-assert storetypefaces 3
+assert storefonts 4
+assert storetypefaces 2
 assert sql "select count(*) from pxfm where ascent = 8" 1
-assert sql "select count(*) from pxfm" 5
+assert sql "select count(*) from pxfm" 4
 assert sql "select count(*) from pxtf_field where key = 'FAMILY' and value = 'Test Sans Edited'" 1
 assert statusdb saved
 assert wtitle e2e.pxfdb

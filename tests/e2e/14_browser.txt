@@ -120,16 +120,18 @@ click @Filter_Clear
 wait 4
 assert bvisible 3
 
-# ---- Duplicate to Edit from a card, edit a glyph: leaving the font view commits the duplicate into memory
+# ---- the lock of a card, edit a glyph: leaving the font view commits the edit into the store, in place
 click @card:0
 wait 3
-click @Duplicate_to_Edit
+click @Unlock
+wait 4
+key enter
 wait 8
 assert inbrowser 0
 assert readonly 0
 assert modified 0
 assert hascont 1
-assert unsaved 0
+assert unsaved 1
 click @cell:U+0020
 key enter
 wait 5
@@ -154,10 +156,10 @@ assert snapdir unchanged
 assert sqlfile tests/tmp/e2e.pxfdb "select count(*) from pxfm" 4
 click @Typefaces
 wait 4
-assert btotal 5
+assert btotal 3
 click @Fonts
 wait 4
-assert btotal 5
+assert btotal 4
 click @Filter
 type $NEWPXFM
 wait 4
@@ -167,7 +169,7 @@ click @card:0
 wait 3
 assert bselpxfm $NEWPXFM
 
-# ---- a font without a typeface: Duplicate to Edit from its card, one edit, commit adds a font and no typeface
+# ---- a font without a typeface: the lock of its card, one edit, the commit changes the font and adds no typeface
 click @Filter_Clear
 wait 4
 click @Filter
@@ -177,12 +179,14 @@ assert bvisible 1
 sleep 600
 click @card:0
 wait 3
-click @Duplicate_to_Edit
+click @Unlock
+wait 4
+key enter
 wait 8
 assert readonly 0
 assert hascont 0
 assert modified 0
-assert duppending 0
+assert editpending 0
 click @cell:U+0020
 key enter
 wait 5
@@ -198,9 +202,9 @@ wait 6
 click @Fonts
 wait 6
 assert inbrowser 1
-assert btotal 6
-assert sql "select count(*) from pxfm" 6
-assert sql "select count(*) from pxtf" 3
+assert btotal 4
+assert sql "select count(*) from pxfm" 4
+assert sql "select count(*) from pxtf" 2
 
 # ---- Save writes memory into the database file; the folder it was imported from is never touched
 assert sqlfile tests/tmp/e2e.pxfdb "select count(*) from pxfm" 4
@@ -209,6 +213,6 @@ click @Save
 wait 12
 assert dbmodified 0
 assert unsaved 0
-assert sqlfile tests/tmp/e2e.pxfdb "select count(*) from pxfm" 6
-assert sqlfile tests/tmp/e2e.pxfdb "select count(*) from pxtf" 3
+assert sqlfile tests/tmp/e2e.pxfdb "select count(*) from pxfm" 4
+assert sqlfile tests/tmp/e2e.pxfdb "select count(*) from pxtf" 2
 assert snapdir unchanged

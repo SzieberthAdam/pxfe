@@ -1,10 +1,12 @@
 # 7d. A real library font (194 glyphs, imported from tests/tmp/reallib into tests/tmp/real2.pxfdb): duplicate, edit, Save, read back.
 wait 5
+click @Unlock
+wait 4
 assert storeimported 1
 assert glyphs 194
 assert readonly 0
 assert modified 0
-assert unsaved 0
+assert unsaved 1
 reveal U+0041
 click @cell:U+0041
 key d ctrl
@@ -20,7 +22,7 @@ key s ctrl
 wait 12
 assert saved pxfm
 assert unsaved 0
-assert sqlfile tests/tmp/real2.pxfdb "select count(*) from pxfm" 2
+assert sqlfile tests/tmp/real2.pxfdb "select count(*) from pxfm" 1
 assert sqlfile tests/tmp/real2.pxfdb "select count(*) from pxfm_glyph where code = 57344" 1
 # the clone shares the pxgl of A: the glyph table has the same rows as before
 setdialog folder tests/tmp/xout

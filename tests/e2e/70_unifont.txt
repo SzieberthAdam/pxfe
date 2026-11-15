@@ -3,6 +3,8 @@
 # Rule: a code point with no visible Unifont image (control, space, blank, or one the file lacks: U+10FFFD, the noncharacters) is shown as U+XXXX always;
 # an unassigned one that Unifont draws (U+0378) shows its image.
 wait 5
+click @Unlock
+wait 4
 assert glyphs 6
 # the cells at rest show the character (form 1), the code point of the cell under the mouse (form 2)
 move @cell:U+0078

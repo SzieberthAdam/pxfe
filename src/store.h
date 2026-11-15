@@ -143,13 +143,16 @@ typedef struct StoreSaveResult {
  * number of the variant of `tf` that names the saved font: its PXFM line is set to the new font's hash in the saved copy (0: tf is
  * saved as it is).  Lazy glyphs must be in memory already.  Fails with nothing changed.  Never overwrites or deletes. */
 bool store_save_to_memory(Store *s, const PxFont *font, const PxtfTypeface *tf, int variant, StoreSaveResult *res, char err[PX_ERR_LEN]);
-/* A later commit of the same duplicate replaces its earlier commit `earlier` (a result of store_save_to_memory).  The earlier
- * commit's typeface goes only when it created it, `now` does not name it, no other live commit has it and it is still in memory;
- * its font goes only when it created it, `now` does not name it, no other live commit has it, no typeface that remains names it
- * (the originals of the load never qualify: they were not created by a commit); glyphs go only when no remaining font names them.
- * `others` (nOthers entries) are the current commits of the other live duplicates: what one of them names is kept, and the
- * ownership (newPxfm / newPxtf) passes to it, so that its own later replacement can remove it. */
-bool store_replace_commit(Store *s, const StoreSaveResult *earlier, const StoreSaveResult *now, StoreSaveResult *const *others, int nOthers, char err[PX_ERR_LEN]);
+/* Editing in place: the font `oldPxfm` is replaced by `font` (NULL: the font is unchanged) and the typeface `oldPxtf` by `tf` (NULL: as it is).
+ * The new font is added, every typeface that names the old font is rewritten under its new hash with its variant lines following, the
+ * old font goes (nothing else can name it any more: all its typefaces were rewritten) and so do the glyphs no font names now.
+ * Nothing changes when the hashes stay.  Fails with nothing changed (the new font may have been added). */
+typedef struct StoreEditResult {
+    char pxfm[33];                       /* the font's hash now */
+    char pxtf[33];                       /* the hash now of `oldPxtf`, "" when none was given */
+    char movedFrom[32][33], movedTo[32][33]; int nMoved;   /* every typeface that was rewritten: old hash, new hash */
+} StoreEditResult;
+bool store_edit_in_place(Store *s, const char *oldPxfm, const PxFont *font, const char *oldPxtf, const PxtfTypeface *tf, StoreEditResult *out, char err[PX_ERR_LEN]);
 
 /* ------------------------------------------------------------------ export to folders */
 

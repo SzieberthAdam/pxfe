@@ -1,5 +1,7 @@
 # 6b. Glyph view with a colour palette: testdata font 03696f65 (COLOR 0 FFFFFFFF, 1 808080FF; glyphs U+0020 and U+0041), as a duplicate.
 wait 5
+click @Unlock
+wait 4
 assert glyphs 2
 assert readonly 0
 shot tests/tmp/shots/06b_palette_grid.png

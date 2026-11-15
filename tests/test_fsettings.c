@@ -348,7 +348,7 @@ static void test_errors(void) {
         sqlite3_open(C, &db);
         sqlite3_stmt *st = NULL;
         sqlite3_prepare_v2(db, "SELECT value FROM meta WHERE key='schema_version'", -1, &st, NULL);
-        CHECK(sqlite3_step(st) == SQLITE_ROW && atoi((const char *)sqlite3_column_text(st, 0)) == 2, "the saved file is version 2");
+        CHECK(sqlite3_step(st) == SQLITE_ROW && atoi((const char *)sqlite3_column_text(st, 0)) == 3, "the saved file is version 3");
         sqlite3_finalize(st);
         sqlite3_close(db);
     }
@@ -368,6 +368,32 @@ static void test_errors(void) {
     CHECK(add(z, HA, 0, "", "x", -1) < 0, "empty source rejected");
     CHECK(!fs_has_any(z), "nothing was added by failed calls");
     fs_close(z);
+}
+
+static void test_locks(void) {
+    char err[FS_ERR_LEN];
+    const char *C = TMP "/fs_lock.pxfdb-settings";
+    remove(C);
+    FSettings *fs = fs_new_empty();
+    CHECK(!fs_is_unlocked(fs, 0, HA) && !fs_has_any(fs), "locked by default, and a handle with nothing set holds nothing");
+    CHECK(fs_set_unlocked(fs, 0, HA, true) && fs_is_unlocked(fs, 0, HA) && !fs_is_unlocked(fs, 1, HA) && fs_has_any(fs) && fs_dirty(fs), "a font unlocked: a typeface of the same hash is not");
+    int id = add(fs, HA, 0, HB, "L", -1);
+    FsCorrection c = fs_correction_default();
+    c.dx = 2;
+    CHECK(id > 0 && fs_set_correction(fs, id, 0x41, &c) && fs_set_unlocked(fs, 1, HB, true), "a layer with a correction, and an unlocked typeface");
+    CHECK(fs_save_as(fs, C), "saved (the lock alone keeps the file alive)");
+    fs_close(fs);
+    fs = fs_open(C, err);
+    CHECK(fs && fs_is_unlocked(fs, 0, HA) && fs_is_unlocked(fs, 1, HB), "the lock state is read back from the file");
+    CHECK(fs_rename_font(fs, HA, HC) && !fs_is_unlocked(fs, 0, HA) && fs_is_unlocked(fs, 0, HC), "renaming a font: the unlocked row follows");
+    FsLayer l[2];
+    CHECK(fs_list_layers(fs, HA, l, 2) == 0 && fs_list_layers(fs, HC, l, 2) == 1 && fs_get_correction(fs, l[0].id, 0x41, &c) && c.dx == 2, "the layers and corrections follow");
+    int id2 = add(fs, HB, 0, HC, "uses C", -1);
+    CHECK(id2 > 0 && fs_rename_font(fs, HC, HA) && fs_list_layers(fs, HB, l, 2) == 1 && strcmp(l[0].source, HA) == 0, "a layer of another font that uses the renamed one as its source follows");
+    CHECK(fs_rename_typeface(fs, HB, HC) && !fs_is_unlocked(fs, 1, HB) && fs_is_unlocked(fs, 1, HC), "renaming a typeface: the unlocked row follows");
+    CHECK(fs_set_unlocked(fs, 0, HA, false) && fs_set_unlocked(fs, 1, HC, false) && !fs_is_unlocked(fs, 0, HA) && !fs_is_unlocked(fs, 1, HC), "locking again");
+    fs_close(fs);
+    remove(C);
 }
 
 static void test_speed(void) {
@@ -405,6 +431,7 @@ int main(void) {
     test_corrections();
     test_files();
     test_errors();
+    test_locks();
     test_speed();
     printf("\n%d passed, %d failed\n", g_pass, g_fail);
     return g_fail ? 1 : 0;

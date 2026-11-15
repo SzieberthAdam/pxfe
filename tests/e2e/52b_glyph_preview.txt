@@ -1,6 +1,8 @@
 # 52b. The glyph view's preview strip shows every line of the shared sample (as many as fit), at 1x and 2x, and the edited glyph
 # repeated after the last line; it follows the edit.  (The H of this font: 5x5 px, stem on the left, box 6 + 2 rows, line gap 1.)
 wait 8
+click @Unlock
+wait 4
 assert inbrowser 0
 assert readonly 0
 click @Sample_Edit

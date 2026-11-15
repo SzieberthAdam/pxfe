@@ -142,6 +142,7 @@ static int KeyByName(const char *n)
 static int GlyphByTok(const char *t)
 {
     int32_t cp;
+    if (!strcmp(t, "default")) return px_font_default_index(&font);
     if (t[0] == '#') return px_font_find(&font, PX_CODE_UNCODED_FIRST + atoi(t + 1));   /* #n: the n-th glyph without a code point */
     if (!ParseCodepoint(t, &cp)) return -2;
     return px_font_find(&font, cp);
@@ -282,13 +283,18 @@ static bool LayerStat(const char *k, long *v)
 
 static bool GetInt(const char *name, long *v)
 {
-    if (!strcmp(name, "glyphs")) *v = hasFont ? font.count : 0;
+    if (!strcmp(name, "glyphs")) *v = hasFont ? font.count - (px_font_default_index(&font) >= 0) : 0;   /* without the default glyph */
+    else if (!strcmp(name, "allglyphs")) *v = hasFont ? font.count : 0;
+    else if (!strcmp(name, "defidx")) *v = hasFont ? px_font_default_index(&font) : -1;
     else if (!strcmp(name, "selected")) { RecountSel(); *v = selCount; }
     else if (!strcmp(name, "dirty") || !strcmp(name, "modified")) { EnsureHashes(); *v = modified; }
-    else if (!strcmp(name, "unsaved") || !strcmp(name, "dbdirty")) *v = DbDirty();                  /* memory differs from the file, or a duplicate has edits not in memory */
+    else if (!strcmp(name, "unsaved") || !strcmp(name, "dbdirty")) *v = DbDirty();                  /* memory differs from the file, or the open font has edits not in the store */
     else if (!strcmp(name, "dbmodified")) *v = store && store_modified(store);                       /* the store's change counter differs from the saved one */
-    else if (!strcmp(name, "duppending")) *v = DupPending();
+    else if (!strcmp(name, "editpending")) *v = EditPending();
     else if (!strcmp(name, "readonly")) *v = hasFont && readOnly;
+    else if (!strcmp(name, "locked")) *v = hasFont && readOnly;                                            /* the font is locked */
+    else if (!strcmp(name, "contlocked")) *v = hasCont && contLocked;                                      /* its typeface is locked */
+    else if (!strcmp(name, "stored")) *v = hasFont && docStored;
     else if (!strcmp(name, "hascont")) *v = hasCont;
     else if (!strcmp(name, "variant")) *v = contVariant;
     else if (!strcmp(name, "xdopen")) *v = xd.open;                                                  /* the Export dialog */
@@ -333,7 +339,7 @@ static bool GetInt(const char *name, long *v)
     else if (!strcmp(name, "ratiob")) *v = font.ratioB;
     else if (!strcmp(name, "hasratio")) *v = font.hasRatio;
     else if (!strcmp(name, "mono")) *v = font.monospaced;
-    else if (!strcmp(name, "default")) *v = font.defaultCodepoint;
+    else if (!strcmp(name, "default")) *v = hasFont && px_font_default_index(&font) >= 0;
     else if (!strcmp(name, "kerncount")) *v = font.kernCount;
     else if (!strcmp(name, "undo")) *v = undoN;
     else if (!strcmp(name, "redo")) *v = redoN;
@@ -388,6 +394,7 @@ static bool GetInt(const char *name, long *v)
     else if (!strcmp(name, "striph")) *v = SampleStrip_Setting();
     else if (!strcmp(name, "stripcollapsed")) *v = SampleStrip_Collapsed();
     else if (!strcmp(name, "bpending")) *v = browser ? Browser_Pending(browser) : -1;
+    else if (!strcmp(name, "editor_default")) *v = inEditor && ed && Editor_GlyphIndex(ed) < font.count && font.glyphs[Editor_GlyphIndex(ed)].codepoint == PX_CODE_DEFAULT;
     else if (!strcmp(name, "editor_glyph")) *v = (inEditor && ed && Editor_GlyphIndex(ed) < font.count) ? font.glyphs[Editor_GlyphIndex(ed)].codepoint : -1;
     else if (!strncmp(name, "l.", 2)) return LayerStat(name + 2, v);
     else if (!strncmp(name, "w.", 2)) { Rectangle wr; *v = Th_RegFind(name + 2, &wr); }          /* assert w.<widget> 0|1: a widget of that name was drawn in the last frame */

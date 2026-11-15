@@ -265,6 +265,7 @@ bool Th_CodeVisible(int32_t cp)
 static void th_code_text(int32_t cp, char *out, size_t n)
 {
     if (px_code_is_uncoded(cp)) snprintf(out, n, "#%d", (int)(cp - PX_CODE_UNCODED_FIRST));
+    else if (cp == PX_CODE_DEFAULT) snprintf(out, n, "Default");
     else if (cp >= 0) snprintf(out, n, "U+%04X", (unsigned)cp);
     else snprintf(out, n, "-");
 }
@@ -278,6 +279,7 @@ void Th_CodeDraw(int32_t cp, Rectangle area, Color c, bool hover, int scale)
     bool img = g && g->show && !hover;
     if (g) g->form = img ? 1 : 2;
     th_code_text(cp, t, sizeof t);
+    if (cp == PX_CODE_DEFAULT && hover) snprintf(t, sizeof t, "FFFFFF");
     float w = img ? (float)(g->adv * scale) : th_uni(t, 0, 0, WHITE, scale, false), h = (float)(TH_UNI_H * scale);
     float x = floorf(area.x + (area.width - w) / 2), y = floorf(area.y + (area.height - h) / 2);
     if (img) uf_draw(g, x, y, scale, c);
@@ -501,6 +503,11 @@ static void th_icon(int ic, Rectangle r, Color c)
         break;
     case TH_IC_CHEV_DOWN: DrawLineEx((Vector2){x - 4, y - 2}, (Vector2){x, y + 2}, 1.4f, c); DrawLineEx((Vector2){x, y + 2}, (Vector2){x + 4, y - 2}, 1.4f, c); break;
     case TH_IC_SEARCH: DrawCircleLines((int)x - 1, (int)y - 1, 5, c); DrawLineEx((Vector2){x + 3, y + 3}, (Vector2){x + 7, y + 7}, 1.5f, c); break;
+    case TH_IC_LOCK: case TH_IC_UNLOCK:   /* the body, and the shackle closed or opened */
+        DrawRectangle((int)x - 5, (int)y - 1, 10, 8, c);
+        DrawRectangleLinesEx((Rectangle){x - 3, y - 7, 6, 7}, 1.5f, c);
+        if (ic == TH_IC_UNLOCK) DrawRectangle((int)x + 1, (int)y - 3, 4, 3, TH_PANEL);
+        break;
     case TH_IC_CHEV_RIGHT: DrawLineEx((Vector2){x - 2, y - 4}, (Vector2){x + 2, y}, 1.4f, c); DrawLineEx((Vector2){x + 2, y}, (Vector2){x - 2, y + 4}, 1.4f, c); break;
     }
 }

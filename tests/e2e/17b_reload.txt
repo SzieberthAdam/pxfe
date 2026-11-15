@@ -1,16 +1,17 @@
-# 17b. Second process on the .pxfdb that 17 saved: the new rows are there, and the new font opens read-only.
+# 17b. Second process on the .pxfdb that 17 saved: the new rows are there, and the edited font opens as it was saved (unlocked).
 waitfor loading = 0 60000
 wait 5
-assert storefonts 5
-assert storetypefaces 3
+assert storefonts 4
+assert storetypefaces 2
 assert sql "SELECT COUNT(*) FROM pxfm WHERE ascent = 7" 1
 click @Typefaces
 wait 4
-assert btotal 5
+assert btotal 3
 click @Fonts
 wait 4
-assert btotal 5
+assert btotal 4
 click @Filter
 type 0820dc
 wait 4
-assert bvisible 1
+# the old hash is gone: the font was changed in place
+assert bvisible 0

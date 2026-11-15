@@ -1,4 +1,4 @@
-# 10. An original (container e5f670ff) is read-only: no edit reaches the font, the library stays untouched; Duplicate to Edit makes the copy.
+# 10. A locked font (container e5f670ff) is read-only: no edit reaches the font, the library stays untouched; Unlock makes it editable.
 wait 5
 assert readonly 1
 assert hascont 1
@@ -44,13 +44,13 @@ click @Back
 wait 4
 assert editor 0
 assert snapdir unchanged
-# Duplicate to Edit: editable copy, still unmodified and unsaved
-click @Duplicate_to_Edit
+# Unlock: editable, still unmodified (only the lock is a change of the database settings)
+click @Unlock
 wait 5
 assert readonly 0
 assert hascont 1
 assert modified 0
-assert unsaved 0
+assert unsaved 1
 assert glyphs 6
 click @ptab_Font
 click @ascent+

@@ -210,10 +210,10 @@ static void FitTick(void)
         return;
     }
     if (PlacementSame(l, fitSnap)) return;
-    if (readOnly) {   /* the glyphs of an original cannot follow: the placement they were drawn with stays, or a duplicate could not tell them */
+    if (readOnly) {   /* the glyphs of a locked font cannot follow: the placement they were drawn with stays */
         PlacementCopy(l, fitSnap);
         flDoc->rev++;
-        Th_Toast(2, "An original is read-only: use Duplicate to Edit first");
+        Th_Toast(2, "The font is locked: unlock it first");
         return;
     }
     FitApply(l, false);
@@ -362,7 +362,7 @@ static void DrawFontLayersTab(float px, float *yp)
         }
         y += TH_ROW_H + 4;
         if (readOnly) {
-            Th_TextSmall("An original is read-only: Duplicate to Edit first.", x, y, TH_TEXT_DIM);
+            Th_TextSmall("The font is locked: unlock it first.", x, y, TH_TEXT_DIM);
             y += 24;
         }
         if (s->follow && s->em > 0) {

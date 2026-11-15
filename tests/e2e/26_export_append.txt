@@ -1,6 +1,8 @@
 # 26. Export, Append: a folder that has some of the files and other files.  The dialog shows what is found; Append writes only what is
 # missing, never changes an existing file, never deletes.  The duplicate being edited is committed first and exported too.
 wait 5
+click @Unlock
+wait 4
 assert readonly 0
 writefile tests/tmp/xout/pxfm/08/0820dc69a21b1cdb3a44d2cff7d884d8.pxfm SENTINEL\n
 writefile tests/tmp/xout/notes.txt keep me\n
@@ -23,8 +25,8 @@ wait 12
 assert xdopen 0
 assert modal Export_finished
 assert xw_fonts 4
-assert xw_typefaces 3
-assert xs_fonts 1
+assert xw_typefaces 2
+assert xs_fonts 0
 assert xd_fonts 0
 key enter
 wait 4

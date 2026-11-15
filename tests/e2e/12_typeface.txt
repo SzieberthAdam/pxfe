@@ -1,32 +1,30 @@
-# 12. A typeface duplicate (version 7): the typeface is edited in the Typeface view of the library.  "Duplicate Typeface to Edit" makes an editable
-# copy; only the typeface changes (the italic flag, the family), so Save writes a new pxtf (a new hash) and no new pxfm; the original typeface stays.
+# 12. The typeface lock: the typeface is edited in the Typeface view of the library.  Unlocking it makes its fields editable; only the typeface
+# changes (the italic flag, the family), so the typeface is rewritten in place under a new hash (no new pxfm, the same number of pxtf).
 wait 5
 assert hascont 1
 assert readonly 1
+assert contlocked 1
 assert w.ptab_Typeface 0
 click @nav.0
 wait 16
 assert nav 1
-assert w.tv.duptypeface 1
 click @bside_Typeface
 wait 3
-assert w.Duplicate_Typeface_to_Edit 1
-# an original: the fields are read-only
+assert w.Unlock 1
+# locked: the fields are read-only
 click @c.family
 wait 2
 type X
 wait 3
 assert unsaved 0
 assert tabhash b925951bb94de1d15ec27404b3261476
-click @Duplicate_Typeface_to_Edit
+click @tf_lock
 wait 12
 assert nav 1
-assert readonly 0
+assert contlocked 0
 assert hascont 1
 assert modified 0
-assert unsaved 0
-assert w.Duplicate_Typeface_to_Edit 0
-assert w.tv.duptypeface 1
+assert unsaved 1
 assert c.italic 0
 snapdir tests/tmp/e2elib
 sleep 500
@@ -45,7 +43,7 @@ click @c.italic
 wait 10
 assert c.italic 0
 assert modified 0
-assert unsaved 0
+assert unsaved 1
 assert navseg 0 Test Sans
 sleep 500
 wheel -8 1250 400
@@ -53,7 +51,7 @@ wait 12
 click @c.italic
 wait 10
 assert unsaved 1
-# the boxed hash is now the copy's, and the original stays shown below it
+# the boxed hash is now the new one, and the one in the database stays shown below it
 assert w.hash_typeface_orig 1
 assert tabhash !b925951b
 sleep 500
@@ -64,11 +62,11 @@ key s ctrl
 wait 12
 assert saved pxtf
 assert unsaved 0
-assert sqlfile tests/tmp/e2e.pxfdb "select count(*) from pxtf" 3
+assert sqlfile tests/tmp/e2e.pxfdb "select count(*) from pxtf" 2
 assert sqlfile tests/tmp/e2e.pxfdb "select count(*) from pxfm" 4
 assert snapdir unchanged
-# the original typeface is still there unchanged, and the copy is a new one
-assert sqlfile tests/tmp/e2e.pxfdb "select count(*) from pxtf where lower(hex(hash)) = 'b925951bb94de1d15ec27404b3261476'" 1
+# the old typeface is gone, and the new one took its place
+assert sqlfile tests/tmp/e2e.pxfdb "select count(*) from pxtf where lower(hex(hash)) = 'b925951bb94de1d15ec27404b3261476'" 0
 assert sqlfile tests/tmp/e2e.pxfdb "select count(*) from pxtf where lower(hex(hash)) <> 'b925951bb94de1d15ec27404b3261476' and lower(hex(hash)) <> 'b5fbcdd0dd5009013337c15e57fa7672'" 1
 # a text field: typing changes the copy, Escape puts the value back, backspacing the typed letter returns to the saved state
 sleep 500
@@ -95,17 +93,17 @@ key escape
 wait 3
 assert ctext FAMILY Test Sans
 assert unsaved 0
-# leaving the Typeface view commits what is pending: the family X is a new typeface in memory
+# leaving the Typeface view commits what is pending: the family Z takes the typeface's place in memory
 sleep 500
 click @c.family
 type Z
 key enter
 wait 3
 assert unsaved 1
-assert storetypefaces 3
+assert storetypefaces 2
 click @nav.0
 wait 16
 assert nav 0
-assert storetypefaces 3
+assert storetypefaces 2
 assert dbmodified > 0
 assert unsaved 1

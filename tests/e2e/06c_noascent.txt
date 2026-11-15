@@ -1,5 +1,7 @@
 # 6c. A font with no ASCENT/DESCENT (testdata e6109c13): the font box is taken from the glyphs and is never written.
 wait 5
+click @Unlock
+wait 4
 assert has.ascent 0
 assert has.descent 0
 assert glyphs 3

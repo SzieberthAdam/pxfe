@@ -2,6 +2,8 @@
 # "Orphaned" and leads to the Typefaces list; the style segment shows the modified marker.
 waitfor loading = 0 20000
 wait 20
+click @Unlock
+wait 4
 assert infont 1
 assert nav 3
 assert navactive 1

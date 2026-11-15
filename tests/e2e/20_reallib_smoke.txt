@@ -1,4 +1,4 @@
-# 20. Smoke test on the real library (read-only use): the browser opens on pixelglyphlib (the folder or its pxfdb.pxfdb), 5 different fonts open as originals.
+# 20. Smoke test on the real library (read-only use): the browser opens on pixelglyphlib (the folder or its pxfdb.pxfdb), 5 different fonts open locked.
 # Not part of run_all.bat (slow): run tests\e2e\run_reallib.bat.  The database that was loaded is never saved; Save As writes a copy under tests/tmp.
 # The fonts are named by their hashes, so they are fixed points of the library (see README.md).
 waitfor loading = 0 900000
@@ -27,15 +27,12 @@ assert modified 0
 assert hashname 1
 assert hasratio 1
 assert hascont 1
-click @Duplicate_to_Edit
+click @Unlock
 wait 10
 assert readonly 0
 assert modified 0
-assert unsaved 0
-key s ctrl
-wait 4
-assert toast No changes to save
-assert unsaved 0
+assert unsaved 1
+assert dbmodified 0
 assert hashname 1
 shot tests/tmp/shots/20_real_1.png
 click @nav.0
@@ -61,15 +58,12 @@ assert modified 0
 assert hashname 1
 assert has.ascent 0
 assert has.descent 0
-click @Duplicate_to_Edit
+click @Unlock
 wait 10
 assert readonly 0
 assert modified 0
-assert unsaved 0
-key s ctrl
-wait 4
-assert toast No changes to save
-assert unsaved 0
+assert unsaved 1
+assert dbmodified 0
 assert hashname 1
 shot tests/tmp/shots/20_real_2.png
 click @nav.0
@@ -95,15 +89,12 @@ assert modified 0
 assert hashname 1
 assert glyphs 57085
 assert hasratio 1
-click @Duplicate_to_Edit
+click @Unlock
 wait 10
 assert readonly 0
 assert modified 0
-assert unsaved 0
-key s ctrl
-wait 4
-assert toast No changes to save
-assert unsaved 0
+assert unsaved 1
+assert dbmodified 0
 assert hashname 1
 shot tests/tmp/shots/20_real_3.png
 click @nav.0
@@ -128,15 +119,12 @@ assert readonly 1
 assert modified 0
 assert hashname 1
 assert hascont 1
-click @Duplicate_to_Edit
+click @Unlock
 wait 10
 assert readonly 0
 assert modified 0
-assert unsaved 0
-key s ctrl
-wait 4
-assert toast No changes to save
-assert unsaved 0
+assert unsaved 1
+assert dbmodified 0
 assert hashname 1
 shot tests/tmp/shots/20_real_4.png
 click @nav.0
@@ -161,15 +149,12 @@ assert readonly 1
 assert modified 0
 assert hashname 1
 assert glyphs 255
-click @Duplicate_to_Edit
+click @Unlock
 wait 10
 assert readonly 0
 assert modified 0
-assert unsaved 0
-key s ctrl
-wait 4
-assert toast No changes to save
-assert unsaved 0
+assert unsaved 1
+assert dbmodified 0
 assert hashname 1
 shot tests/tmp/shots/20_real_5.png
 click @nav.0
@@ -178,7 +163,7 @@ click @Typefaces
 wait 6
 assert inbrowser 1
 
-# nothing was changed: Save has nothing to write; Save As writes a copy of the whole database under tests/tmp (PXFE_TRACE prints its time)
+# nothing was changed in the store; Save As writes a copy of the whole database under tests/tmp (PXFE_TRACE prints its time)
 assert dbmodified 0
 delete tests/tmp/real_saveas.pxfdb
 setdialog save tests/tmp/real_saveas.pxfdb

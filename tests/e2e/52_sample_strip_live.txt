@@ -1,6 +1,8 @@
 # 52. The strip follows the working copy (a duplicate of F1): the shortcuts do not fire while the sample box has the
 # keyboard, and a glyph edited in the glyph view shows in the strip back in the font view.
 wait 8
+click @Unlock
+wait 4
 assert inbrowser 0
 assert readonly 0
 assert stripcollapsed 0

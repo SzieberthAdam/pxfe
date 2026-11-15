@@ -1,5 +1,5 @@
-# 98. An original (read-only) font may get font layers: they are program settings, the .pxfdb stays byte for byte as it was (assert
-# samefile against a copy), the sidecar is written, and the layers survive Duplicate to Edit.  Original 0820dc69.
+# 98. A locked font may get font layers: they are program settings, the .pxfdb stays byte for byte as it was (assert
+# samefile against a copy), the sidecar is written, and the layers survive Unlock.  Font 0820dc69.
 wait 5
 assert readonly 1
 assert flayers 0
@@ -46,15 +46,15 @@ assert sidecar exists
 assert samefile tests/tmp/e2e.pxfdb tests/tmp/e2e_before.pxfdb
 assert sqlfile tests/tmp/e2e.pxfdb-settings "select count(*) from layer where font = '0820dc69a21b1cdb3a44d2cff7d884d8'" 1
 assert sqlfile tests/tmp/e2e.pxfdb-settings "select count(*) from correction" 1
-# Duplicate to Edit keeps the layers and the correction
-click @Duplicate_to_Edit
+# Unlock keeps the layers and the correction
+click @Unlock
 wait 8
 assert readonly 0
 assert flayers 1
 assert flayer 0 color 0xCC2288
 assert fcorr 0 U+0041 dx 0.25
 assert l.count 2
-# editing a pixel moves them to the new hash; the original's stay in the settings
+# editing a pixel moves them to the new hash; nothing stays under the old one
 click @ecell:2,3
 wait 4
 assert modified 1
@@ -64,7 +64,7 @@ key escape
 wait 6
 key s ctrl
 wait 12
-assert sqlfile tests/tmp/e2e.pxfdb-settings "select count(*) from layer" 2
-assert sqlfile tests/tmp/e2e.pxfdb-settings "select count(*) from layer where font = '0820dc69a21b1cdb3a44d2cff7d884d8'" 1
-assert sqlfile tests/tmp/e2e.pxfdb-settings "select count(*) from correction" 2
-assert sqlfile tests/tmp/e2e.pxfdb "select count(*) from pxfm" 5
+assert sqlfile tests/tmp/e2e.pxfdb-settings "select count(*) from layer" 1
+assert sqlfile tests/tmp/e2e.pxfdb-settings "select count(*) from layer where font = '0820dc69a21b1cdb3a44d2cff7d884d8'" 0
+assert sqlfile tests/tmp/e2e.pxfdb-settings "select count(*) from correction" 1
+assert sqlfile tests/tmp/e2e.pxfdb "select count(*) from pxfm" 4

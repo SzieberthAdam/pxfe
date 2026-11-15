@@ -1,5 +1,5 @@
-/* main.c - pxfe main window: app state, views (library browser, font view, glyph view), documents (originals,
- * duplicates, load / save / import / export of the .pxfdb), toolbar, glyph grid, status bar, dialogs, undo (see DESIGN.md). */
+/* main.c - pxfe main window: app state, views (library browser, font view, glyph view), documents (locked and unlocked fonts,
+ * load / save / import / export of the .pxfdb), toolbar, glyph grid, status bar, dialogs, undo (see DESIGN.md). */
 #include "raylib.h"
 
 #include <ctype.h>
@@ -56,19 +56,21 @@ static bool hasFont = false;
 static PxtfTypeface cont;              /* its typeface (a copy), valid when hasCont */
 static bool hasCont = false;
 static int  contVariant = 0;           /* the variant of the typeface this font is */
-static bool readOnly = false;          /* an original: nothing may change it */
+static bool readOnly = false;          /* the font is locked: nothing may change it (every font is locked until it is unlocked) */
+static bool contLocked = true;         /* the typeface of the open font is locked: its fields cannot be edited */
+static bool docStored = false;         /* the open font is in the store (false: New Font or an imported font until its first commit) */
 static bool quit = false;
 
-static char title[256];                /* "Duplicate of <name>" or the original's name */
-static char origTitle[256];            /* the name of the original */
+static char title[256];                /* the name of the font */
+static char origTitle[256];            /* the name it was opened with */
 static char docPath[PATH_MAX_LEN];     /* what the status bar shows: <hash>.pxfm of a store font, or the .pxfd */
-static char sourcePath[PATH_MAX_LEN];  /* "<hash>.pxfm" of the original in the store ("" if none) */
+static char sourcePath[PATH_MAX_LEN];  /* "<hash>.pxfm" of the font in the store ("" if none) */
 static char libRoot[PATH_MAX_LEN];     /* the open database file ("" none) */
 static char iniOverride[PATH_MAX_LEN];
 
-/* Change detection by hash: modified = current canonical hash differs from the one the font was opened with
- * (or last saved to the library), or the typeface text differs. */
-static char origHash[33], origContHash[33];  /* baseline */
+/* Change detection by hash: modified = current canonical hash differs from the one the store holds for the font (the last
+ * commit), or the typeface text differs.  A commit changes the store in place and moves these to the new hashes. */
+static char origHash[33], origContHash[33];  /* what the store holds */
 static char curHash[33], curContHash[33];    /* of the current state */
 static bool modified = false, needHash = false;
 static char exportSummary[PATH_MAX_LEN + 900];              /* the text of the last export summary */
@@ -312,7 +314,7 @@ static void PushUndo(int key)
     undoStack[undoN++] = s;
 }
 
-/* A font made by New Font: it has no original, so it counts as modified until it is committed (and again after every commit's edits). */
+/* A font made by New Font: it is not in the store yet, so it counts as modified until it is committed (and again after every commit's edits). */
 static bool docIsNew = false;
 
 static void EnsureHashes(void)
@@ -338,7 +340,7 @@ static void SnapGlyphHashes(void)
 
 static const char *OrigGlyphHash(int32_t cp)
 {
-    if (!px_code_is_codepoint(cp)) return NULL;   /* an uncoded glyph's code is renumbered by deletes: its origin is unknown */
+    if (!px_code_is_codepoint(cp) && cp != PX_CODE_DEFAULT) return NULL;   /* an uncoded glyph's code is renumbered by deletes: its origin is unknown */
     int lo = 0, hi = ghN;
     while (lo < hi) {
         int mid = (lo + hi) / 2;
@@ -510,50 +512,24 @@ static void PanelSetTab(int tab)   /* a click on the tab control: remembered in 
 }
 
 /* ------------------------------------------------------------------------------------------------
- * The database, documents: opening originals, duplicating, committing a duplicate into memory
+ * The database, documents: opening fonts, locks, committing edits into the store
  * ---------------------------------------------------------------------------------------------- */
 
-/* A duplicate is committed into memory (as a font, and a typeface when it has one) when its font view is left, before Save,
- * Export, Load and quit.  A later commit of the same duplicate replaces the earlier one. */
-static struct {
-    bool valid;                     /* the duplicate has been committed once */
-    StoreSaveResult res;            /* what the commit did (the hashes, and what was new) */
-    char hash[33], contHash[33];    /* the state of the duplicate (curHash, curContHash) that was committed */
-} dupCommit;
+/* Editing in place: the open font is the font of the store (and its typeface); an unlocked one is changed in the store, under its new
+ * hash, when its font view is left, before Save, Export, Load and quit (CommitEdits).  Everything that names it follows. */
 
-/* The current commits of the duplicates that were left (not the one open): what they name is never removed by a replacement. */
-static struct { StoreSaveResult r[64]; int n; Store *forStore; } liveDups;
-
-static void LiveDupsFor(void)
+static bool EditPending(void)
 {
-    if (liveDups.forStore != store) { liveDups.n = 0; liveDups.forStore = store; }
-}
-
-static void LiveDupsRetire(void)    /* the open duplicate's commit joins the list of earlier duplicates */
-{
-    LiveDupsFor();
-    if (!dupCommit.valid) return;
-    for (int i = 0; i < liveDups.n; i++)
-        if (!strcmp(liveDups.r[i].pxfm, dupCommit.res.pxfm) && !strcmp(liveDups.r[i].pxtf, dupCommit.res.pxtf)) {
-            liveDups.r[i].newPxfm |= dupCommit.res.newPxfm;
-            liveDups.r[i].newPxtf |= dupCommit.res.newPxtf;
-            return;
-        }
-    if (liveDups.n < 64) liveDups.r[liveDups.n++] = dupCommit.res;
-}
-
-static bool DupPending(void)
-{
-    if (!hasFont || readOnly || !store) return false;
+    if (!hasFont || !store) return false;
     EnsureHashes();
-    if (dupCommit.valid) return !Same(curHash, dupCommit.hash) || (hasCont && !Same(curContHash, dupCommit.contHash));
-    return modified;
+    if (!docStored) return true;
+    return (!readOnly && !Same(curHash, origHash)) || (hasCont && !contLocked && !Same(curContHash, origContHash));
 }
 
-/* memory differs from the file as loaded or last saved, or a duplicate has edits that are not in memory yet */
+/* memory differs from the file as loaded or last saved, or the open font has edits that are not in memory yet */
 static bool DbDirty(void)
 {
-    return store && (store_modified(store) || DupPending() || FsDirty() || FlPending());
+    return store && (store_modified(store) || EditPending() || FsDirty() || FlPending());
 }
 
 static const char *DbName(void)
@@ -589,14 +565,13 @@ static void NameOf(const PxtfVariant *v, char *out, size_t cap)
  * The sidecar <db>-settings holds, per font hash, the font layers of that font.  fsettings is the whole file in memory (like the store);
  * Save writes it (next to the .pxfdb), Save As writes a new one beside the new path, Import starts with an empty one.  The font layers of
  * the open font live in flDoc and are the truth while the font is open; they are copied into fsettings under the font's hash whenever they
- * changed (FlSync): an original under its own hash, a duplicate (or a new font) under its CURRENT hash, which changes with every edit, so a
- * sync after pixel edits moves the layers to the new hash and drops the old one (unless it is flBase, the hash the document was opened
- * with).  Leaving a duplicate commits it into memory and syncs, so the layers are written under the hash it is committed with.
+ * changed (FlSync): under the font's CURRENT hash, which changes with every edit, so a
+ * sync after pixel edits moves the layers to the new hash and drops the old one (a commit renames them with the font)
+ * Leaving an unlocked font commits it into the store and syncs, so the layers are written under the hash it is committed with.
  * ---------------------------------------------------------------------------------------------- */
 static FSettings *fsettings = NULL;
 static bool fsNoWrite = false;         /* the sidecar on disk is not a settings file: never written over */
 static FlDoc *flDoc = NULL;            /* the font layers of the open font */
-static char flBase[33];                /* the hash the document was opened with ("" for a new font) */
 static char flSyncedHash[33];          /* the hash flDoc was last written under */
 static unsigned flSyncedRev;
 
@@ -633,20 +608,19 @@ static void FlSync(void)
     EnsureHashes();
     bool revCh = flDoc->rev != flSyncedRev, hashCh = !Same(curHash, flSyncedHash);
     if (!revCh && !hashCh) return;
-    if (hashCh && flSyncedHash[0] && !Same(flSyncedHash, flBase) && fs_has_font(fsettings, flSyncedHash)) fs_remove_font(fsettings, flSyncedHash);
+    if (hashCh && flSyncedHash[0] && fs_has_font(fsettings, flSyncedHash)) fs_remove_font(fsettings, flSyncedHash);
     if (!FlDoc_Store(flDoc, fsettings, curHash)) Th_Toast(TH_TOAST_ERR, "Cannot keep the layer settings: %s", fs_error(fsettings));
     snprintf(flSyncedHash, sizeof flSyncedHash, "%s", curHash);
     flSyncedRev = flDoc->rev;
 }
 
-/* the new document's layers: those the settings hold under its hash (an original), or none (a new font) */
-static void FlOpenDoc(bool original)
+/* the new document's layers: those the settings hold under its hash (a stored font), or none (a new font) */
+static void FlOpenDoc(bool stored)
 {
     FlDoc *nd = FlDoc_New();
-    if (original && fsettings) FlDoc_Load(nd, fsettings, curHash);
+    if (stored && fsettings) FlDoc_Load(nd, fsettings, curHash);
     FlDocSet(nd);
-    snprintf(flBase, sizeof flBase, "%s", original ? curHash : "");
-    snprintf(flSyncedHash, sizeof flSyncedHash, "%s", original ? curHash : "");
+    snprintf(flSyncedHash, sizeof flSyncedHash, "%s", stored ? curHash : "");
 }
 
 /* writes the sidecar after the database was written (or by itself when only the settings changed); asNew: a new path (Save As) */
@@ -663,16 +637,14 @@ static bool SaveSidecar(bool asNew)
     return ok;
 }
 
-static bool CommitDuplicate(void);
+static bool CommitEdits(void);
 
 /* Takes over *nf and *nc (nc may be NULL).  origH / origContH: the baseline hashes ("" = the state as loaded). */
-static void AdoptDocument(PxFont *nf, PxtfTypeface *nc, int variant, bool ro, const char *titleIn, const char *origTitleIn,
+static void AdoptDocument(PxFont *nf, PxtfTypeface *nc, int variant, bool stored, const char *titleIn, const char *origTitleIn,
                           const char *origH, const char *origContH, const char *docP, const char *srcP)
 {
     if (IsMouseButtonDown(MOUSE_BUTTON_LEFT)) swallowMouse = true;
-    CommitDuplicate();      /* the document being left */
-    LiveDupsRetire();
-    dupCommit.valid = false;
+    CommitEdits();      /* the document being left */
     docIsNew = false;
     StackClear(undoStack, &undoN);
     StackClear(redoStack, &redoN);
@@ -683,7 +655,6 @@ static void AdoptDocument(PxFont *nf, PxtfTypeface *nc, int variant, bool ro, co
     hasCont = nc != NULL;
     if (nc) cont = *nc;
     contVariant = variant;
-    readOnly = ro;
     snprintf(title, sizeof title, "%s", titleIn);
     snprintf(origTitle, sizeof origTitle, "%s", origTitleIn);
     snprintf(docPath, sizeof docPath, "%s", docP);
@@ -694,7 +665,11 @@ static void AdoptDocument(PxFont *nf, PxtfTypeface *nc, int variant, bool ro, co
     snprintf(origContHash, sizeof origContHash, "%s", hasCont ? (origContH && origContH[0] ? origContH : curContHash) : "");
     needHash = true;
     EnsureHashes();
-    FlOpenDoc(ro);
+    docStored = stored;
+    readOnly = stored && !(fsettings && fs_is_unlocked(fsettings, 0, curHash));      /* a new font is unlocked: it is the user's own */
+    contLocked = stored && hasCont && !(fsettings && fs_is_unlocked(fsettings, 1, curContHash));
+    if (!stored) contLocked = false;
+    FlOpenDoc(stored);
     FitSnapDrop();
     SnapGlyphHashes();
     selN = 0;
@@ -726,6 +701,7 @@ static void DropDocument(void)
     hasFont = false;
     hasCont = false;
     readOnly = false;
+    contLocked = true;
     inEditor = false;
     curHash[0] = curContHash[0] = origHash[0] = origContHash[0] = 0;
     title[0] = origTitle[0] = docPath[0] = sourcePath[0] = 0;
@@ -733,8 +709,7 @@ static void DropDocument(void)
     docIsNew = false;
     FlDocSet(NULL);
     FitSnapDrop();
-    LiveDupsRetire();
-    dupCommit.valid = false;
+    docStored = false;
     SnapGlyphHashes();
     selN = 0;
     SelClear();
@@ -744,7 +719,7 @@ static void DropDocument(void)
 static void ShowTypefaces(void)
 {
     if (!browser) { Th_Toast(2, "No database is loaded"); return; }
-    CommitDuplicate();
+    CommitEdits();
     Browser_SetTab(browser, 0);      /* also leaves the Typeface view */
     inBrowser = true;
     inFinder = false;
@@ -753,7 +728,7 @@ static void ShowTypefaces(void)
 static void ShowFonts(void)
 {
     if (!browser) { Th_Toast(2, "No database is loaded"); return; }
-    CommitDuplicate();
+    CommitEdits();
     Browser_SetTab(browser, 1);
     inBrowser = true;
     inFinder = false;
@@ -763,7 +738,7 @@ static void ShowFonts(void)
 static void ShowTypeface(const char *pxtf, const char *selPxfm)
 {
     if (!browser) { Th_Toast(2, "No database is loaded"); return; }
-    CommitDuplicate();
+    CommitEdits();
     if (!Browser_OpenTypeface(browser, pxtf, selPxfm)) Browser_SetTab(browser, 0);
     inBrowser = true;
     inFinder = false;
@@ -773,7 +748,7 @@ static void ShowGlyphs(void)
 {
     if (!finder) { Th_Toast(2, "No database is loaded"); return; }
     if (!inFinder) wasLibrary = inBrowser || !hasFont;
-    CommitDuplicate();
+    CommitEdits();
     inFinder = true;
     inBrowser = false;
 }
@@ -796,13 +771,13 @@ static void TypefaceOfPxfm(const char *pxfm, char pxtfOut[33], int *variant)
     if (i >= 0) { snprintf(pxtfOut, 33, "%s", L->e[i].pxtf); *variant = L->e[i].variant; }
 }
 
-/* Open a font of the open library read-only (an original).  pxtfHash / variant: its typeface, if known (else the first typeface
+/* Open a font of the open library (locked or not, as the settings say).  pxtfHash / variant: its typeface, if known (else the first typeface
  * variant that names the font).  selCode >= 0 selects that glyph and scrolls it into view. */
 static bool OpenStoreFont(const char *pxfm, const char *pxtfHash, int variant, int32_t selCode)
 {
     char err[PX_ERR_LEN] = "";
     if (!store) { ShowError("Cannot open font", "No database is loaded."); return false; }
-    CommitDuplicate();      /* the font being left (the browser then lists what it committed) */
+    CommitEdits();      /* the font being left (the browser then lists what it committed) */
     StoreConn *conn = store_main_conn(store);
     PxFont nf;
     px_font_init(&nf);
@@ -862,84 +837,102 @@ static bool OpenStoreTypeface(const char *pxtfHash, int variant)
     return OpenStoreFont(pxfm, pxtfHash, num, -1);
 }
 
-static void DuplicateToEdit(void)
+/* Commits the edits of the open font (and typeface) into the store, in place.  The font keeps its place everywhere: a new hash replaces
+ * the old one in every typeface that names it (those are rewritten under their own new hashes), in the settings sidecar (layers,
+ * corrections, locks) and in the open views; the old font goes, and the glyphs no font names any more.  A font that is not in the store
+ * yet (New Font, Import Font File) is added.  False when it failed (an error is shown). */
+static bool CommitEdits(void)
 {
-    if (!hasFont || !readOnly) return;
-    PxFont nf;
-    if (!px_font_copy(&nf, &font)) { Th_Toast(2, "Out of memory"); return; }
-    px_font_free(&font);
-    font = nf;
-    if (hasCont) {
-        PxtfTypeface nc;
-        pxtf_init(&nc);
-        if (pxtf_copy(&nc, &cont)) { pxtf_free(&cont); cont = nc; }
-        else pxtf_free(&nc);
-    }
-    readOnly = false;
-    FitSnapDrop();
-    snprintf(title, sizeof title, "Duplicate of %.200s", origTitle);
-    dupCommit.valid = false;
-    StackClear(undoStack, &undoN);
-    StackClear(redoStack, &redoN);
-    if (inEditor && ed) Editor_SetReadOnly(ed, false);
-    needHash = true;
-    Th_Toast(1, "Duplicate created: you are editing a copy");
-}
-
-/* Commits the duplicate being edited into memory (a font, and a typeface when it has one), replacing its earlier commit.  The
- * browser is rescanned when something changed.  False when the commit failed (an error is shown). */
-static bool CommitDuplicateCore(void)
-{
-    if (!hasFont || readOnly || !store) return true;
-    EnsureHashes();
-    if (!DupPending()) return true;
+    if (!hasFont || !store || !EditPending()) return true;
     char err[PX_ERR_LEN] = "";
-    StoreSaveResult earlier = dupCommit.res;
-    bool hadEarlier = dupCommit.valid;
-    bool changed = false;
-    LiveDupsFor();
-    StoreSaveResult *others[65];
-    int nOthers = 0;
-    for (int i = 0; i < liveDups.n; i++) others[nOthers++] = &liveDups.r[i];
-    if (!modified) {
-        /* edited back to the original: nothing is committed, the earlier commit goes */
-        if (hadEarlier) {
-            StoreSaveResult none;
-            memset(&none, 0, sizeof none);
-            if (!store_replace_commit(store, &earlier, &none, others, nOthers, err)) { ShowError("Cannot commit the duplicate", err[0] ? err : "Unknown error."); return false; }
-            changed = true;
-        }
-        dupCommit.valid = false;
-    } else {
+    StoreEditResult er;
+    memset(&er, 0, sizeof er);
+    if (!docStored) {
         StoreSaveResult res;
         memset(&res, 0, sizeof res);
         if (!store_save_to_memory(store, &font, hasCont ? &cont : NULL, hasCont ? contVariant : 0, &res, err)) {
-            ShowError("Cannot commit the duplicate", err[0] ? err : "Unknown error.");
+            ShowError("Cannot add the font", err[0] ? err : "Unknown error.");
             return false;
         }
-        if (hadEarlier && !store_replace_commit(store, &earlier, &res, others, nOthers, err)) { ShowError("Cannot replace the earlier commit", err[0] ? err : "Unknown error."); return false; }
-        if (hadEarlier) {   /* what the earlier commit created and this one names again is still this duplicate's (a typeface edit leaves the font as it was) */
-            if (Same(res.pxfm, earlier.pxfm)) res.newPxfm |= earlier.newPxfm;
-            if (Same(res.pxtf, earlier.pxtf)) res.newPxtf |= earlier.newPxtf;
+        PxtfVariant *v = hasCont ? pxtf_find_variant(&cont, contVariant) : NULL;
+        if (v) snprintf(v->pxfm, sizeof v->pxfm, "%s", res.pxfm);
+        snprintf(er.pxfm, sizeof er.pxfm, "%s", res.pxfm);
+        snprintf(er.pxtf, sizeof er.pxtf, "%s", res.pxtf);
+        docStored = true;
+        docIsNew = false;
+        if (fsettings) {
+            fs_set_unlocked(fsettings, 0, er.pxfm, true);
+            if (hasCont) fs_set_unlocked(fsettings, 1, er.pxtf, true);
         }
-        changed = res.newPxfm || res.newPxtf || hadEarlier;
-        dupCommit.valid = true;
-        dupCommit.res = res;
-        snprintf(dupCommit.hash, sizeof dupCommit.hash, "%s", curHash);
-        snprintf(dupCommit.contHash, sizeof dupCommit.contHash, "%s", curContHash);
-        snprintf(lastPxfm, sizeof lastPxfm, "%s", res.pxfm);
-        snprintf(lastPxtf, sizeof lastPxtf, "%s", res.pxtf);
-        lastPxfmPath[0] = lastPxtfPath[0] = 0;
+    } else {
+        bool fontCh = !readOnly && !Same(curHash, origHash);
+        bool tfCh = hasCont && !contLocked && !Same(curContHash, origContHash);
+        if (!store_edit_in_place(store, origHash, fontCh ? &font : NULL, hasCont ? origContHash : NULL, tfCh ? &cont : NULL, &er, err)) {
+            ShowError("Cannot change the font in the database", err[0] ? err : "Unknown error.");
+            return false;
+        }
+        if (fsettings) {
+            fs_rename_font(fsettings, origHash, er.pxfm);
+            for (int i = 0; i < er.nMoved; i++) fs_rename_typeface(fsettings, er.movedFrom[i], er.movedTo[i]);
+        }
+        if (browser) for (int i = 0; i < er.nMoved; i++) Browser_Follow(browser, er.movedFrom[i], er.movedTo[i]);
+        if (hasCont)
+            for (int i = 0; i < cont.count; i++) if (Same(cont.v[i].pxfm, origHash)) snprintf(cont.v[i].pxfm, sizeof cont.v[i].pxfm, "%s", er.pxfm);
+        snprintf(flSyncedHash, sizeof flSyncedHash, "%s", er.pxfm);
     }
-    if (changed && browser) Browser_Rescan(browser);
+    snprintf(origHash, sizeof origHash, "%s", er.pxfm);
+    needHash = true;
+    EnsureHashes();
+    snprintf(origContHash, sizeof origContHash, "%s", hasCont ? (er.pxtf[0] ? er.pxtf : curContHash) : "");
+    needHash = true;
+    EnsureHashes();
+    snprintf(lastPxfm, sizeof lastPxfm, "%s", er.pxfm);
+    snprintf(lastPxtf, sizeof lastPxtf, "%s", er.pxtf);
+    lastPxfmPath[0] = lastPxtfPath[0] = 0;
+    FlSync();
+    if (browser) Browser_Rescan(browser);
     return true;
 }
 
-static bool CommitDuplicate(void)
+/* The lock of the open font, or of its typeface (its fields): unlocking lets every edit change it in place; locking commits what is there first. */
+static void SetLocked(bool typeface, bool lock)
 {
-    bool ok = CommitDuplicateCore();
-    if (ok && hasFont && !readOnly) FlSync();   /* the layers go under the hash it was committed with */
-    return ok;
+    bool *flag = typeface ? &contLocked : &readOnly;
+    if (!hasFont || !store || (typeface && !hasCont) || lock == *flag) return;
+    if (lock && (!CommitEdits() || !docStored)) return;
+    if (fsettings) fs_set_unlocked(fsettings, typeface ? 1 : 0, typeface ? origContHash : origHash, !lock);
+    *flag = lock;
+    if (!typeface) { if (ed) Editor_SetReadOnly(ed, lock); FitSnapDrop(); needHash = true; }
+    Th_Toast(1, "The %s is %s", typeface ? "typeface" : "font", lock ? "locked" : "unlocked: edits change it in place");
+}
+#define SetFontLocked(lock) SetLocked(false, lock)
+#define SetTypefaceLocked(lock) SetLocked(true, lock)
+
+/* the lock of a font or typeface of the library (the browser's lock buttons) */
+static bool LockedOf(bool typeface, const char *hash)
+{
+    if (!hash || !hash[0]) return true;
+    if (typeface ? (hasCont && docStored && Same(hash, origContHash)) : (hasFont && docStored && Same(hash, origHash))) return typeface ? contLocked : readOnly;
+    return !(fsettings && fs_is_unlocked(fsettings, typeface ? 1 : 0, hash));
+}
+
+static void ToggleLockOf(bool typeface, const char *hash, const BrowserChoice *c)
+{
+    bool locked = LockedOf(typeface, hash);
+    if (!typeface) {
+        if (hasFont && docStored && Same(hash, origHash)) SetFontLocked(!locked);
+        else if (fsettings) fs_set_unlocked(fsettings, 0, hash, locked);
+        return;
+    }
+    if (locked && !(hasCont && docStored && Same(hash, origContHash))) {   /* its fields are edited in the open font's typeface: open the font of the selected variant */
+        char tf[33], fm[33];
+        snprintf(tf, sizeof tf, "%s", c->pxtf);
+        snprintf(fm, sizeof fm, "%s", c->pxfm);
+        if (!OpenStoreFont(fm, tf, c->variant, -1)) return;
+        SetTypefaceLocked(false);
+        ShowTypeface(tf, fm);
+    } else if (hasCont && docStored && Same(hash, origContHash)) SetTypefaceLocked(!locked);
+    else if (fsettings) fs_set_unlocked(fsettings, 1, hash, locked);
 }
 
 /* ---- the library on a worker thread: Load, Import and Export (the first build of a big folder takes minutes) ---- */
@@ -967,7 +960,7 @@ static struct {
 } job;
 
 /* what the command line asked for once the font is there */
-static struct { bool pending, dup, browser; int zoom, edit, panelScroll; const char *sel; char font[40], typeface[40]; } startup;
+static struct { bool pending, unlock, browser; int zoom, edit, panelScroll; const char *sel; char font[40], typeface[40]; } startup;
 static void ApplyStartup(void);
 
 static void JobThread(void *arg)
@@ -1015,8 +1008,6 @@ static bool InstallStore(Store *s)
     CloseLibrary();
     store = s;
     FsOpenFor(s);
-    liveDups.n = 0;
-    liveDups.forStore = s;
     snprintf(libRoot, sizeof libRoot, "%.1000s", store_info(store)->path);
     Slashes(libRoot);
     insight = Insight_Create(store);
@@ -1170,7 +1161,7 @@ static void ExportDialogOpen(const char *folder)
 static void ExportStart(void)
 {
     if (!store) { Th_Toast(2, "No database is loaded"); return; }
-    if (!CommitDuplicate()) return;
+    if (!CommitEdits()) return;
     char dir[PATH_MAX_LEN];
     if (DlgFolder(dir, sizeof dir, "Choose the folder to export to (the files go to pxtf/, pxfm/ and pxgl/)")) ExportDialogOpen(dir);
 }
@@ -1254,7 +1245,7 @@ static void JobFinish(void)
     else if (job.after == AFTER_KEEP) { if (!hasFont) inBrowser = true; }
     else if (job.after == AFTER_FONT || job.after == AFTER_TYPEFACE) {
         bool ok = job.after == AFTER_FONT ? OpenStoreFont(job.afterHash, "", 0, -1) : OpenStoreTypeface(job.afterHash, 0);
-        if (ok && startup.pending && startup.dup) DuplicateToEdit();
+        if (ok && startup.pending && startup.unlock) SetFontLocked(false);
         if (!ok) inBrowser = true;
     }
     if (startup.pending && hasFont) ApplyStartup();
@@ -1369,7 +1360,7 @@ static void GoBrowser(void)
 static bool SaveDb(void)
 {
     if (!store) { Th_Toast(2, "No database is loaded"); return false; }
-    if (!CommitDuplicate()) return false;
+    if (!CommitEdits()) return false;
     FlSync();
     bool dbMod = store_modified(store);
     if (!dbMod && !FsDirty()) { Th_Toast(0, "No changes to save"); return true; }
@@ -1385,7 +1376,7 @@ static char saveAsPending[PATH_MAX_LEN];
 static bool DoSaveAs(const char *path)
 {
     if (!store) return false;
-    if (!CommitDuplicate()) return false;
+    if (!CommitEdits()) return false;
     char err[PX_ERR_LEN] = "";
     double t0 = GetTime();
     if (!store_save_as(store, path, err)) { ShowError("Cannot save", err[0] ? err : "Unknown error."); return false; }
@@ -1435,7 +1426,7 @@ static void Guard(int kind, const char *path)
     guard.kind = kind;
     snprintf(guard.path, sizeof guard.path, "%s", path ? path : "");
     if (store) {
-        CommitDuplicate();
+        CommitEdits();
         if (DbDirty()) {
             char msg[PATH_MAX_LEN + 200];
             snprintf(msg, sizeof msg, "%s has changes that are not saved.\nSave them first, or discard them?", DbName());
@@ -1480,17 +1471,9 @@ static void HandleInsightTarget(const InsightTarget *t)
 static void RunChoice(const BrowserChoice *c)
 {
     if (c->action == BROWSER_INSIGHT) HandleInsightTarget(&c->insight);
-    else if (c->action == BROWSER_OPEN || c->action == BROWSER_DUPLICATE) {
-        if (OpenStoreFont(c->pxfm, c->pxtf, c->variant, -1) && c->action == BROWSER_DUPLICATE) DuplicateToEdit();
-    }
-    else if (c->action == BROWSER_DUPLICATE_TYPEFACE) {
-        /* an editable copy of the font of the selected variant and of the typeface; the font stays as it is, so only the typeface differs
-         * and its commit (when the Typeface view is left, before Save) is a new pxtf; the view stays on the typeface */
-        char tf[33], fm[33];
-        snprintf(tf, sizeof tf, "%s", c->pxtf);
-        snprintf(fm, sizeof fm, "%s", c->pxfm);
-        if (OpenStoreFont(fm, tf, c->variant, -1)) { DuplicateToEdit(); ShowTypeface(tf, fm); }
-    }
+    else if (c->action == BROWSER_OPEN) OpenStoreFont(c->pxfm, c->pxtf, c->variant, -1);
+    else if (c->action == BROWSER_LOCK) ToggleLockOf(false, c->pxfm, c);
+    else if (c->action == BROWSER_LOCK_TYPEFACE) ToggleLockOf(true, c->pxtf, c);
 }
 
 /* ---- deleting fonts and typefaces (in memory; Save writes the deletion to the database file) ---- */
@@ -1657,7 +1640,7 @@ static void DoCloneUncoded(void)
 
 static void CmdClone(void)
 {
-    if (readOnly) { Th_Toast(2, "An original is read-only: use Duplicate to Edit first"); return; }
+    if (readOnly) { Th_Toast(2, "The font is locked: unlock it first"); return; }
     RecountSel();
     if (selCount != 1) { Th_Toast(2, "Select exactly one glyph to clone"); return; }
     char msg[200];
@@ -1674,7 +1657,7 @@ static void CmdEditSelected(void)
 
 static void CmdDeleteAsk(void)
 {
-    if (readOnly) { Th_Toast(2, "An original is read-only: use Duplicate to Edit first"); return; }
+    if (readOnly) { Th_Toast(2, "The font is locked: unlock it first"); return; }
     RecountSel();
     if (selCount == 0) return;
     char msg[160];
@@ -1682,23 +1665,29 @@ static void CmdDeleteAsk(void)
     ModalOpen(M_CONFIRM, A_DELETE, selCount == 1 ? "Delete glyph" : "Delete glyphs", msg, 2, "Cancel", "Delete", NULL, 1, 0, true);
 }
 
+static void CodeLabel(int32_t c, char *out, size_t n);
+
 static bool CanSetDefault(void)
 {
     if (!hasFont || readOnly || selCount != 1) return false;
     int i = FirstSelected();
-    return i >= 0 && px_code_is_codepoint(font.glyphs[i].codepoint) && font.defaultCodepoint != font.glyphs[i].codepoint;
+    return i >= 0 && font.glyphs[i].codepoint != PX_CODE_DEFAULT;
 }
 
 static void CmdSetDefault(void)
 {
-    if (readOnly) { Th_Toast(2, "An original is read-only: use Duplicate to Edit first"); return; }
+    if (readOnly) { Th_Toast(2, "The font is locked: unlock it first"); return; }
     RecountSel();
     int i = FirstSelected();
-    if (selCount != 1 || i < 0 || !px_code_is_codepoint(font.glyphs[i].codepoint)) { Th_Toast(2, "Select one glyph that has a code point"); return; }
-    if (font.defaultCodepoint == font.glyphs[i].codepoint) return;
+    if (selCount != 1 || i < 0) { Th_Toast(2, "Select one glyph"); return; }
+    if (font.glyphs[i].codepoint == PX_CODE_DEFAULT) return;
     PushUndo(0);
-    px_font_set_default(&font, font.glyphs[i].codepoint);
-    Th_Toast(1, "U+%04X is the default glyph", (unsigned)font.glyphs[i].codepoint);
+    char cl[32];
+    CodeLabel(font.glyphs[i].codepoint, cl, sizeof cl);
+    px_font_set_default_from(&font, i);
+    needHash = true;
+    SelResize();
+    Th_Toast(1, "The default glyph is now a copy of %s", cl);
 }
 
 static int zoomAnchor = -1;   /* glyph at the top of the view when the zoom changed; keeps its place after the re-layout */
@@ -1773,6 +1762,7 @@ static void LayoutGrid(Rectangle area)
 static void CodeLabel(int32_t c, char *out, size_t n)
 {
     if (px_code_is_uncoded(c)) snprintf(out, n, "#%d", c - PX_CODE_UNCODED_FIRST);
+    else if (c == PX_CODE_DEFAULT) snprintf(out, n, "Default");
     else if (c >= 0) snprintf(out, n, "U+%04X", (unsigned)c);
     else snprintf(out, n, "-");
 }
@@ -1844,16 +1834,7 @@ static void DrawCell(int i, float cx, float cy, float cw, Rectangle area, const 
         Rectangle cap = {cx + 1, cy + boxPx + 2 * CELL_PADY, cw - 2, CAPTION_H - 1};
         DrawRectangleRec(cap, TH_PANEL_ALT);
         Th_HLine(cap.x, cap.x + cap.width, cap.y, TH_LINE_SOFT);
-        bool isDef = g->codepoint != PX_NO_CODEPOINT && g->codepoint == font.defaultCodepoint;
-        Rectangle ca = cap;   /* the character in Unifont, "U+XXXX" while the mouse is over the cell; the DEF badge keeps its end */
-        if (isDef) ca.width -= 40;
-        Th_CodeDraw(g->codepoint, ca, TH_TEXT, hovered, 1);
-        if (isDef) {
-            Vector2 md = Th_MeasureSmall("DEF");
-            Rectangle br = {cap.x + cap.width - md.x - 14, cap.y + 4, md.x + 10, CAPTION_H - 8};
-            DrawRectangleRounded(br, 0.5f, 6, TH_ACCENT);
-            Th_TextSmall("DEF", br.x + 5, Fl(br.y + (br.height - md.y) / 2), TH_TEXT_ON);
-        }
+        Th_CodeDraw(g->codepoint, cap, TH_TEXT, hovered, 1);   /* the character in Unifont, "U+XXXX" while the mouse is over the cell; "Default" for FFFFFF */
     }
 }
 
@@ -2153,17 +2134,17 @@ static void DrawNav(void)
     TbX = track.x + track.width + 8;
 }
 
-/* the "..." menu of the font view's toolbar: deleting the open original font or its typeface */
+/* the "..." menu of the font view's toolbar: deleting the open font or its typeface */
 static struct { bool open; Rectangle anchor; } moreMenu;
 
 static void DrawMoreMenu(void)
 {
     if (!moreMenu.open) return;
-    bool origFont = hasFont && readOnly && store && origHash[0] && store_has_pxfm(store_main_conn(store), origHash);
-    bool origTf = origFont && hasCont && origContHash[0] && store_has_pxtf(store_main_conn(store), origContHash);
+    bool origFont = hasFont && docStored && store && !EditPending();
+    bool origTf = origFont && hasCont;
     ThMenuItem it[2] = {
-        {"Delete Font...", NULL, "more.delfont", "Open a font of the database as an original to delete it", TH_MI_DANGER | (origFont ? 0 : TH_MI_OFF)},
-        {"Delete Typeface...", NULL, "more.deltf", "Open a font that belongs to a typeface of the database as an original to delete the typeface", TH_MI_DANGER | (origTf ? 0 : TH_MI_OFF)}};
+        {"Delete Font...", NULL, "more.delfont", "Delete the open font from the database", TH_MI_DANGER | (origFont ? 0 : TH_MI_OFF)},
+        {"Delete Typeface...", NULL, "more.deltf", "Delete the typeface of the open font from the database", TH_MI_DANGER | (origTf ? 0 : TH_MI_OFF)}};
     int k = Th_Menu(&(ThMenu){it, 2, .x = moreMenu.anchor.x + moreMenu.anchor.width, .y = moreMenu.anchor.y + moreMenu.anchor.height + 4, .w = 238, .flags = TH_MENU_RIGHT, .keep = moreMenu.anchor}, &moreMenu.open);
     if (k >= 0) AskDelete(k == 1, k == 1 ? origContHash : origHash, true);
 }
@@ -2225,7 +2206,7 @@ static void DrawCommandBar(Rectangle r)
     Th_HLine(r.x, r.x + r.width, r.y + r.height - 1, TH_LINE);
     TbX = 12;
     TbY = r.y + 5;
-    const char *saveHint = readOnly ? "An original is read-only: use Duplicate to Edit first" : NULL;
+    const char *saveHint = readOnly ? "The font is locked: unlock it first" : NULL;
     /* zoom selector: [-] 4x [+] */
     Th_Text("Zoom", TbX, Fl(TbY + (28 - Th_Measure("Zoom").y) / 2), TH_TEXT_DIM);
     TbX += Fl(Th_Measure("Zoom").x) + 8;
@@ -2280,31 +2261,19 @@ static void HashNotice(const char *what, bool copied)
     else hintText = "Click to copy the full hash";
 }
 
-/* The slim bar above the grid: original (read-only) or duplicate. */
+/* The slim bar above the grid: the font, its hash, and its lock. */
 static void DrawInfoBar(Rectangle r)
 {
     DrawRectangleRec(r, readOnly ? TH_NOTICE_BG : TH_PANEL_ALT);
     Th_HLine(r.x, r.x + r.width, r.y + r.height - 1, TH_LINE);
     float ty = Fl(r.y + (r.height - Th_Measure("M").y) / 2);
     float x = r.x + 14;
-    if (readOnly) {
-        const char *lead = "Font \xC2\xB7 original \xC2\xB7 read-only \xC2\xB7";
-        Th_Text(lead, x, ty, TH_TEXT_WARN);
-        x += Th_Measure(lead).x + 8;
-        Th_HashShort(NULL, origHash, x, ty, 0, "hash_font");
-        float bw = Th_DuplicateW(false);
-        Rectangle db = {r.x + r.width - bw - 12, r.y + 3, bw, r.height - 7};
-        if (Th_Duplicate(db, false, 0, "Make an editable copy of this font  (the original stays untouched)")) DuplicateToEdit();
-    } else {
-        char s[400];
-        snprintf(s, sizeof s, docIsNew ? (hasCont ? "%s \xC2\xB7 new font and typeface" : "%s \xC2\xB7 new font, no typeface") : "%s \xC2\xB7 editable duplicate of Font", title);
-        Th_Text(s, x, ty, TH_TEXT);
-        x += Th_Measure(s).x + 8;
-        x += Th_HashShort(NULL, origHash, x, ty, 0, "hash_font") + 16;
-        EnsureHashes();
-        if (!modified) Th_Text("Unchanged: same hash as the original", x, ty, TH_TEXT_DIM);
-        else if (docIsNew) Th_Text("not in the database until it is committed", x, ty, TH_TEXT_DIM);
-    }
+    float bh = r.height - 7;
+    if (Th_Lock(((Rectangle){r.x + r.width - bh - 12, r.y + 3, bh, bh}), readOnly, readOnly ? "The font is locked: unlock it to edit it  (edits change it in place)" : "Lock the font: nothing can change it")) SetFontLocked(!readOnly);
+    const char *lead = readOnly ? "Locked \xC2\xB7" : docStored ? "Unlocked \xC2\xB7" : "New font, not in the database yet \xC2\xB7";
+    Th_Text(lead, x, ty, readOnly ? TH_TEXT_WARN : TH_TEXT);
+    x += Th_Measure(lead).x + 8;
+    Th_HashShort(NULL, origHash, x, ty, 0, "hash_font");
 }
 
 static int FontPx(void)   /* the pixel size of the open font: its box */
@@ -2371,7 +2340,7 @@ static void DrawStatus(int W, int H)
     else if (hasFont && !inBrowser && !inFinder && !inEditor && hoverIdx >= 0 && hoverIdx < font.count && !uiBlocked) {
         const PxGlyph *g = &font.glyphs[hoverIdx];
         CodeLabel(g->codepoint, cl, sizeof cl);
-        snprintf(r, sizeof r, "%s%s   advance %d   %s", cl, px_code_is_codepoint(g->codepoint) ? "" : " (no code point)", g->advance, g->w > 0 ? TextFormat("%d x %d", g->w, g->h) : "empty");
+        snprintf(r, sizeof r, "%s%s   advance %d   %s", cl, px_code_is_codepoint(g->codepoint) || g->codepoint == PX_CODE_DEFAULT ? "" : " (no code point)", g->advance, g->w > 0 ? TextFormat("%d x %d", g->w, g->h) : "empty");
     }
     rt[0].text = r;
     Th_StatusBar((Rectangle){0, (float)(H - STATUS_H), (float)W, STATUS_H}, 0, l, nl, rt, r[0] ? 1 : 0);
@@ -2419,12 +2388,12 @@ static void DoAddGlyph(int32_t cp)
 static void CmdAddGlyph(void)
 {
     if (!hasFont) return;
-    if (readOnly) { Th_Toast(2, "An original is read-only: use Duplicate to Edit first"); return; }
+    if (readOnly) { Th_Toast(2, "The font is locked: unlock it first"); return; }
     ModalOpen(M_INPUT, A_ADDGLYPH, "Add glyph", "Add an empty glyph.\nType U+XXXX, hex digits, or a single character; or add it without a code point.", 3, "Cancel", "No Code Point", "Add", 2, 0, false);
 }
 
 /* New Font: name, style, pixel size, ascent and descent.  The font has no glyphs and no typeface (it is orphaned: the name is only the
- * title of this session); it is committed into memory like a duplicate, and Add Glyph gives it glyphs. */
+ * title of this session); it is committed into the store like an unlocked font, and Add Glyph gives it glyphs. */
 static struct { bool open; int frame; char name[80], style[40]; int size, ascent, descent; } nf;
 
 static void NewFontOpen(void)
@@ -2681,7 +2650,7 @@ static void HandleShortcuts(void)
     if (alt && IsKeyPressed(KEY_LEFT)) { NavBack(); return; }
     if (inBrowser || inFinder || !hasFont) return;
     if (ctrl && shift && IsKeyPressed(KEY_F)) { CmdFindInLibrary(); return; }
-    if (ctrl && IsKeyPressed(KEY_Z) && !shift) { if (readOnly) Th_Toast(2, "An original is read-only"); else DoUndoRedo(false); return; }
+    if (ctrl && IsKeyPressed(KEY_Z) && !shift) { if (readOnly) Th_Toast(2, "The font is locked"); else DoUndoRedo(false); return; }
     if (ctrl && (IsKeyPressed(KEY_Y) || (IsKeyPressed(KEY_Z) && shift))) { if (!readOnly) DoUndoRedo(true); return; }
     if (inEditor) return;
     if (ctx.open) return;
@@ -2736,7 +2705,7 @@ int main(int argc, char **argv)
     const char *openPath = NULL, *shotPath = NULL, *modalArg = NULL;
     const char *playPath = NULL, *jobShotPath = NULL;
     int jobShotMs = 1500, jobHoldMs = 0;
-    bool dupArg = false;
+    bool unlockArg = false;
     char importTo[PATH_MAX_LEN] = "";
     int shotFrames = 5, winW = 1400, winH = 900;
     startup.edit = -1;
@@ -2754,7 +2723,7 @@ int main(int argc, char **argv)
         else if (!strcmp(a, "--select") && i + 1 < argc) startup.sel = argv[++i];
         else if (!strcmp(a, "--zoom") && i + 1 < argc) startup.zoom = atoi(argv[++i]);
         else if (!strcmp(a, "--edit") && i + 1 < argc) startup.edit = atoi(argv[++i]);
-        else if (!strcmp(a, "--duplicate")) dupArg = true;
+        else if (!strcmp(a, "--unlock")) unlockArg = true;
         else if (!strcmp(a, "--browser")) startup.browser = true;
         else if (!strcmp(a, "--panel-scroll") && i + 1 < argc) startup.panelScroll = atoi(argv[++i]);
         else if (!strcmp(a, "--play") && i + 1 < argc) playPath = argv[++i];
@@ -2763,7 +2732,7 @@ int main(int argc, char **argv)
         else if (!strcmp(a, "--size") && i + 1 < argc) sscanf(argv[++i], "%dx%d", &winW, &winH);
         else if (a[0] != '-' && !openPath) openPath = a;
     }
-    startup.dup = dupArg;
+    startup.unlock = unlockArg;
 
     if (playPath) { noDialogs = true; if (!PlayLoad(playPath)) return 2; }
     SetConfigFlags(FLAG_WINDOW_RESIZABLE | (playPath ? FLAG_WINDOW_ALWAYS_RUN : 0));   /* a script keeps running when the window is minimised or hidden */
@@ -2771,6 +2740,7 @@ int main(int argc, char **argv)
     InitWindow(winW, winH, "pxfe");
     Browser_SetCharSource(Play_GetChar);
     Browser_SetTypefaceTab(DrawTypefaceTab, TypefaceEditing);
+    Browser_SetLockQuery(LockedOf);
     SetWindowMinSize(1110, 600);
     SetExitKey(0);
     SetTargetFPS(playPath ? play.fps : 60);
@@ -2897,8 +2867,8 @@ int main(int argc, char **argv)
                 } else if (er == EDITOR_PREV || er == EDITOR_NEXT) {
                     int ni = gi + (er == EDITOR_NEXT ? 1 : -1);
                     if (ni >= 0 && ni < font.count) OpenEditor(ni);
-                } else if (er == EDITOR_DUPLICATE) {
-                    DuplicateToEdit();
+                } else if (er == EDITOR_LOCK) {
+                    SetFontLocked(!readOnly);
                 }
             } else {
                 if (ed) Layers_PopoverClose(Editor_Layers(ed));

@@ -1,0 +1,118 @@
+# 104. The default glyph (FFFFFF) is a glyph of its own, always the last in the grid (testdata font 0820dc69: A, H, M, x, comma, space and a default that copies the space).
+wait 5
+click @Unlock
+wait 4
+assert readonly 0
+assert default 1
+assert glyphs 6
+assert allglyphs 7
+assert defidx 6
+assert caption default Default
+assert glyph default exists 1
+assert glyph default advance 4
+assert glyph default empty
+# selecting, opening and editing it works like any glyph
+click @cell:default
+wait 3
+assert selected 1
+assert sel default 1
+shot tests/tmp/shots/104_default_grid.png
+key enter
+wait 5
+assert editor 1
+assert editor_default 1
+drag @ecell:1,3 @ecell:3,3
+wait 3
+click @ecell:2,3 right
+click @ecell:0,0
+click @ecell:0,0 right
+wait 3
+shot tests/tmp/shots/104_default_editor.png
+click @Back
+wait 4
+assert editor 0
+assert glyph default size 4x4
+assert glyph default ink 2
+assert glyph U+0020 empty
+assert glyphs 6
+assert defidx 6
+assert modified 1
+# Set Default copies the selected glyph: a copy, independent from then on
+click @cell:U+0048
+wait 3
+click @Set_Default
+wait 4
+assert glyphs 6
+assert allglyphs 7
+assert defidx 6
+assert glyph default size 5x5
+assert glyph default ink 13
+assert glyph default advance 6
+assert glyph U+0048 ink 13
+click @cell:default
+key enter
+wait 5
+drag @ecell:1,0 @ecell:1,1
+wait 3
+click @Back
+wait 4
+assert glyph default ink 15
+assert glyph U+0048 ink 13
+# the default glyph is not selected by occurrences of another glyph, and a selection of H does not take it
+click @cell:U+0048
+wait 3
+assert sel default 0
+assert sel U+0048 1
+# a glyph of its own, even a clone of an uncoded one: Set Default on the default itself does nothing
+click @cell:default
+wait 3
+click @Set_Default
+wait 3
+assert allglyphs 7
+# deleting the default glyph is allowed, and so is undoing it
+key delete
+wait 4
+assert modal Delete_glyph
+key enter
+wait 4
+assert glyph default exists 0
+assert default 0
+assert allglyphs 6
+assert glyph U+0048 exists 1
+key z ctrl
+wait 3
+assert glyph default exists 1
+assert defidx 6
+assert default 1
+# Set Default makes the default glyph again after a delete
+sleep 600
+click @cell:default
+wait 3
+key delete
+wait 4
+key enter
+wait 4
+assert default 0
+click @cell:U+0078
+wait 3
+click @Set_Default
+wait 4
+assert default 1
+assert defidx 6
+assert glyph default size 5x4
+# a default that is a glyph of its own: draw into the copy, then save
+click @cell:default
+key enter
+wait 5
+drag @ecell:0,6 @ecell:4,6
+wait 3
+click @Back
+wait 4
+assert glyph default size 5x5
+assert glyph U+0078 size 5x4
+key s ctrl
+wait 12
+assert unsaved 0
+assert toast Saved e2e.pxfdb
+assert sqlfile tests/tmp/e2e.pxfdb "select count(*) from pxfm_glyph where code = 16777215" 2
+assert sqlfile tests/tmp/e2e.pxfdb "select count(*) from pxfm_glyph where code=16777215 and glyph not in (select glyph from pxfm_glyph where code<>16777215 and glyph>0)" 1

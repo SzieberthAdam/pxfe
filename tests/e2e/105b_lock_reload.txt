@@ -1,0 +1,19 @@
+# 105b. Second process after 105: the edited font is in the database, the layer and the unlocked state are read from the sidecar.
+wait 8
+assert locked 0
+assert contlocked 1
+assert stored 1
+assert m.ascent 8
+assert flayers 1
+assert modified 0
+assert unsaved 0
+shot tests/tmp/shots/105b_reload.png
+click @Lock
+wait 4
+assert locked 1
+click @ascent+
+wait 4
+assert m.ascent 8
+click @Unlock
+wait 4
+assert locked 0

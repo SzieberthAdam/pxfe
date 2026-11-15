@@ -1,0 +1,111 @@
+# 105. Lock and unlock (font 0820dc69, the first variant of typeface b925951b).  Everything is locked until it is unlocked; editing an
+# unlocked font changes it in place: the typeface, the layer settings and the lock state follow the new hash.
+wait 5
+assert locked 1
+assert readonly 1
+assert contlocked 1
+assert stored 1
+assert modified 0
+shot tests/tmp/shots/105_locked.png
+# locked: every edit tool and command refuses
+click @cell:U+0048
+wait 3
+key delete
+wait 4
+assert modal none
+assert glyph U+0048 exists 1
+key d ctrl
+wait 4
+assert modal none
+click @Set_Default
+wait 3
+assert glyph default empty
+click @ascent+
+wait 4
+assert m.ascent 6
+key z ctrl
+wait 3
+assert toast The font is locked
+sleep 600
+dblclick @cell:U+0020
+wait 5
+assert editor 1
+drag @ecell:1,2 @ecell:4,2
+wait 3
+assert glyph U+0020 empty
+assert dirty 0
+key delete
+wait 3
+click @Back
+wait 4
+assert editor 0
+assert modified 0
+assert unsaved 0
+# the sidecar holds nothing for a font that was never unlocked
+assert sidecar missing
+# unlock: the font can be edited
+click @Unlock
+wait 4
+assert locked 0
+assert modified 0
+assert unsaved 1
+shot tests/tmp/shots/105_unlocked.png
+click @ascent+
+wait 6
+assert modified 1
+assert m.ascent 7
+addlayerfile testdata/bitmap/font.bdf
+wait 6
+assert flayers 1
+# leaving the font view commits the edit in place: same number of fonts and typefaces, the old ones gone, the typeface names the new font
+click @nav.0
+wait 16
+assert nav 1
+assert sql "select count(*) from pxfm" 4
+assert sql "select count(*) from pxtf" 2
+assert sql "select count(*) from pxfm where ascent = 7" 1
+assert sql "select count(*) from pxfm where lower(hex(hash)) = '0820dc69a21b1cdb3a44d2cff7d884d8'" 0
+assert sql "select count(*) from pxtf where lower(hex(hash)) = 'b925951bb94de1d15ec27404b3261476'" 0
+assert sql "select count(*) from pxtf_variant where pxfm not in (select hash from pxfm)" 0
+assert sql "select count(*) from pxtf_variant v join pxfm f on f.hash = v.pxfm where f.ascent = 7" 1
+assert saved pxfm
+assert saved pxtf
+assert unsaved 1
+key right alt
+wait 16
+assert nav 3
+assert locked 0
+assert modified 0
+assert ohash $NEWPXFM
+# lock it again: the edit is refused, and the lock is kept
+click @Lock
+wait 4
+assert locked 1
+click @ascent+
+wait 4
+assert m.ascent 7
+click @Unlock
+wait 4
+click @ascent+
+wait 6
+click @Lock
+wait 4
+assert locked 1
+assert sql "select count(*) from pxfm where ascent = 8" 1
+assert sql "select count(*) from pxfm" 4
+# Save: the database has the edit, the sidecar has the layer under the new hash (and no lock: the font is locked now)
+key s ctrl
+wait 12
+assert unsaved 0
+assert sqlfile tests/tmp/e2e.pxfdb "select count(*) from pxfm where ascent = 8" 1
+assert sqlfile tests/tmp/e2e.pxfdb "select count(*) from pxfm" 4
+assert sqlfile tests/tmp/e2e.pxfdb-settings "select count(*) from layer" 1
+assert sqlfile tests/tmp/e2e.pxfdb-settings "select count(*) from layer where font = '$NEWPXFM'" 1
+assert sqlfile tests/tmp/e2e.pxfdb-settings "select count(*) from unlocked" 0
+# unlock once more and Save: the lock state is in the sidecar, keyed by the font's hash
+click @Unlock
+wait 4
+key s ctrl
+wait 12
+assert sqlfile tests/tmp/e2e.pxfdb-settings "select count(*) from unlocked where kind = 0 and hash = '$NEWPXFM'" 1
+assert sqlfile tests/tmp/e2e.pxfdb-settings "select count(*) from layer where font = '$NEWPXFM'" 1

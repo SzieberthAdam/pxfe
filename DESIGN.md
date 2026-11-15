@@ -31,17 +31,17 @@ All `src/*.c` files are compiled into the app, so a new module is just a new fil
 | `src/library.h/.c` | the browser index from the store lists (the draft listing is kept in the core, unused), lazy and threaded loading from the store; no raylib |
 | `src/theme.h/.c` | colours, fonts, raygui style, small drawing helpers |
 | `src/browser.h/.c` | the library browser view |
-| `src/main.c` | window, app state, views, toolbar with the File menu and Save, Load / Save / Save As / Import / Export flows with their prompts and dialogs, the commit of a duplicate into memory, glyph grid, metrics panel, status bar |
+| `src/main.c` | window, app state, views, toolbar with the File menu and Save, Load / Save / Save As / Import / Export flows with their prompts and dialogs, the commit of edits into the store, the locks, glyph grid, metrics panel, status bar |
 | `src/editor.h/.c` | the glyph editing view |
 | `src/play.inc` | the scripted input player of the end-to-end tests (`--play`) |
 
 ## Command line
 
-`pxfe.exe [<file.pxfdb> | <folder>] [--font <hash>] [--typeface <hash>] [--duplicate] [--import-to <file.pxfdb>]`.
+`pxfe.exe [<file.pxfdb> | <folder>] [--font <hash>] [--typeface <hash>] [--unlock] [--import-to <file.pxfdb>]`.
 
 - A `.pxfdb` file is loaded.
 - A folder starts the import flow: the target file is asked for (or given with `--import-to`), the folder is imported, the new database is loaded.
-- `--font` and `--typeface` open that font or typeface of the loaded database; `--duplicate` then makes the editable copy.
+- `--font` and `--typeface` open that font or typeface of the loaded database; `--unlock` then unlocks the font.
 - With no argument, the last database (`lastPxfdb` in `pxfe.ini` beside the exe) is loaded, else an empty state with "Load Database…" and "Import Folder…".
 
 ## Visual direction
@@ -62,25 +62,21 @@ The bar is the polished look of FontLab 8: quiet, flat, precise.
 - Every font-wide metric is optional, because a pxfm holds only what its source states: `ASCENT`, `DESCENT`, `LINEGAP`, `CAPHEIGHT`, `XHEIGHT`, `INTERNALLEADING`, `QUADWIDTH`, `RATIO`, `UNDERLINEPOSITION`, `UNDERLINETHICKNESS`, `STRIKEOUTPOSITION`, `STRIKEOUTTHICKNESS`, `MONOSPACED`, plus `COLOR`, `GLYPH`, `_DEF` and `KERNING`.
 - A font without `ASCENT` or `DESCENT` is drawn in a box taken from the glyphs (the highest and the lowest bitmap rows); that box is pxfe's own and is never written.
 - Changing `ASCENT` or `DESCENT` no longer moves any glyph: it only changes the box.
-- The default glyph (`_DEF`) is a property of the font (the code point of the default glyph, or none), shown as a badge on its cell and settable from the grid's context.
+- The default glyph is an ordinary glyph with the code `FFFFFF` (version 11): it has its own bitmap, offsets and advance, it is always the last glyph of the font, and nothing else refers to it.
 - Kerning pairs are kept and written; they are not edited yet, but deleting a glyph drops its pairs and cloning does not copy them.
 
-## Originals, duplicates and change detection
+## Locks and change detection
 
-The files of a library are named by their hashes, and the user wants the originals left as they are.
+The files of a library are named by their hashes.
+Every font and every typeface has a lock (version 12), and everything is locked until it is unlocked.
 
-- A font opened from the library is an original: it opens read-only.
-  The grid, the glyph view, selection and zoom all work, but every command that would change it is disabled, and a bar above the grid says "Original — read-only" with a "Duplicate to Edit" button.
-- "Duplicate to Edit" (in the browser and in the font view) makes a duplicate: an in-memory working copy of the font (its pxfm and the pxgl glyphs it names) and, when the font came from a container, of the container (pxfc) too.
-  The duplicate is editable.
-  Its title says "Duplicate of <name>".
-- A duplicate is saved as a draft (`.pxfd`) in the drafts folder (`drafts\` beside `pxfe.exe`); the browser lists the drafts in their own tab.
-- "Save to Library" of a duplicate writes the new pxgl files, the new pxfm and, for a container duplicate, a new pxfc whose variant names the new pxfm and holds the edited metadata.
-  It is disabled while the duplicate's canonical pxfm (and pxfc) hash equals the original's, with the tooltip "Unchanged: same hash as the original".
-  No existing file is ever overwritten: content addressing gives every changed element a new name.
-- A glyph's pxgl is never changed in place either: editing a glyph gives it a new bitmap hash, and the glyph view shows the original pxgl hash and the new one.
+- A locked font opens as a viewer: the grid, the glyph view, selection and zoom all work, but every command that would change it refuses ("The font is locked: unlock it first").
+- The padlock button (`Th_Lock`) is the only way to change the lock: in the font view's info bar, in the glyph view's bar, on the library's cards, rows and selection block, in the Typeface view and in the Typeface tab.
+- What is unlocked is edited in place: the font is changed in the store when its view is left (and before Save, Export, Load and quit).
+  Storage is content-addressed, so the hash changes; everything that names the font follows (see version 12).
+- A glyph's pxgl is never changed in place: editing a glyph gives it a new bitmap hash, and the glyph view shows the hash the glyph had when the font was opened and the new one.
 - Change detection is by hash, never by "an edit happened".
-  The font is modified exactly when the canonical hash of its current state differs from the hash it was opened with, so an edit that is undone, or a value set to what it was, leaves it unmodified.
+  The font is modified exactly when the canonical hash of its current state differs from the hash the store holds, so an edit that is undone, or a value set to what it was, leaves it unmodified.
 - The reader and the writer must round-trip: every pxfm and pxfc of the library, read and written again unchanged, gives the bytes and the hash of its file name.
 
 ## Library browser
@@ -423,14 +419,12 @@ Where a view had its own widget for a role that exists elsewhere, that code is g
 - The side panels of the Typefaces and Typeface views are **View | Typeface | Similar**; the Fonts view stays View | Similar.
 - The Typeface tab is the content of the former font view tab (`DrawTypefaceTab` in `src/panel.inc`, which the browser calls through `Browser_SetTypefaceTab`): the variant line, the boxed full hash field of the Font tab (click copies it), the fields and the three switches.
   It shows the typeface of the selected box or row, and the variant of the selected row.
-- The tab is read-only for an original.
-- "Duplicate Typeface to Edit" (a button at the top of the tab, and in the Typeface view's heading; the same look as the font's Duplicate to Edit) makes an editable copy of the typeface.
-  The copy is the usual duplicate document: the font of the selected variant (unchanged) with a copy of the typeface.
-  The view stays on the typeface; the heading reads "Editing a copy".
-- In a copy the fields and the three switches of the variant of the selected row are editable (Enter or a click elsewhere keeps a field, Escape puts its value back), the boxed hash shows the current hash and the original hash below it.
-- The first nav segment shows the family of the copy with the "*" marker while it differs from the original.
-- A copy follows the rules of version 5: it cannot be committed while its canonical hash equals the original's; leaving the Typeface view (or any other view), opening a font, Save, Export, Load and quit commit it into memory as a new typeface under its new pxtf hash, replacing its own earlier commit; the original typeface and its fonts stay.
-  A typeface edit leaves the font as it was, so a later commit names the same pxfm again: the commit keeps the ownership of what its earlier commit created (`CommitDuplicate`).
+- The tab is read-only while the typeface is locked.
+- The typeface's lock (a padlock at the top of the tab, and in the Typeface view's heading) unlocks its fields.
+  The font of the selected variant is opened for it, and the view stays on the typeface.
+- While it is unlocked the fields and the three switches of the variant of the selected row are editable (Enter or a click elsewhere keeps a field, Escape puts its value back), the boxed hash shows the hash in the database.
+- The first nav segment shows the family with the "*" marker while it differs from the database.
+- Leaving the Typeface view (or any other view), opening a font, Save, Export, Load and quit commit the typeface edit in place: the typeface is rewritten under its new pxtf hash.
 - The edit has no undo (the shortcuts are those of the font view).
 - The invented panel of the Typeface view (name, a two-line plain hash, the fields as plain text) is gone: the View tab of that view is the sample and the zoom, like the Typefaces view's.
 - The hash of a font in the rows of the Typeface view is the "Font xxxxxxxx" label of the other library cards; the heading carries "Typeface xxxxxxxx" like a box header.
@@ -548,13 +542,11 @@ Exactly two forms, both in Unifont:
 - With `TH_BTN_PRIMARY` too it has a `TH_DANGER` fill: the confirming button of a destructive dialog.
 - Used for every delete command, and only for those.
 
-#### Duplicate to Edit
+#### Lock
 
-- Owner: the macros `Th_Duplicate(r, typeface, off, hint)`, `Th_DuplicateW(typeface)` and `Th_DupLabel(typeface)` in `theme.h`: a `Th_Button` with `TH_BTN_PRIMARY`, so the wording and the flag exist once.
-- Wording: "Duplicate to Edit" for a font, "Duplicate Typeface to Edit" for a typeface; nothing else is a label of this command (the context menu item uses `Th_DupLabel` too).
-- Every command that makes an editable copy is this button: the info bar of the font view, the glyph view's bar, the cards, rows and selection block of the library views, the Typeface view's heading and its font rows, the Typeface tab.
-- A read-only notice beside it ("Read-only" in the glyph view's bar) is a separate plain label, not part of the button.
-- The glyph view's button keeps the script name `ro_chip`; the others register the label (`@Duplicate_to_Edit`, `@Duplicate_Typeface_to_Edit`).
+- Owner: the macro `Th_Lock(r, locked, hint)` in `theme.h`: a `Th_Button` with a padlock icon (`TH_IC_LOCK`, `TH_IC_UNLOCK`).
+- Its script name is `@Unlock` while the thing is locked and `@Lock` while it is unlocked.
+- Every command that makes something editable is this button: the info bar of the font view, the glyph view's bar, the cards, rows and selection block of the library views, the Typeface view's heading and its font rows, the Typeface tab.
 
 #### Toggle button
 
@@ -709,7 +701,7 @@ This file and `HANDOFF.md` follow the author's Markdown protocol: a heading has 
 
 | Component | Owner | File |
 | --- | --- | --- |
-| Duplicate to Edit button | `Th_Duplicate`, `Th_DuplicateW`, `Th_DupLabel` (macros over `Th_Button`) | `theme.h` |
+| Lock button | `Th_Lock` (a macro over `Th_Button`) | `theme.h` |
 | Hash at the status bar size | `Th_HashShort` with `TH_HASH_SMALL` | `theme.c` |
 | Menu keyboard | `Th_Menu`, `Th_MenuKeys`, `Th_MenuHi` | `theme.c` |
 
@@ -940,3 +932,53 @@ A version 1 file is upgraded in memory when it is opened and on disk at the next
 - A negative advance (a glyph left of its origin) is imported as advance 0.
 - When the face of the followed layer is changed, or its file changes on disk, no glyph is what the layer drew before, so all count as edited by hand until Redraw All.
 - The searches run on the UI thread: the window does not answer for their length (under a second, except for very large fonts).
+
+## Version 11: the default glyph
+
+The default glyph (the one drawn for a code the font does not have) is a glyph of its own with the code `FFFFFF`.
+
+- It is a normal `PxGlyph` (bitmap, offsets, advance), sorted last by code, written as a `GLYPH FFFFFF` line of the pxfm and stored as a `pxfm_glyph` row (no schema change).
+  The old `_DEF` pointer to another glyph, and its "dangling" variant, are gone.
+- The grid shows it in the last place with the caption "Default" (its code `FFFFFF` shows on hover).
+  It can be edited in the glyph view, opened from the grid and deleted.
+- "Set Default" copies the bitmap, offsets and advance of the selected glyph into it: an independent copy, so deleting or editing the source does not change it.
+- It never collides with the uncoded glyphs `F00000` to `FFFFFE`, and it is not counted among the glyphs of a font (the font's glyph count and the uncoded count skip it).
+- Load, Save, Import, Export, clone, delete and the cleaning of orphans keep it, because the font's pxfm names its pxgl.
+
+### The bugs of the old model
+
+- The default was only a pointer to a coded glyph, so it was not a glyph of the grid and could not be edited.
+- Deleting the glyph it pointed to dropped the default.
+- An uncoded glyph could not be the default.
+- A dangling default carried no bitmap.
+
+## Version 12: locks
+
+Replaces "duplicate to edit" (a working copy that was saved as a new font next to the original).
+Every font and every typeface has a lock, locked by default; what is unlocked is edited in place.
+The sections of versions 3 to 10 that speak of originals, duplicates, "Duplicate to Edit" and drafts describe the state before this version.
+
+### Where the lock is stored
+
+The settings sidecar (`<db>-settings`) has schema version 3: a table `unlocked(kind, hash)`, kind 0 for a font and 1 for a typeface.
+Only unlocked things have a row.
+A version 1 or 2 file is upgraded in memory when it is opened and on disk at the next save.
+A change of a lock is a change of the settings: it counts as unsaved until Save, like a layer.
+
+### Editing in place
+
+`store_edit_in_place` (in `store.c`) takes the open font (and typeface) and the hashes the store holds for them.
+
+- The edited font is added under its new hash.
+- Every typeface that names the old font is rewritten under its new hash (the variants name the new font), through the machinery of the deleting plans (`plan_orphans`, `store_apply_delete`).
+- The old font is removed, and so are the glyphs that no font names any more.
+  The old font cannot be needed by something else once every typeface naming it is rewritten; when the edit leaves the hash as it was there is nothing to do.
+- The result lists the typeface hashes that moved, and `main.c` carries them to the sidecar (`fs_rename_font`, `fs_rename_typeface`: layers, corrections, the lock) and to the open views and navigation.
+- A typeface field edit rewrites the typeface under its new hash the same way.
+
+### The open font
+
+- The document stays in memory across a commit, so undo and redo keep working.
+- `origHash` and `origContHash` are what the store holds; they move at each commit.
+- A font that is not in the store yet (New Font, Import Font File) is added at its first commit and is unlocked.
+- Save, Load, Import, Export and Save As work as before.

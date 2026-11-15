@@ -1,5 +1,7 @@
 # 2. Metrics panel on a duplicate of testdata font 98eae9aa: ASCENT 6, DESCENT 2, CAPHEIGHT 5, XHEIGHT 4, LINEGAP 1 (zoom 7).
 wait 5
+click @Unlock
+wait 4
 assert readonly 0
 assert has.ascent 1
 assert m.ascent 6
@@ -269,4 +271,4 @@ assert file $SAVEDPXFM contains XHEIGHT\t4
 assert file $SAVEDPXFM contains QUADWIDTH\t9
 assert file $SAVEDPXFM contains STRIKEOUTPOSITION\t2
 assert file $SAVEDPXFM contains GLYPH\t000048\t0,0\t6
-verifylib $SAVEDPXFM tests/tmp/xout 6
+verifylib $SAVEDPXFM tests/tmp/xout 7

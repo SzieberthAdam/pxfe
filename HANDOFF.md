@@ -1,6 +1,6 @@
-# pxfe handoff (2026-11-13)
+# pxfe handoff (2026-11-15)
 
-Versions 5 to 10 are implemented: Load, Save, Import, Export (5), navigation (6), views (7), the design system with Noto Sans and GNU Unifont (8), font layers (9), and importing a font file (10).
+Versions 5 to 12 are implemented: Load, Save, Import, Export (5), navigation (6), views (7), the design system with Noto Sans and GNU Unifont (8), font layers (9), importing a font file (10), the default glyph as a glyph of its own (11) and locks instead of duplicates (12).
 The design is in [DESIGN.md](DESIGN.md), one section per version; "Version 5: Load, Save, Import, Export" replaces the storage tiers, the save pipeline and the drafts of version 4.
 pxfe is meant to run on Windows, macOS and Linux; today it builds on Windows only (`build.bat`, `vendor/sqlite3/libsqlite3.a`, `src/winfile.c`).
 The files of `handoff/` are the reports of the version 4 agents, kept for history.
@@ -8,8 +8,8 @@ The files of `handoff/` are the reports of the version 4 agents, kept for histor
 ## State
 
 - `build.bat e2e` builds with no warnings.
-- `build.bat test` passes: 136 pxfont, 248 outline, 143 bmsrc, 86 fit, 110 fsettings, 101 pxtf and 162 store checks, 0 failed.
-- `tests\e2e\run_all.bat` passes: 74 scripts, 0 failed (version 10 added 101, 102 and 102b).
+- `build.bat test` passes: 138 pxfont, 248 outline, 143 bmsrc, 86 fit, 120 fsettings, 101 pxtf and 172 store checks, 0 failed.
+- `tests\e2e\run_all.bat` passes: RUNCOUNT scripts, 0 failed (version 11 added 104 and 104b, version 12 added 105 and 105b).
 - `tests\e2e\run_reallib.bat` loads `pixelglyphlib\pxfdb.pxfdb` read-only and imports the folder into `tests\tmp\real.pxfdb`; see the report of the last run for its timings.
 - Plain `build.bat` fails only at the link step when a running `pxfe.exe` locks the file; closing it is enough.
 
@@ -25,8 +25,6 @@ The files of `handoff/` are the reports of the version 4 agents, kept for histor
 ## Things to know
 
 - Save runs on the UI thread (`VACUUM INTO`); on the real library it freezes the window for the length of `TRACE saveas`.
-- Replacing a duplicate's earlier commit removes a font or typeface only when that commit created it (an original of the load never goes), no other left duplicate's current commit names it and, for a font, no remaining typeface names it; glyphs go only when no remaining font names them.
-  The list of left duplicates (`liveDups` in `src/main.c`, at most 64, cleared when another database is installed) passes the ownership of a shared font to the duplicate that still holds it.
 - SQLite gets Windows ANSI paths, as before; a path with characters outside the code page is not supported.
 - The scripts run fast: two clicks on one spot within 0.4 s are a double click, and a click right after a layout change needs `wait 6` (see `tests/e2e/README.md`).
 - The real library `C:\Users\jnsGEzD3\Documents\GitHub\pixelglyphlib` is never written by pxfe's tests.
@@ -56,8 +54,7 @@ The program starts in the Typefaces view, every zoom is one stepper, the Glyphs 
 - `src/main.c`: `HandleInsightTarget` opens the Glyph view when the font was chosen in the Glyphs view; a load shows `ShowTypefaces`; the typeface snapshots of the undo stack are removed.
 - `src/panel.inc`: the font panel is Font | Glyph | Similar (`panelTab` 0 to 2, ini key `fontTab`); `DrawTypefaceTab` is the read-only Typeface tab, called by `browser.c` through `Browser_SetTypefaceTab`.
 - `src/browser.c`: `SIDE_VIEW`, `SIDE_SIMILAR`, `SIDE_TYPEFACE` (shown View | Typeface | Similar in the Typefaces and Typeface views), `sel_typeface`; `tf_info` is removed.
-- Typeface editing (the user's decision): "Duplicate Typeface to Edit" (`BROWSER_DUPLICATE_TYPEFACE`, in the Typeface tab and in the Typeface view's heading) opens the font of the selected variant, duplicates it and shows the Typeface view again; `TypefaceEditing` (panel.inc) says that the open duplicate is that typeface, and `DrawTypefaceTab` then edits `cont` (the old field code, without undo snapshots).
-  The commit is the existing duplicate commit (`CommitDuplicate`); it now keeps the ownership of what its earlier commit created when the new commit names the same font or typeface again.
+- Typeface editing (the user's decision, changed in version 12): the typeface lock (`BROWSER_LOCK_TYPEFACE`, script name `@tf_lock`, in the Typeface tab and in the Typeface view's heading) opens the font of the selected variant, unlocks the typeface and shows the Typeface view again; `TypefaceEditing` (panel.inc) says that the open font's typeface is unlocked, and `DrawTypefaceTab` then edits `cont` (the old field code, without undo snapshots).
   `ctFocus` is back, the browser does not read keys or characters while a field has the keyboard (`extTyping`).
   `12_typeface`, `07a_save` and `07b_reload` test it.
 - New: `tests/e2e/61_views.txt` (in `run_all.bat`, with an ini that remembers the Fonts tab), `62_shots_views.txt` (screenshots on a copy of the real library, `tests\tmp\p1`; not in `run_all.bat`).
@@ -78,8 +75,7 @@ The rule of the round: one component is one function in `src/theme.c`, and a vie
   63 is deleted: 69 replaces it.
   Their folders are `tests\tmp\nav`, `tests\tmp\p1`, `tests\tmp\p2\c1` to `c4`; 69 writes `tests\tmp\p2\final` at 1400 x 900 and, prefixed `s_`, at 1110 x 600.
   The shots use a copy of the executable (`tests\tmp\p2\pxfe_p2.exe`) so that a build is never blocked by a running window.
-- Duplicate to Edit is one primary button (`Th_Duplicate`, `Th_DuplicateW`, `Th_DupLabel` in `theme.h`) at every site: info bar, glyph bar (a plain "Read-only" label and the button, script name `ro_chip`), library cards, rows and selection blocks, the Typeface view (heading, font rows) and the Typeface tab.
-  Script 40 now asserts `w.Duplicate_to_Edit` 1 beside `ro_chip` in the original's glyph view.
+- The lock is one icon button (`Th_Lock` in `theme.h`) at every site: info bar, glyph bar, library cards, rows and selection blocks, the Typeface view (heading, font rows) and the Typeface tab; script names `@Unlock` and `@Lock`.
 - The status bar draws its hash through `Th_HashShort` with the new flag `TH_HASH_SMALL` (small kind word, the hash in Unifont on the baseline of the neighbours).
 - Menus take the keyboard in `Th_Menu` (Up, Down, Home, End, Enter, Escape; the highlight is shared with the mouse hover; a scrolled list keeps it in view).
   While a menu is open those keys do not reach shortcuts or views: `IsKeyPressed` and `IsKeyPressedRepeat` are wrapped in `theme.h` (`Th_MenuKeys`), and `Th_Menu` calls the raw functions.
@@ -122,8 +118,8 @@ It is saved with the font in a sidecar next to the database.
 
 How to run:
 
-- `tests\e2e\run_all.bat` runs everything; a single script is started like the others, for example `tests\tmp\pxfe_e2e.exe tests\tmp\e2e.pxfdb --font 0820dc69a21b1cdb3a44d2cff7d884d8 --duplicate --ini tests\tmp\e2e.ini --play tests\e2e\98_fl_orig.txt` after copying `testdata\lib.pxfdb` to `tests\tmp\e2e.pxfdb`.
-- The scripts and their commands are in [tests/e2e/README.md](tests/e2e/README.md): 94 smoke, 95 sources and New Font, 96 adjustments and corrections, 97 to 97d the sidecar, 98 originals, 99 duplicate and commit; asserts per script 17, 58, 57, 28, 25, 14, 24, 27 and 26.
+- `tests\e2e\run_all.bat` runs everything; a single script is started like the others, for example `tests\tmp\pxfe_e2e.exe tests\tmp\e2e.pxfdb --font 0820dc69a21b1cdb3a44d2cff7d884d8 --ini tests\tmp\e2e.ini --play tests\e2e\98_fl_locked.txt` after copying `testdata\lib.pxfdb` to `tests\tmp\e2e.pxfdb`.
+- The scripts and their commands are in [tests/e2e/README.md](tests/e2e/README.md): 94 smoke, 95 sources and New Font, 96 adjustments and corrections, 97 to 97d the sidecar, 98 locked fonts, 99 edit and commit in place; asserts per script 17, 58, 57, 28, 25, 14, 24, 27 and 26.
 - `tests\e2e\100_shots_fl.txt` (not in `run_all.bat`) takes the screenshots in `tests\tmp\fl` at 1400 x 900.
 
 State: `build.bat test` and `build.bat` (no warnings) pass, `run_all.bat` 71 scripts, 0 failed.
@@ -163,3 +159,28 @@ Things to know:
 - Size and offsets take any typed value (`Th_NumberF` in `theme.c`); "Optimize for This Size" keeps the size and searches position and threshold.
 - A review by a second agent found ten points; fixed are: all corrections come back from the sidecar (the reader stopped at 512), an undo snapshot is only put back on the layer it was taken from, the placement of an original's followed layer is locked, a NaN or huge coordinate is refused, implied TrueType points no longer count as coordinates of the font, a negative advance becomes 0, a failed realloc in `sb_contour`, and the size search allows a small sample one glyph of slack.
   Open: a change of the followed layer's face or file makes every glyph count as edited by hand; serif faces get sizes near 19 px per em (Times New Roman), because their hairlines break below that.
+
+## Version 11: the default glyph
+
+The design is in [DESIGN.md](DESIGN.md), "Version 11: the default glyph".
+The default glyph is a glyph of its own with the code `FFFFFF`, last in the font and in the grid, caption "Default".
+
+- Bugs found in the old model (a pointer `_DEF` to another glyph, or a dangling one): it could not be edited or opened from the grid, deleting the glyph it pointed to dropped it, an uncoded glyph could not be the default, and a dangling default had no bitmap.
+- `src/pxfont.c` and `.h`: no `defaultCodepoint`, `hasDanglingDef`, `defDx`, `defDy`, `defAdvance`, `defHash`; `px_font_default_index`, `px_font_set_default_from` (a copy of the selected glyph), the writer and parser treat `GLYPH FFFFFF` as a normal glyph, the uncoded count skips it.
+- No schema change: the pxfdb already stored `FFFFFF` as a `pxfm_glyph` row.
+- Tests: 138 pxfont checks (new ones for the glyph), `test_default_glyph` in `tests/test_store.c`, `104_default_glyph` (50 asserts, fails on the old executable) and `104b_default_reload`.
+
+## Version 12: locks
+
+The design is in [DESIGN.md](DESIGN.md), "Version 12: locks".
+Every font and every typeface has a lock, locked by default; what is unlocked is edited in place, and everything that names it follows its new hash.
+All of the duplicate machinery is gone (`Th_Duplicate*`, `BROWSER_DUPLICATE*`, `EDITOR_DUPLICATE`, `liveDups`, `CommitDuplicate`, `store_replace_commit`, `--duplicate`); the glyph-level Clone is a different feature and stays.
+
+- `src/fsettings.c`: schema 3, table `unlocked(kind, hash)`; `fs_is_unlocked`, `fs_set_unlocked`, `fs_rename_font`, `fs_rename_typeface`; upgrade from schema 1 and 2.
+- `src/store.c`: `store_edit_in_place` adds the new font, rewrites every typeface that names the old one, removes the old font and the glyphs no font names any more, and reports the typeface hashes that moved.
+- `src/main.c`: `EditPending`, `CommitEdits`, `SetFontLocked`, `SetTypefaceLocked`, `LockedOf`, `ToggleLockOf`; `docStored` (false until a New Font or an imported font is committed); `readOnly` means "the font is locked", `contLocked` the typeface; `origHash` and `origContHash` are what the store holds and move at each commit.
+- `src/browser.c`: `lock_button`, `Browser_SetLockQuery`, `Browser_Follow` (the Typeface view follows a moved typeface).
+- A change of a lock counts as unsaved (the sidecar changes) while the font stays unmodified; the sidecar file exists as soon as something is unlocked.
+- The old font can always be removed after the typefaces that name it are rewritten; an edit that leaves the hash as it was does nothing.
+- Scripts: every script that edits starts with `click @Unlock`; `105_lock` and `105b_lock_reload` are the lock scenario (locked fonts refuse every edit tool, unlock, edit, the typeface and the layer follow the new hash, lock again, Save, reload keeps the edit and the lock state); 29, 31 and 32 were renamed `29_edit_replace`, `31_edit_twice` and `32_edit_back_to_original`, 98 and 99 `98_fl_locked` and `99_fl_edit_commit`.
+- Not done: nothing removes the `unlocked` row of a font that is deleted; it is harmless.

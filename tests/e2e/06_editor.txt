@@ -1,6 +1,8 @@
 # 6. Glyph view on a duplicate of testdata font 98eae9aa: ascent 6, descent 2, so the font box is rows 0..7 and the baseline lies under row 5.
 # @ecell:x,y is the screen centre of the cell (x, y): x = column from the pen, y = row of the font box (0 = its top row).
 wait 5
+click @Unlock
+wait 4
 # --- opening: double-click, Esc back, Enter
 dblclick @cell:U+0078
 wait 5
@@ -268,8 +270,14 @@ key pgdn
 key pgdn
 wait 4
 assert editor_glyph U+0078
-# last glyph: PgDn does nothing
+# the default glyph is the last: PgDn reaches it, then does nothing
 key pgdn
+wait 3
+assert editor_default 1
+key pgdn
+wait 3
+assert editor_default 1
+key pgup
 wait 3
 assert editor_glyph U+0078
 key pgup

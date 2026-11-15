@@ -11,7 +11,7 @@ click @card:0
 wait 3
 dblclick @card:0
 wait 6
-click @Duplicate_to_Edit
+click @Unlock
 wait 8
 click @ascent+
 wait 6
@@ -27,7 +27,7 @@ assert statusdb e2e_copy.pxfdb
 assert statusdb saved
 assert unsaved 0
 assert samefile tests/tmp/e2e.pxfdb tests/tmp/e2e_before.pxfdb
-assert sqlfile tests/tmp/e2e_copy.pxfdb "SELECT COUNT(*) FROM pxfm" 5
+assert sqlfile tests/tmp/e2e_copy.pxfdb "SELECT COUNT(*) FROM pxfm" 4
 assert sqlfile tests/tmp/e2e_copy.pxfdb "SELECT COUNT(*) FROM pxfm WHERE ascent = 7" 1
 assert sqlfile tests/tmp/e2e.pxfdb "SELECT COUNT(*) FROM pxfm" 4
 # another change, plain Save: goes to the copy

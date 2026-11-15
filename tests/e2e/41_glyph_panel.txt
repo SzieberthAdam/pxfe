@@ -56,8 +56,8 @@ key enter
 wait 5
 assert editor 1
 assert gtab 0
-# Duplicate: the current hash follows the edit, the original one stays
-click @ro_chip
+# Unlock: the current hash follows the edit, the original one stays
+click @Unlock
 wait 5
 assert readonly 0
 assert glyph U+0048 origchanged 0

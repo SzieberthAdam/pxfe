@@ -400,25 +400,6 @@ static bool ins_pxfm(sqlite3 *db, InsStmts *s, const uint8_t hash[16], const PxF
         if (g->hash[0]) bind_hex(s->pg, 6, g->hash); else sqlite3_bind_null(s->pg, 6);
         if (!step_done(s->pg, db, err, "pxfm_glyph")) return false;
     }
-    /* the FFFFFF line */
-    {
-        int dx = 0, dy = 0, da = 0;
-        const char *dh = NULL;
-        bool have = false;
-        if (f->defaultCodepoint != PX_NO_CODEPOINT) {
-            int gi = px_font_find(f, f->defaultCodepoint);
-            if (gi >= 0) { const PxGlyph *g = &f->glyphs[gi]; dx = g->x; dy = g->y; da = g->advance; dh = g->hash; have = true; }
-        } else if (f->hasDanglingDef) { dx = f->defDx; dy = f->defDy; da = f->defAdvance; dh = f->defHash; have = true; }
-        if (have) {
-            sqlite3_bind_blob(s->pg, 1, hash, 16, SQLITE_STATIC);
-            sqlite3_bind_int(s->pg, 2, PX_CODE_DEFAULT);
-            sqlite3_bind_int(s->pg, 3, dx);
-            sqlite3_bind_int(s->pg, 4, dy);
-            sqlite3_bind_int(s->pg, 5, da);
-            if (dh && dh[0]) bind_hex(s->pg, 6, dh); else sqlite3_bind_null(s->pg, 6);
-            if (!step_done(s->pg, db, err, "pxfm_glyph")) return false;
-        }
-    }
     for (int i = 0; i < f->kernCount; i++) {
         sqlite3_bind_blob(s->kern, 1, hash, 16, SQLITE_STATIC);
         sqlite3_bind_int(s->kern, 2, f->kern[i].first);
@@ -714,12 +695,6 @@ static void work_pxfm(void *vb, int i) {
         const GlyphRec *gr = find_glyph(b, hb);
         if (gr) used |= gr->used;
         else if (!ext_glyph_used(b, hb, &used)) set_err(b, 1, i, "%s: no glyph file %s", path, g->hash);
-    }
-    if (f->hasDanglingDef && f->defHash[0] && !b->errs[1][i]) {
-        uint8_t hb[16];
-        store_hex_to_blob(f->defHash, hb);
-        uint64_t dummy = 0;
-        if (!find_glyph(b, hb) && !ext_glyph_used(b, hb, &dummy)) set_err(b, 1, i, "%s: no glyph file %s", path, f->defHash);
     }
     if (b->errs[1][i]) return;
     if (f->hasPalette) {
@@ -1255,9 +1230,6 @@ static bool load_font_nolock(StoreConn *c, const uint8_t fh[16], const char *hex
 
     st = store_stmt(c, ST_FONT_GLYPHS, "SELECT code, x, y, advance, glyph FROM pxfm_glyph WHERE pxfm = ? ORDER BY code");
     sqlite3_bind_blob(st, 1, fh, 16, SQLITE_STATIC);
-    int defX = 0, defY = 0, defAdv = 0;
-    char defHash[33] = "";
-    bool seenDef = false;
     int cap = 0;
     while (sqlite3_step(st) == SQLITE_ROW) {
         int32_t code = sqlite3_column_int(st, 0);
@@ -1271,11 +1243,6 @@ static bool load_font_nolock(StoreConn *c, const uint8_t fh[16], const char *hex
             g.lazy = true;
         }
         g.hashValid = true;
-        if (code == PX_CODE_DEFAULT) {
-            seenDef = true; defX = g.x; defY = g.y; defAdv = g.advance;
-            memcpy(defHash, g.hash, 33);
-            continue;
-        }
         g.code = code;
         if (f.count == cap) {
             cap = cap ? cap * 2 : 64;
@@ -1287,16 +1254,6 @@ static bool load_font_nolock(StoreConn *c, const uint8_t fh[16], const char *hex
         f.glyphs[f.count++] = g;
     }
     sqlite3_reset(st);
-    if (seenDef) {
-        for (int i = 0; i < f.count; i++) {
-            const PxGlyph *g = &f.glyphs[i];
-            if (px_code_is_codepoint(g->code) && g->x == defX && g->y == defY && g->advance == defAdv && strcmp(g->hash, defHash) == 0) { f.defaultCodepoint = g->code; break; }
-        }
-        if (f.defaultCodepoint == PX_NO_CODEPOINT) {
-            f.hasDanglingDef = true; f.defDx = defX; f.defDy = defY; f.defAdvance = defAdv;
-            memcpy(f.defHash, defHash, 33);
-        }
-    }
     st = store_stmt(c, ST_FONT_KERN, "SELECT first, second, adjust FROM pxfm_kerning WHERE pxfm = ? ORDER BY first, second");
     sqlite3_bind_blob(st, 1, fh, 16, SQLITE_STATIC);
     while (sqlite3_step(st) == SQLITE_ROW) {     /* (pxfm, first, second) is the key: no pair twice, so append */
@@ -2376,35 +2333,61 @@ done:
     return ok;
 }
 
-static bool has_ref(sqlite3 *db, const char *sql, const char *hex) {
-    return row_exists(db, sql, hex);
-}
-
-bool store_replace_commit(Store *s, const StoreSaveResult *e, const StoreSaveResult *n, StoreSaveResult *const *others, int nOthers, char err[PX_ERR_LEN]) {
-    StoreConn *c = store_main_conn(s);
-    StoreDeletePlan plan;
-    if (e->pxtf[0] && e->newPxtf && strcmp(e->pxtf, n->pxtf) != 0 && store_has_pxtf(c, e->pxtf)) {
-        bool held = false;
-        for (int i = 0; i < nOthers; i++) if (others[i]->pxtf[0] && strcmp(others[i]->pxtf, e->pxtf) == 0) { others[i]->newPxtf = true; held = true; }
-        if (!held) {
-            if (!store_plan_delete_typeface(s, e->pxtf, &plan, err)) return false;
-            /* only the typeface row: its fonts are judged below (the originals' fonts must never go with it) */
-            plan.nFonts = 0;
-            plan.nGlyphs = 0;
-            bool ok = store_apply_delete(s, &plan, err);
-            store_plan_free(&plan);
-            if (!ok) return false;
-        }
+bool store_edit_in_place(Store *s, const char *oldPxfm, const PxFont *font, const char *oldPxtf, const PxtfTypeface *tf, StoreEditResult *out, char err[PX_ERR_LEN]) {
+    memset(out, 0, sizeof *out);
+    snprintf(out->pxfm, sizeof out->pxfm, "%s", oldPxfm);
+    if (oldPxtf) snprintf(out->pxtf, sizeof out->pxtf, "%s", oldPxtf);
+    bool fontCh = false;
+    if (font) {
+        StoreSaveResult sr;
+        if (!store_save_to_memory(s, font, NULL, 0, &sr, err)) return false;
+        snprintf(out->pxfm, sizeof out->pxfm, "%s", sr.pxfm);
+        fontCh = strcmp(sr.pxfm, oldPxfm) != 0;
     }
-    if (e->newPxfm && strcmp(e->pxfm, n->pxfm) != 0 && store_has_pxfm(c, e->pxfm)) {
-        bool held = false;
-        for (int i = 0; i < nOthers; i++) if (strcmp(others[i]->pxfm, e->pxfm) == 0) { others[i]->newPxfm = true; held = true; }
-        if (!held && !has_ref(c->db, "SELECT 1 FROM pxtf_variant WHERE pxfm = ?", e->pxfm)) {
-            if (!store_plan_delete_font(s, e->pxfm, &plan, err)) return false;
-            bool ok = store_apply_delete(s, &plan, err);
-            store_plan_free(&plan);
-            if (!ok) return false;
-        }
+    StoreDeletePlan p;
+    memset(&p, 0, sizeof p);
+    StoreConn *c = s->main;
+    char (*tfs)[33] = NULL;
+    int nt = 0;
+    bool ok = false;
+    AcquireSRWLockShared(&s->lock);
+    if (fontCh && row_exists(c->db, "SELECT 1 FROM pxfm WHERE hash = ?", oldPxfm)) plan_push33(&p.fonts, &p.nFonts, oldPxfm);
+    if (fontCh) nt = q_hashes(c->db, "SELECT DISTINCT pxtf FROM pxtf_variant WHERE pxfm = ?", oldPxfm, &tfs);
+    if (nt < 0) { fail(err, "sqlite: %s", sqlite3_errmsg(c->db)); goto done; }
+    if (tf && oldPxtf) {
+        bool have = false;
+        for (int i = 0; i < nt; i++) if (strcmp(tfs[i], oldPxtf) == 0) have = true;
+        if (!have) { tfs = (char(*)[33])realloc(tfs, (size_t)(nt + 1) * 33); snprintf(tfs[nt++], 33, "%s", oldPxtf); }
     }
-    return true;
+    for (int i = 0; i < nt; i++) {
+        PxtfTypeface t;
+        pxtf_init(&t);
+        if (tf && oldPxtf && strcmp(tfs[i], oldPxtf) == 0) { if (!pxtf_copy(&t, tf)) { pxtf_free(&t); fail(err, "out of memory"); goto done; } }
+        else {
+            uint8_t th[16];
+            store_hex_to_blob(tfs[i], th);
+            if (!load_typeface_nolock(c, th, &t, err)) { pxtf_free(&t); goto done; }
+        }
+        if (fontCh) for (int j = 0; j < t.count; j++) if (strcmp(t.v[j].pxfm, oldPxfm) == 0) memcpy(t.v[j].pxfm, out->pxfm, 33);
+        StoreRewrite rw;
+        memset(&rw, 0, sizeof rw);
+        snprintf(rw.oldPxtf, sizeof rw.oldPxtf, "%s", tfs[i]);
+        pxtf_hash(&t, rw.newPxtf);
+        if (strcmp(rw.oldPxtf, rw.newPxtf) == 0) { pxtf_free(&t); continue; }
+        plan_push33(&p.gone, &p.nGone, tfs[i]);
+        p.rw = (StoreRewrite *)realloc(p.rw, sizeof(StoreRewrite) * (size_t)(p.nRw + 1));
+        p.newTf = (PxtfTypeface *)realloc(p.newTf, sizeof(PxtfTypeface) * (size_t)(p.nRw + 1));
+        p.rw[p.nRw] = rw;
+        p.newTf[p.nRw] = t;
+        p.nRw++;
+        if (out->nMoved < 32) { memcpy(out->movedFrom[out->nMoved], rw.oldPxtf, 33); memcpy(out->movedTo[out->nMoved], rw.newPxtf, 33); out->nMoved++; }
+        if (oldPxtf && strcmp(tfs[i], oldPxtf) == 0) memcpy(out->pxtf, rw.newPxtf, 33);
+    }
+    ok = p.nFonts == 0 || plan_orphans(c->db, &p, err);
+done:
+    ReleaseSRWLockShared(&s->lock);
+    free(tfs);
+    if (ok && (p.nFonts || p.nGone || p.nRw)) ok = store_apply_delete(s, &p, err);
+    store_plan_free(&p);
+    return ok;
 }

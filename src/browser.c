@@ -59,6 +59,9 @@ enum { SIDE_VIEW = 0, SIDE_SIMILAR = 1, SIDE_TYPEFACE = 2 };
 static BrowserTypefaceTab g_tfTab;
 static BrowserTypefaceEditing g_tfEditing;
 void Browser_SetTypefaceTab(BrowserTypefaceTab draw, BrowserTypefaceEditing editing) { g_tfTab = draw; g_tfEditing = editing; }
+static BrowserLocked g_locked;
+void Browser_SetLockQuery(BrowserLocked locked) { g_locked = locked; }
+static bool is_locked(bool typeface, const char *hash) { return !g_locked || g_locked(typeface, hash); }
 
 struct Browser {
     Store *store; Insight *insight;
@@ -588,6 +591,11 @@ void Browser_Destroy(Browser *b)
 const char *Browser_Root(const Browser *b) { return b->root; }
 const Library *Browser_Lib(const Browser *b) { return &b->lib; }
 
+void Browser_Follow(Browser *b, const char *oldPxtf, const char *newPxtf)
+{
+    if (b->tfView[0] && !strcmp(b->tfView, oldPxtf)) { snprintf(b->tfView, sizeof b->tfView, "%s", newPxtf); b->scHash[0] = 0; }
+}
+
 void Browser_Rescan(Browser *b)
 {
     char err[PX_ERR_LEN];
@@ -872,7 +880,7 @@ static void pop_get(void *ud, int i, ThMenuItem *it)
     if (b->pop.which == 2) {   /* the context menu */
         BrowserAction a = b->ctxAct[i];
         it->label = b->ctxLabel[i];
-        it->name = a == BROWSER_DELETE_FONT ? "Ctx_Delete_Font" : a == BROWSER_DELETE_TYPEFACE ? "Ctx_Delete_Typeface" : a == BROWSER_OPEN ? "Ctx_Open" : "Ctx_Duplicate_to_Edit";
+        it->name = a == BROWSER_DELETE_FONT ? "Ctx_Delete_Font" : a == BROWSER_DELETE_TYPEFACE ? "Ctx_Delete_Typeface" : a == BROWSER_OPEN ? "Ctx_Open" : "Ctx_Lock";
         it->flags = a == BROWSER_DELETE_FONT || a == BROWSER_DELETE_TYPEFACE ? TH_MI_DANGER : 0;
     } else {
         it->label = b->vals[b->pop.which][i];
@@ -1073,6 +1081,19 @@ static bool can_open(Browser *b, int vi)
     return e->fontPresent && !e->info.failed;
 }
 
+/* The padlock of a font (or, with `typeface`, of the typeface whose pxtf is `hash`; vi is the entry that names its variant); the popup menu blocks it. */
+static void lock_button(Browser *b, Rectangle r, bool typeface, const char *hash, int vi, BrowserChoice *choice, bool *chosen)
+{
+    if (b->pop.open || Th_InputBlocked()) Th_SetInputBlocked(true);
+    bool lk = is_locked(typeface, hash);
+    if (typeface) Th_Reg("tf_lock", r);   /* the typeface's own name, the label is the font lock's too */
+    if (!Th_Lock(r, lk, typeface ? (lk ? "The typeface is locked: unlock it to edit its fields" : "Lock the typeface") : lk ? "Locked: unlock it to edit it" : "Unlocked: lock it")) return;
+    sel_set(b, vi, false);
+    make_choice(b, vi, typeface ? BROWSER_LOCK_TYPEFACE : BROWSER_LOCK, choice);
+    if (typeface) snprintf(choice->pxtf, sizeof choice->pxtf, "%s", hash);
+    *chosen = true;
+}
+
 /* ------------------------------------------------------------------------------------------------ the panel */
 
 static void draw_empty_icon(float cx, float cy, Color c)
@@ -1085,7 +1106,7 @@ static void draw_empty_icon(float cx, float cy, Color c)
             if (A[r][k] == '#') DrawRectangle((int)(x0 + k * s), (int)(y0 + r * s), s - 1, s - 1, c);
 }
 
-#define SEL_H 158               /* the selection block (name, details, Open / Duplicate) is pinned to the bottom of the panel */
+#define SEL_H 158               /* the selection block (name, details, Open / lock) is pinned to the bottom of the panel */
 
 /* opening a box header opens the typeface (the Typeface view); a variant row or a card opens its font */
 static BrowserAction open_action(const Browser *b, bool hdr)
@@ -1247,8 +1268,10 @@ static void panel_ui(Browser *b, Rectangle P, BrowserChoice *choice, bool *chose
         int var = 0;
         const PxtfTypeface *tc = sel_typeface(b, &var);
         if (tc && g_tfTab) {
-            if (!(g_tfEditing && g_tfEditing(b->scHash))) {   /* the same button as the font's, for the typeface */
-                if (Th_Duplicate(RR(x, y, w, TH_ROW_H), true, 0, NULL) && !b->pop.open) { make_choice(b, b->selVis, BROWSER_DUPLICATE_TYPEFACE, choice); *chosen = true; }
+            {   /* the lock of the typeface: its fields are editable while it is unlocked */
+                bool lk = is_locked(true, b->scHash);
+                lock_button(b, RR(x, y, TH_ROW_H, TH_ROW_H), true, b->scHash, b->selVis, choice, chosen);
+                Th_Text(lk ? "Locked" : "Unlocked: edits change the typeface in place", x + TH_ROW_H + TH_GAP, y + 3, lk ? TH_TEXT_WARN : TH_TEXT);
                 y += TH_ROW_H + TH_GAP;
             }
             g_tfTab(P.x, P.width, &y, tc, b->scHash, var);
@@ -1327,10 +1350,7 @@ static void panel_ui(Browser *b, Rectangle P, BrowserChoice *choice, bool *chose
             make_choice(b, b->selVis, open_action(b, hdrSel), choice);
             *chosen = true;
         }
-        if (Th_Duplicate(RR(x + ow + TH_GAP, by, w - ow - TH_GAP, TH_ROW_H), false, TH_BTN_OFF(ok), NULL)) {
-            make_choice(b, b->selVis, BROWSER_DUPLICATE, choice);
-            *chosen = true;
-        }
+        lock_button(b, RR(x + ow + TH_GAP, by, TH_ROW_H, TH_ROW_H), hdrSel, hdrSel ? e->pxtf : e->pxfm, b->selVis, choice, chosen);   /* of the typeface when its header is selected */
         /* the deletions, in red under the open commands (also Del and the context menu); main.c asks for the confirmation */
         {
             float dy = by + TH_ROW_H + TH_GAP;
@@ -1345,7 +1365,7 @@ static void panel_ui(Browser *b, Rectangle P, BrowserChoice *choice, bool *chose
             }
         }
     } else {
-        Th_TextSmall(b->nvis ? "Select a font to open or duplicate it." : "Nothing selected.", x, by + 4, TH_TEXT_DIM);
+        Th_TextSmall(b->nvis ? "Select a font to open or unlock it." : "Nothing selected.", x, by + 4, TH_TEXT_DIM);
     }
 }
 
@@ -1387,7 +1407,10 @@ static void ctx_open(Browser *b, int vi, bool hdr)
     b->ctxN = 0; b->ctxVi = vi; b->ctxHdr = hdr;
     #define ITEM(lbl, act) do { snprintf(b->ctxLabel[b->ctxN], sizeof b->ctxLabel[0], "%s", lbl); b->ctxAct[b->ctxN++] = (act); } while (0)
     ITEM("Open", open_action(b, hdr));
-    ITEM(Th_DupLabel(false), BROWSER_DUPLICATE);
+    {
+        const LibEntry *ce = E(b, b->vis[vi]);
+        ITEM(is_locked(hdr, hdr ? ce->pxtf : ce->pxfm) ? "Unlock" : "Lock", hdr ? BROWSER_LOCK_TYPEFACE : BROWSER_LOCK);
+    }
     if (b->tab == TAB_TYPEFACES) {
         if (!hdr) ITEM("Delete Font\xE2\x80\xA6", BROWSER_DELETE_FONT);
         ITEM("Delete Typeface\xE2\x80\xA6", BROWSER_DELETE_TYPEFACE);
@@ -1399,12 +1422,7 @@ static void ctx_open(Browser *b, int vi, bool hdr)
     b->mouseEaten = true;
 }
 
-/* The Duplicate to Edit button on a hovered or selected card / row (the popup menu blocks it). */
-static void dup_button(Browser *b, int vi, Rectangle r, BrowserChoice *choice, bool *chosen)
-{
-    if (b->pop.open || Th_InputBlocked()) Th_SetInputBlocked(true);
-    if (Th_Duplicate(r, false, TH_BTN_OFF(can_open(b, vi)), NULL)) { sel_set(b, vi, false); make_choice(b, vi, BROWSER_DUPLICATE, choice); *chosen = true; }
-}
+
 
 /* Del on the selection: the font, or the typeface when its header is selected */
 static bool key_delete(Browser *b, BrowserChoice *choice)
@@ -1489,7 +1507,7 @@ static void draw_boxes(Browser *b, const TfCtx *c)
                 Th_Text(nm, tx, ry + 6, TH_TEXT);
                 variant_details(e, det, sizeof det);
                 bool btn = sel || hvR;
-                float bbw = Th_DuplicateW(false);
+                float bbw = TH_ROW_H;
                 Th_FitText(det, 1, tw, clipd, sizeof clipd);
                 Th_TextSmall(clipd, tx, ry + 32, e->info.failed ? TH_TEXT_ERR : TH_TEXT_DIM);
                 if (!btn && e->pxfm[0]) Th_HashShort("Font", e->pxfm, tx + tw, ry + 9, TH_HASH_RIGHT, NULL);
@@ -1519,7 +1537,7 @@ static void draw_boxes(Browser *b, const TfCtx *c)
                 if (lf) libloader_release(b->loader, lf);
                 if (btn) {
                     Rectangle bb = RR(cx + c->cardW - 8 - bbw, ry + 2, bbw, TH_ROW_H);
-                    dup_button(b, vi, bb, c->choice, c->chosen);
+                    lock_button(b, bb, false, E(b, b->vis[vi])->pxfm, vi, c->choice, c->chosen);
                 }
             }
         }
@@ -1730,7 +1748,7 @@ static void grid_ui(Browser *b, Rectangle G, BrowserChoice *choice, bool *chosen
         }
     }
     bool hit = tf ? hoverBox >= 0 : hoverIdx >= 0;
-    /* the duplicate button of the hovered card (or variant row) eats clicks over it */
+    /* the lock button of the hovered card (or variant row) eats clicks over it */
     bool overBtn = false;
     if (!tf && hoverIdx >= 0) {
         int r = hoverIdx / cols, k = hoverIdx % cols;
@@ -1867,10 +1885,10 @@ static void grid_ui(Browser *b, Rectangle G, BrowserChoice *choice, bool *chosen
             }
             if (lf) libloader_release(b->loader, lf);
 
-            /* hover / selected: Duplicate to Edit */
+            /* hover / selected: the lock */
             if (sel || hv) {
-                Rectangle br = RR(cx + cardW - 8 - Th_DuplicateW(false), cy + 6, Th_DuplicateW(false), TH_ROW_H);
-                dup_button(b, vi, br, choice, chosen);
+                Rectangle br = RR(cx + cardW - 8 - TH_ROW_H, cy + 6, TH_ROW_H, TH_ROW_H);
+                lock_button(b, br, false, E(b, b->vis[vi])->pxfm, vi, choice, chosen);
             }
             }
         }
@@ -2020,14 +2038,8 @@ static void tview_ui(Browser *b, Rectangle G, BrowserChoice *choice, bool *chose
         const char *fmt = b->tfHas && b->tfCont.count && b->tfCont.v[0].format ? b->tfCont.v[0].format : "";
         snprintf(sub, sizeof sub, "%d font%s%s%s", n, n == 1 ? "" : "s", fmt[0] ? "  \xC2\xB7  " : "", fmt);
         Th_TextSmall(sub, innerX + 2, hy + 34, TH_TEXT_DIM);
-        {   /* the typeface's own Duplicate to Edit (the Typeface tab has the same button); once it is made the fields are editable */
-            float bw = Th_DuplicateW(true);
-            Rectangle br = RR(innerX + w - bw - 2, hy + 28, bw, TH_ROW_H);
-            if (g_tfEditing && g_tfEditing(b->tfView)) {
-                const char *m = "Editing a copy";
-                Th_TextSmall(m, br.x + br.width - Th_MeasureSmall(m).x, hy + 34, TH_ACCENT);
-            } else if (n > 0 && Th_Duplicate(br, true, 0, NULL) && !b->pop.open) { make_choice(b, b->selVis >= 0 ? b->selVis : 0, BROWSER_DUPLICATE_TYPEFACE, choice); *chosen = true; }
-            Th_Reg("tv.duptypeface", br);
+        if (n > 0) {   /* the typeface's lock (the Typeface tab has the same button); its fields are editable while it is unlocked */
+            lock_button(b, RR(innerX + w - TH_ROW_H - 2, hy + 28, TH_ROW_H, TH_ROW_H), true, b->tfView, b->selVis >= 0 ? b->selVis : 0, choice, chosen);
         }
     }
     for (int vi = 0; vi < n; vi++) {
@@ -2047,22 +2059,29 @@ static void tview_ui(Browser *b, Rectangle G, BrowserChoice *choice, bool *chose
         float bx = innerX + w - 12;
         bool over = false;
         {
-            const char *lab[3] = { "Delete Font", Th_DupLabel(false), "Open" };
+            const char *lab[2] = { "Delete Font", "Open" };
             if (b->pop.open || Th_InputBlocked()) Th_SetInputBlocked(true);
-            for (int k = 0; k < 3; k++) {
+            {   /* the lock of the font */
+                bx -= TH_ROW_H;
+                Rectangle lr = RR(bx, ry + 8, TH_ROW_H, TH_ROW_H);
+                lock_button(b, lr, false, e->pxfm, vi, choice, chosen);
+                if (pt_in(lr, mp)) over = true;
+                bx -= TH_GAP;
+            }
+            for (int k = 0; k < 2; k++) {
                 float bwk = Th_ButtonW(lab[k]);
                 bx -= bwk;
                 Rectangle br = RR(bx, ry + 8, bwk, TH_ROW_H);
                 bool dang = k == 0;
-                bool hit = Th_Button(br, lab[k], dang ? TH_BTN_DANGER : k == 1 ? TH_BTN_PRIMARY : 0, NULL);
+                bool hit = Th_Button(br, lab[k], dang ? TH_BTN_DANGER : 0, NULL);
                 char rn[32];
-                snprintf(rn, sizeof rn, "tv.%s.%d", k == 0 ? "delete" : k == 1 ? "dup" : "open", vi);
+                snprintf(rn, sizeof rn, "tv.%s.%d", k == 0 ? "delete" : "open", vi);
                 Th_Reg(rn, br);
                 if (pt_in(br, mp)) over = true;
                 if (hit) {
                     sel_set(b, vi, false);
                     if (dang) { make_choice(b, vi, BROWSER_DELETE_FONT, choice); *chosen = true; }
-                    else if (can_open(b, vi)) { make_choice(b, vi, k == 1 ? BROWSER_DUPLICATE : BROWSER_OPEN, choice); *chosen = true; }
+                    else if (can_open(b, vi)) { make_choice(b, vi, BROWSER_OPEN, choice); *chosen = true; }
                 }
                 bx -= TH_GAP;
             }
