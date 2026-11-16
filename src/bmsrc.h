@@ -86,4 +86,8 @@ const BmGlyph *bm_find(const BmSource *src, int strike, int codepoint);   /* by 
 int bm_glyph_to_plain(const BmGlyph *g, BmPlain *out);
 void bm_plain_free(BmPlain *p);
 
+/* A plain image file (PNG, GIF: the first frame, JPEG, BMP, TGA; at most 4096 x 4096) as w*h*4 bytes R G B A, top row first;
+ * malloc'd (free it with free), NULL with a message in err on failure.  For sheet.h. */
+unsigned char *bm_load_rgba(const char *path, int *w, int *h, char *err, size_t errlen);
+
 #endif

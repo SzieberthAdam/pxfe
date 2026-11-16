@@ -23,6 +23,8 @@
 #include "layers.h"
 #include "flayers.h"
 #include "fit.h"
+#include "sheet.h"
+#include "sheetref.h"
 #include "fsettings.h"
 #include "winfile.h"
 

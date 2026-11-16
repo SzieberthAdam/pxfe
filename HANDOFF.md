@@ -8,8 +8,8 @@ The files of `handoff/` are the reports of the version 4 agents, kept for histor
 ## State
 
 - `build.bat e2e` builds with no warnings.
-- `build.bat test` passes: 138 pxfont, 248 outline, 143 bmsrc, 86 fit, 120 fsettings, 101 pxtf and 172 store checks, 0 failed.
-- `tests\e2e\run_all.bat` passes: RUNCOUNT scripts, 0 failed (version 11 added 104 and 104b, version 12 added 105 and 105b).
+- `build.bat test` passes: 138 pxfont, 248 outline, 143 bmsrc, 86 fit, 62 sheet, 120 fsettings, 101 pxtf and 172 store checks, 0 failed.
+- `tests\e2e\run_all.bat` passes: 79 scripts, 0 failed (version 11 added 104 and 104b, version 12 added 105 and 105b, version 13 added 106).
 - `tests\e2e\run_reallib.bat` loads `pixelglyphlib\pxfdb.pxfdb` read-only and imports the folder into `tests\tmp\real.pxfdb`; see the report of the last run for its timings.
 - Plain `build.bat` fails only at the link step when a running `pxfe.exe` locks the file; closing it is enough.
 
@@ -184,3 +184,21 @@ All of the duplicate machinery is gone (`Th_Duplicate*`, `BROWSER_DUPLICATE*`, `
 - The old font can always be removed after the typefaces that name it are rewritten; an edit that leaves the hash as it was does nothing.
 - Scripts: every script that edits starts with `click @Unlock`; `105_lock` and `105b_lock_reload` are the lock scenario (locked fonts refuse every edit tool, unlock, edit, the typeface and the layer follow the new hash, lock again, Save, reload keeps the edit and the lock state); 29, 31 and 32 were renamed `29_edit_replace`, `31_edit_twice` and `32_edit_back_to_original`, 98 and 99 `98_fl_locked` and `99_fl_edit_commit`.
 - Not done: nothing removes the `unlocked` row of a font that is deleted; it is harmless.
+
+## Version 13: importing a picture of a font
+
+The design is in the last section of [DESIGN.md](DESIGN.md), "Version 13: importing a picture of a font".
+Menu, Import Font File also takes a PNG, GIF, JPEG, BMP or TGA picture of a font and works out its background, scale, layout, characters and colours.
+
+- New files: `src/sheet.c` and `.h` (the analysis; no raylib), `src/sheetref.c` and `.h` (the reference glyphs, drawn with `fit.h` from the fonts of `assets/fonts`), `tests/test_sheet.c`, `tests/sheet_tool.c`, `tests/gen_sheet_fonts.py`, `testdata/sheet` (CC0 pictures and two generated ones), `tests/e2e/106_import_sheet.txt`.
+- Changed: `src/bmsrc.c` and `.h` (`bm_load_rgba`; JPEG decoding is switched on in stb_image), `src/fitdoc.inc` (the picture path of `ImpAnalyze`, `ImportSheetCreate`, `DrawImportSheetDialog`), `src/play.inc`, `src/main.c`, `build.bat` (test_sheet).
+- `tests\sheet_tool.exe <picture> [-v]` prints what the analysis finds (the build line is in `tests/sheet_tool.c`).
+- The collection the work was done on is `C:\Users\jnsGEzD3\Documents\GitHub\bitmapfont\color` (49 pictures, not in this repository): every layout is found, and 97.4 % of the characters whose truth is known are right.
+  The truth and the scorer are not in the repository; they were scratch files of the session.
+
+Things to know:
+
+- A marker stands over a column between two glyphs; the column belongs to no glyph (the user's decision).
+- The first picture of a run takes about two seconds: the reference glyphs are made then.
+- A font of one ink colour is imported black on white; several colours give COLOR lines on a transparent background.
+- Not done: the picture as a layer under the font; photographs brought down to a pixel grid; kerning.

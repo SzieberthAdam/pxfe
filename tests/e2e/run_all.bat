@@ -171,6 +171,8 @@ call :run 104b_default_reload "%DB% --font 897787da6f47a5d4ad8068bf5bc1bab8"
 call :fresh
 call :run 105_lock "%DB% --font %H1%"
 call :run 105b_lock_reload "%DB% --font 36e0649997646b5da1e22ded4ab8f8db"
+call :fresh
+call :run 106_import_sheet "%DB%"
 
 echo.
 echo %RUNS% scripts run, %FAILS% failed

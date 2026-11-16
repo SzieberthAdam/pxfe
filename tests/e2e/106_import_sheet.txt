@@ -1,0 +1,91 @@
+# 106. Version 13: Menu, Import Font File on a PICTURE of a font.  The dialog shows what the analysis found (a grid of 20 x 20 cells,
+# three colours, the characters recognised), the layout and the first character can be set by hand, and Import makes a coloured font.
+# Then a strip with a marker row, rows of glyphs of their own widths, an enlarged picture, and what is no picture.
+wait 16
+assert storefonts 4
+setdialog fontfile testdata/sheet/font-20x20-RPG.png
+click @Menu
+wait 6
+click @file.importfont
+waitfor ifopen == 1 30000
+assert ifsheet 1
+assert iflayout 1
+assert ifcellw 20
+assert ifcellh 20
+assert ifcolours 3
+assert ifcells 120
+assert ifglyphs 117
+assert w.if.preview 1
+shot tests/tmp/shots/106_sheet_dialog.png
+# the layout by hand: rows cut the glyphs where a column is blank, Auto finds the grid again
+click @if.layout_Rows
+wait 6
+assert iflayout 2
+click @if.layout_Auto
+wait 6
+assert iflayout 1
+assert ifcellw 20
+# one colour, and back
+click @if.mono
+wait 6
+assert ifcolours 1
+click @if.mono
+wait 6
+assert ifcolours 3
+# a first character: the glyphs are counted from it; emptied: recognised again
+click @if.first
+wait 3
+type A
+wait 6
+assert ifglyphs 117
+key a ctrl
+key backspace
+wait 6
+click @Import
+wait 12
+assert ifopen 0
+assert docnew 1
+assert hascont 1
+assert title font-20x20-RPG Regular
+assert flayers 0
+assert palette 3
+assert mono 1
+assert glyph U+0041 exists
+assert glyph U+0041 advance 20
+assert glyph U+0061 exists
+assert glyph U+0020 empty
+assert glyph U+0020 advance 20
+assert glyph U+00E9 exists
+assert glyphs 118
+shot tests/tmp/shots/106_sheet_font.png
+# a strip with a marker row: one colour, so the font has the default palette; the glyphs have their own widths
+importfont testdata/sheet/marker8.png
+wait 10
+assert docnew 1
+assert palette 0
+assert mono 0
+assert glyphs 95
+assert glyph U+0021 exists
+assert glyph U+007E exists
+assert glyph U+0041 exists
+assert glyph U+0020 empty
+# rows of glyphs of their own widths, three colours
+importfont testdata/sheet/font-1-tds.png notypeface
+wait 10
+assert hascont 0
+assert palette 3
+assert glyphs 94
+assert glyph U+0041 exists
+# an enlarged picture comes back at one pixel per font pixel
+importfont testdata/sheet/enlarged3.png
+wait 10
+assert glyph U+0041 exists
+assert m.ascent < 9
+# what is no picture
+importfont testdata/sheet/nothere.png expectfail
+# commit and save
+click @nav.0
+wait 10
+assert storefonts 8
+key s ctrl
+waitfor unsaved == 0 20000

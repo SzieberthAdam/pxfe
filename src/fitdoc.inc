@@ -12,7 +12,7 @@
  * makes a new font (a document without an original, like New Font) whose glyphs are drawn from the file, with the file as a font
  * layer that the glyphs follow.  A bitmap font is copied pixel by pixel. */
 
-#define FONTFILE_FILTER "Font files|*.ttf;*.otf;*.ttc;*.otc;*.woff;*.eot;*.pfb;*.bdf;*.pcf;*.fnt;*.fon;*.json|All files|*.*"
+#define FONTFILE_FILTER "Font files and pictures|*.ttf;*.otf;*.ttc;*.otc;*.woff;*.eot;*.pfb;*.bdf;*.pcf;*.fnt;*.fon;*.json;*.png;*.gif;*.jpg;*.jpeg;*.bmp;*.tga|All files|*.*"
 
 static FlLayer *fitSnap = NULL;        /* the settings of the follow layer the glyphs were last drawn with */
 static int fitSnapSerial = 0;          /* the layer it is a copy of */
@@ -418,6 +418,8 @@ static void DrawFontLayersTab(float px, float *yp)
 
 /* ---- Import Font File ---- */
 
+static int imax_(int a, int b) { return a > b ? a : b; }
+
 static char dlgFontPath[PATH_MAX_LEN];
 
 static bool DlgFontFile(char *out, int size)
@@ -444,13 +446,70 @@ static struct {
     char family[160], style[96];
     char err[200];
     double ms;                 /* how long the searches took */
+    /* a picture of a font (sheet.h) */
+    bool sheet;
+    unsigned char *rgba;       /* the picture, iw * ih * 4 */
+    int iw, ih;
+    SheetOpts so;              /* what the user set (0: found by the analysis) */
+    Sheet sh;                  /* what the analysis found */
+    char first[16];            /* the "first character" field: empty = recognise */
 } fimp;
 
 static void ImpFree(void)
 {
     FlLayer_Free(fimp.probe);
     fit_grid_free(&fimp.grid);
+    sheet_free(&fimp.sh);
+    free(fimp.rgba);
     memset(&fimp, 0, sizeof fimp);
+}
+
+/* ---- a picture of a font (sheet.h) ---- */
+
+static SheetRefs *sheetRefs = NULL;   /* the reference glyphs, made once (about two seconds) */
+
+static SheetRefs *SheetRefsGet(void)
+{
+    static const char *rel[3] = {"%sassets/fonts", "%s../../assets/fonts", "assets/fonts"};
+    if (sheetRefs) return sheetRefs;
+    sheetRefs = sheet_refs_new();
+    for (int i = 0; sheetRefs && i < 3; i++) {
+        char d[1100], t[1200];
+        if (i < 2) snprintf(d, sizeof d, rel[i], GetApplicationDirectory()); else snprintf(d, sizeof d, "%s", rel[i]);
+        snprintf(t, sizeof t, "%s/unifont/unifont-18.0.01.otf", d);
+        if (px_file_exists(t)) { sheet_refs_add_defaults(sheetRefs, d); break; }
+    }
+    return sheetRefs;
+}
+
+static bool IsPicture(const char *p)
+{
+    return HasExt(p, ".png") || HasExt(p, ".gif") || HasExt(p, ".jpg") || HasExt(p, ".jpeg") || HasExt(p, ".bmp") || HasExt(p, ".tga");
+}
+
+/* runs the analysis again with the options as they are */
+static void ImpSheetAnalyze(void)
+{
+    char msg[160] = "";
+    sheet_free(&fimp.sh);
+    fimp.err[0] = 0;
+    double t0 = GetTime();
+    if (sheet_analyze(fimp.rgba, fimp.iw, fimp.ih, &fimp.so, SheetRefsGet(), &fimp.sh, msg, sizeof msg) < 0) snprintf(fimp.err, sizeof fimp.err, "%s", msg[0] ? msg : "no font found");
+    fimp.ms = (GetTime() - t0) * 1000.0;
+}
+
+static void ImpSheetOpen(const char *path)
+{
+    char err[200] = "";
+    fimp.sheet = true;
+    fimp.pixel = true;
+    fimp.rgba = bm_load_rgba(path, &fimp.iw, &fimp.ih, err, sizeof err);
+    if (!fimp.rgba) snprintf(fimp.err, sizeof fimp.err, "%s", err);
+    else ImpSheetAnalyze();
+    snprintf(fimp.family, sizeof fimp.family, "%.150s", BaseName(path));
+    char *dot = strrchr(fimp.family, '.');
+    if (dot && dot != fimp.family) *dot = 0;
+    snprintf(fimp.style, sizeof fimp.style, "Regular");
 }
 
 /* opens the file and runs the searches; fimp.err says why it cannot be imported */
@@ -461,6 +520,7 @@ static void ImpAnalyze(const char *path, int face)
     fimp.typeface = tf;
     snprintf(fimp.path, sizeof fimp.path, "%s", path);
     fimp.face = face;
+    if (IsPicture(path)) { ImpSheetOpen(path); return; }
     FsLayer s = fs_layer_default();
     s.kind = 1;
     snprintf(s.source, sizeof s.source, "%s", path);
@@ -539,7 +599,7 @@ static bool ImpTypeface(PxtfTypeface *c)
     fmt[o] = 0;
     if (!fmt[0]) snprintf(fmt, sizeof fmt, "FONT");
     for (int i = 0; i <= (int)strlen(fmt); i++) type[i] = (char)tolower((unsigned char)fmt[i]);
-    snprintf(type + strlen(type), sizeof type - strlen(type), "%s", fimp.outline ? "-outline" : "-bitmap");
+    snprintf(type + strlen(type), sizeof type - strlen(type), "%s", fimp.sheet ? "-picture" : fimp.outline ? "-outline" : "-bitmap");
     v->format = strdup(fmt);
     v->type = strdup(type);
     snprintf(v->pxfm, sizeof v->pxfm, "00000000000000000000000000000000");
@@ -571,8 +631,88 @@ static bool ImpTypeface(PxtfTypeface *c)
 }
 
 /* makes the font and its layer; the document is new (no original), the glyphs follow the layer */
+static bool ImpTypeface(PxtfTypeface *c);
+
+/* a font from the picture: the cells become glyphs, the colours of the ink the palette */
+static bool ImportSheetCreate(void)
+{
+    Sheet *sh = &fimp.sh;
+    if (fimp.err[0] || !store || !sh->ncells) return false;
+    PxFont f;
+    px_font_init(&f);
+    bool used[PX_NUM_PIXELS] = {false}, mono = sh->npalette <= 1, rows = sh->layout == SHEET_ROWS;
+    int base = sh->lineTop + sh->ascent, maxArea = 1, gap = imax_(1, (sh->ascent + sh->descent + 6) / 12), uncoded = 0;
+    for (int i = 0; i < sh->ncells; i++) if (sh->cells[i].w * sh->cells[i].h > maxArea) maxArea = sh->cells[i].w * sh->cells[i].h;
+    unsigned char *buf = (unsigned char *)malloc((size_t)maxArea);
+    if (!buf) { px_font_free(&f); return false; }
+    for (int i = 0; i < sh->ncells; i++) {
+        const SheetCell *c = &sh->cells[i];
+        PxGlyph g;
+        memset(&g, 0, sizeof g);
+        if (!c->iw) {
+            if (c->code != 32 || px_font_find(&f, 32) >= 0) continue;
+            g.codepoint = 32;
+            g.advance = c->w;
+            px_font_add_glyph(&f, &g);
+            continue;
+        }
+        sheet_cell_pixels(sh, c, buf);
+        g.w = c->iw; g.h = c->ih;
+        g.pix = (char *)malloc((size_t)g.w * (size_t)g.h);
+        if (!g.pix) continue;
+        for (int y = 0; y < g.h; y++)
+            for (int x = 0; x < g.w; x++) {
+                int v = buf[(size_t)(c->iy - c->y + y) * (size_t)c->w + (size_t)(c->ix - c->x + x)];
+                int pi = !v ? 0 : mono ? 1 : v;
+                used[pi] = true;
+                g.pix[y * g.w + x] = PX_PIXELS[pi];
+            }
+        g.x = rows ? 0 : c->ix - c->x;
+        g.y = base - (c->iy + c->ih - c->y);
+        g.advance = rows ? c->iw + gap : c->w;
+        if (c->code >= 0 && c->code <= PX_CODE_MAX_CODEPOINT && px_font_find(&f, c->code) < 0) { g.codepoint = c->code; px_font_add_glyph(&f, &g); }
+        else { px_font_add_uncoded(&f, &g); uncoded++; }   /* a glyph without a known character is kept, without a code point */
+        px_glyph_free(&g);
+    }
+    free(buf);
+    if (px_font_find(&f, 32) < 0) {   /* a sheet rarely draws the space */
+        PxGlyph g;
+        memset(&g, 0, sizeof g);
+        g.codepoint = 32;
+        g.advance = sh->layout == SHEET_GRID ? sh->cellW : imax_(2, (sh->ascent + sh->descent) / 3);
+        px_font_add_glyph(&f, &g);
+    }
+    if (f.count <= 1) { px_font_free(&f); ShowError("Cannot import the picture", "No glyph was found in it."); return false; }
+    f.has[PXM_ASCENT] = f.has[PXM_DESCENT] = true;
+    f.m[PXM_ASCENT] = sh->ascent < 0 ? 0 : sh->ascent;
+    f.m[PXM_DESCENT] = sh->descent < 0 ? 0 : sh->descent;
+    f.monospaced = sh->layout == SHEET_GRID;
+    if (!mono) {   /* the colours of the ink on a transparent background */
+        f.hasPalette = true;
+        for (int k = 0; k < PX_NUM_PIXELS; k++) f.colorUsed[k] = false;
+        f.colorUsed[0] = true;
+        f.color[0] = 0x00000000u;
+        for (int k = 0; k < sh->npalette && k + 1 < PX_NUM_PIXELS; k++) if (used[k + 1]) { f.colorUsed[k + 1] = true; f.color[k + 1] = sh->palette[k]; }
+    }
+    PxtfTypeface tf;
+    bool haveTf = fimp.typeface && ImpTypeface(&tf);
+    char t[300];
+    snprintf(t, sizeof t, "%s%s%s", fimp.family, fimp.family[0] && fimp.style[0] ? " " : "", fimp.style);
+    int count = f.count, colours = mono ? 1 : sh->npalette;
+    ImpFree();
+    AdoptDocument(&f, haveTf ? &tf : NULL, haveTf ? 1 : 0, false, t, t, NULL, NULL, "imported picture", "");
+    docIsNew = true;
+    needHash = true;
+    EnsureHashes();
+    FitSnapDrop();
+    if (uncoded) Th_Toast(TH_TOAST_OK, "Imported %d glyphs, %d of them without a known character (no code point)", count, uncoded);
+    else Th_Toast(TH_TOAST_OK, "Imported %d glyphs in %d colour%s", count, colours, colours == 1 ? "" : "s");
+    return true;
+}
+
 static bool ImportFontCreate(void)
 {
+    if (fimp.sheet) return ImportSheetCreate();
     if (!fimp.probe || fimp.err[0] || !store) return false;
     PxFont f;
     px_font_init(&f);
@@ -698,9 +838,129 @@ static void ImpPreview(Rectangle r)
     EndScissorMode();
 }
 
+/* the dialog of a picture: what was found, and every step of it can be set by hand */
+static void DrawImportSheetDialog(int W, int H)
+{
+    DrawRectangle(0, 0, W, H, TH_SCRIM);
+    uiBlocked = false;
+    Th_SetInputBlocked(false);
+    bool fresh = fimp.frame == frameNo, again = false;
+    Sheet *sh = &fimp.sh;
+    bool can = !fimp.err[0] && sh->ncells > 0;
+    const float pw = 720, pad = 24;
+    float ph = pad + TH_SIZE_HEAD + TH_PAD + 22 + 6 * (TH_ROW_H + TH_GAP / 2) + 3 * TH_LINE_H + 8 + 150 + TH_PAD + TH_ROW_H + pad;
+    Rectangle pr = {Fl((W - pw) / 2), Fl((H - ph) / 2.5f), pw, ph};
+    Th_Raised(pr, 1);
+    float x = pr.x + pad, w = pr.width - 2 * pad, y = pr.y + pad;
+    Th_TextHead("Import Font Picture", x, y, TH_TEXT);
+    y += TH_SIZE_HEAD + TH_PAD;
+    char fit[PATH_MAX_LEN + 16];
+    Th_FitText(fimp.path, TH_F_TAIL, w, fit, sizeof fit);
+    Th_TextSmall(fit, x, y, TH_TEXT_DIM);
+    y += 22;
+    int nv;
+    Rectangle vr = Th_Row(x, &y, w, "Family", NULL, 0);
+    if (Th_TextField((Rectangle){vr.x, vr.y, vr.width, TH_ROW_H}, "if.family", fimp.family, (int)sizeof fimp.family, 0, "Family") & TH_TF_CHANGED) snprintf(fimp.family, sizeof fimp.family, "%s", Th_TextValue());
+    vr = Th_Row(x, &y, w, "Style", NULL, 0);
+    if (Th_TextField((Rectangle){vr.x, vr.y, vr.width, TH_ROW_H}, "if.style", fimp.style, (int)sizeof fimp.style, 0, "Regular") & TH_TF_CHANGED) snprintf(fimp.style, sizeof fimp.style, "%s", Th_TextValue());
+    {   /* the layout: found, or chosen */
+        static const char *lay[4] = {"Auto", "Grid", "Rows", "Marker row"};
+        static const char *lh[4] = {"Find the layout", "Cells of one size", "Rows of glyphs of their own widths, cut at blank columns", "A strip: single pixels in the top row stand over the columns between the glyphs"};
+        vr = Th_Row(x, &y, w, "Layout", NULL, 0);
+        int c = Th_Segmented((Rectangle){vr.x, vr.y, 380, TH_ROW_H}, &(ThSeg){ lay, 4, fimp.so.layout, 0u, "if.layout", NULL, lh });
+        if (c >= 0 && c != fimp.so.layout) { fimp.so.layout = c; fimp.so.cellW = fimp.so.cellH = 0; again = true; }
+        if (can) {
+            const char *found = sh->layout == SHEET_GRID ? "found: grid" : sh->layout == SHEET_ROWS ? "found: rows" : "found: marker row";
+            Th_Text(found, vr.x + 390, Fl(vr.y + (TH_ROW_H - Th_Measure(found).y) / 2), TH_TEXT_DIM);
+        }
+    }
+    {   /* the cell of a grid, and the scale of an enlarged picture */
+        bool grid = can && sh->layout == SHEET_GRID;
+        vr = Th_Row(x, &y, w, "Cell (w, h)", NULL, 0);
+        int cw = grid ? sh->cellW : 0, ch = grid ? sh->cellH : 0;
+        if (Th_Number((Rectangle){vr.x, vr.y, 96, TH_ROW_H}, "if.cellw", cw, 2, 512, grid ? 0 : TH_TF_DISABLED, &nv)) { fimp.so.layout = SHEET_GRID; fimp.so.cellW = nv; fimp.so.cellH = ch; fimp.so.offX = sh->offX; fimp.so.offY = sh->offY; again = true; }
+        if (Th_Number((Rectangle){vr.x + 104, vr.y, 96, TH_ROW_H}, "if.cellh", ch, 2, 512, grid ? 0 : TH_TF_DISABLED, &nv)) { fimp.so.layout = SHEET_GRID; fimp.so.cellW = cw; fimp.so.cellH = nv; fimp.so.offX = sh->offX; fimp.so.offY = sh->offY; again = true; }
+        Th_Text("Scale", vr.x + 230, Fl(vr.y + (TH_ROW_H - Th_Measure("Scale").y) / 2), TH_TEXT_DIM);
+        if (Th_Number((Rectangle){vr.x + 284, vr.y, 96, TH_ROW_H}, "if.scale", can ? sh->scale : 1, 1, 24, fimp.rgba ? 0 : TH_TF_DISABLED, &nv)) { fimp.so.scale = nv; again = true; }
+        if (can && sh->blocks > 1) {
+            Th_Text("Copy", vr.x + 400, Fl(vr.y + (TH_ROW_H - Th_Measure("Copy").y) / 2), TH_TEXT_DIM);
+            if (Th_Number((Rectangle){vr.x + 448, vr.y, 96, TH_ROW_H}, "if.block", sh->block + 1, 1, sh->blocks, 0, &nv)) { fimp.so.block = nv - 1; again = true; }
+        }
+    }
+    {   /* the characters: recognised, or counted from a first one */
+        vr = Th_Row(x, &y, w, "First character", NULL, 0);
+        if (Th_TextField((Rectangle){vr.x, vr.y, 96, TH_ROW_H}, "if.first", fimp.first, (int)sizeof fimp.first, fimp.rgba ? 0 : TH_TF_DISABLED, "auto") & TH_TF_CHANGED) {
+            snprintf(fimp.first, sizeof fimp.first, "%s", Th_TextValue());
+            int code = 0, len = 0;
+            if ((fimp.first[0] == 'U' || fimp.first[0] == 'u') && fimp.first[1] == '+') code = (int)strtol(fimp.first + 2, NULL, 16);
+            else if (fimp.first[0]) code = GetCodepoint(fimp.first, &len);
+            fimp.so.firstCode = code > 0 ? code : 0;
+            again = true;
+        }
+        const char *hint = fimp.so.firstCode ? "the glyphs are counted from it" : "empty: recognised from the shapes";
+        Th_TextSmall(hint, vr.x + 106, Fl(vr.y + (TH_ROW_H - Th_MeasureSmall(hint).y) / 2), TH_TEXT_DIM);
+        bool monoV = fimp.so.mono != 0;
+        if (Th_Check((Rectangle){x + w - 150, vr.y, 150, TH_ROW_H}, "One colour", &monoV, fimp.rgba ? 0 : TH_CK_OFF, "if.mono")) { fimp.so.mono = monoV; again = true; }
+    }
+    if (again && fimp.rgba) { ImpSheetAnalyze(); can = !fimp.err[0] && sh->ncells > 0; }
+    char l1[240] = "", l2[240] = "";
+    if (!can) snprintf(l1, sizeof l1, "Cannot import: %.180s", fimp.err[0] ? fimp.err : "no glyph found");
+    else {
+        snprintf(l1, sizeof l1, "Found %s: %d glyphs in %d text row%s%s%s.", sh->layout == SHEET_GRID ? TextFormat("a grid of %d x %d cells", sh->cellW, sh->cellH) : sh->layout == SHEET_ROWS ? "rows of glyphs" : "a strip with a marker row",
+                 sh->glyphs, sh->nrows, sh->nrows == 1 ? "" : "s", sh->scale > 1 ? TextFormat(", enlarged %d times", sh->scale) : "", sh->blocks > 1 ? TextFormat(", %d copies of the font", sh->blocks) : "");
+        snprintf(l2, sizeof l2, "Font box %d + %d px, %d colour%s; the characters were %s.", sh->ascent, sh->descent, sh->npalette, sh->npalette == 1 ? "" : "s",
+                 sh->recognised ? TextFormat("recognised (%d %% sure)", (int)lroundf(fminf(1.0f, sh->confidence / 0.75f) * 100.0f)) : "counted from the first");
+    }
+    Th_TextSmall(l1, x, y, can ? TH_TEXT : TH_TEXT_NOTE); y += TH_LINE_H;
+    Th_TextSmall(l2, x, y, TH_TEXT_DIM); y += TH_LINE_H;
+    Th_TextSmall(can ? "Each glyph is shown with the character it will get; check the order before importing." : "", x, y, TH_TEXT_DIM); y += TH_LINE_H + 8;
+    /* the preview: the glyphs in their colours, each over its character */
+    Rectangle pv = {x, y, w, 150};
+    Th_Reg("if.preview", pv);
+    DrawRectangleRec(pv, TH_PANEL_ALT);
+    DrawRectangleLinesEx(pv, 1, TH_LINE);
+    if (can) {
+        int boxH = imax_(1, sh->ascent + sh->descent), z = boxH <= 12 ? 2 : 1;
+        float lineH = (float)(boxH * z) + 20, px0 = pv.x + 8, py = pv.y + 6, cx = px0;
+        while (z > 1 && lineH * 3 > pv.height) { z--; lineH = (float)(boxH * z) + 20; }
+        bool mono = sh->npalette <= 1;
+        BeginScissorMode((int)pv.x + 1, (int)pv.y + 1, (int)pv.width - 2, (int)pv.height - 2);
+        for (int i = 0; i < sh->ncells && py < pv.y + pv.height; i++) {
+            const SheetCell *c = &sh->cells[i];
+            if (!c->iw) continue;
+            float cwd = (float)imax_(c->iw * z, 12) + 6;
+            if (cx + cwd > pv.x + pv.width - 6) { cx = px0; py += lineH; }
+            for (int yy = 0; yy < c->ih; yy++)
+                for (int xx = 0; xx < c->iw; xx++) {
+                    size_t p = (size_t)(c->iy + yy) * (size_t)sh->w + (size_t)(c->ix + xx);
+                    if (!sh->ink[p]) continue;
+                    Color col = mono ? TH_TEXT : Th_FromRGBA(sh->px[p] | 0xFFu);
+                    DrawRectangle((int)cx + xx * z, (int)py + (c->iy - c->y - sh->lineTop + yy) * z, z, z, col);
+                }
+            if (c->code >= 0) Th_CodeDraw(c->code, (Rectangle){cx - 3, py + (float)(boxH * z) + 1, cwd, 16}, c->score < 0.45f && sh->recognised ? TH_TEXT_NOTE : TH_TEXT_DIM, false, 1);
+            else Th_TextSmall("?", cx + 2, py + (float)(boxH * z) + 2, TH_TEXT_NOTE);
+            cx += cwd;
+        }
+        EndScissorMode();
+    }
+    {
+        bool tfv = fimp.typeface;
+        if (Th_Check((Rectangle){x, pr.y + pr.height - pad - TH_ROW_H, 300, TH_ROW_H}, "Make a typeface with these names", &tfv, can ? 0 : TH_CK_OFF, "if.typeface")) fimp.typeface = tfv;
+    }
+    y = pr.y + pr.height - pad - TH_ROW_H;
+    float bx = pr.x + pr.width - pad - 96;
+    bool create = Th_Button((Rectangle){bx, y, 96, TH_ROW_H}, "Import", TH_BTN_PRIMARY | TH_BTN_OFF(can), NULL) && !fresh;
+    bool cancel = Th_Button((Rectangle){bx - 8 - 96, y, 96, TH_ROW_H}, "Cancel", 0, NULL) && !fresh;
+    if (!fresh && IsKeyPressed(KEY_ESCAPE)) cancel = true;
+    if (!fresh && !Th_TextIs(NULL) && (IsKeyPressed(KEY_ENTER) || IsKeyPressed(KEY_KP_ENTER)) && can) create = true;
+    if (cancel) ImpFree();
+    else if (create && !ImportSheetCreate()) ImpFree();
+}
+
 static void DrawImportFontDialog(int W, int H)
 {
     if (!fimp.open) return;
+    if (fimp.sheet) { DrawImportSheetDialog(W, H); return; }
     DrawRectangle(0, 0, W, H, TH_SCRIM);
     uiBlocked = false;
     Th_SetInputBlocked(false);

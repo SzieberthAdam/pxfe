@@ -300,6 +300,15 @@ static bool GetInt(const char *name, long *v)
     else if (!strcmp(name, "xdopen")) *v = xd.open;                                                  /* the Export dialog */
     else if (!strcmp(name, "nfopen")) *v = nf.open;                                                  /* the New Font dialog */
     else if (!strcmp(name, "ifopen")) *v = fimp.open;                                                /* the Import Font File dialog */
+    else if (!strcmp(name, "ifsheet")) *v = fimp.sheet;                                              /* the dialog is of a picture (sheet.h) */
+    else if (!strcmp(name, "iflayout")) *v = fimp.sheet ? fimp.sh.layout : 0;                        /* 1 grid, 2 rows, 3 marker row */
+    else if (!strcmp(name, "ifcells")) *v = fimp.sheet ? fimp.sh.ncells : 0;
+    else if (!strcmp(name, "ifglyphs")) *v = fimp.sheet ? fimp.sh.glyphs : 0;
+    else if (!strcmp(name, "ifcellw")) *v = fimp.sheet ? fimp.sh.cellW : 0;
+    else if (!strcmp(name, "ifcellh")) *v = fimp.sheet ? fimp.sh.cellH : 0;
+    else if (!strcmp(name, "ifcolours")) *v = fimp.sheet ? fimp.sh.npalette : 0;
+    else if (!strcmp(name, "ifblocks")) *v = fimp.sheet ? fimp.sh.blocks : 0;
+    else if (!strcmp(name, "palette")) { int n = 0; if (hasFont && font.hasPalette) for (int i = 1; i < PX_NUM_PIXELS; i++) n += font.colorUsed[i]; *v = n; }   /* ink colours of the open font (0: the default black) */
     else if (!strcmp(name, "ifpixel")) *v = fimp.pixel;                                              /* its choice: a pixel font */
     else if (!strcmp(name, "ifgrid")) *v = fimp.hasGrid ? (fimp.grid.sure ? 1 : 2) : 0;              /* a grid was found (2: only a guess) */
     else if (!strcmp(name, "ifoutline")) *v = fimp.outline;
@@ -1028,7 +1037,7 @@ static void PlayExecLine(const char *line)
             }
             ImpAnalyze(t[1], face);
             fimp.typeface = tf;
-            bool ok = fimp.probe && !fimp.err[0];
+            bool ok = (fimp.probe || fimp.sheet) && !fimp.err[0];
             if (ok && mode == 1 && !(fimp.outline ? fimp.hasGrid : true)) ok = false;
             if (ok && mode >= 0 && fimp.outline) fimp.pixel = mode == 1;
             if (ok && em > 0 && fimp.outline && !fimp.pixel) {

@@ -982,3 +982,83 @@ A change of a lock is a change of the settings: it counts as unsaved until Save,
 - `origHash` and `origContHash` are what the store holds; they move at each commit.
 - A font that is not in the store yet (New Font, Import Font File) is added at its first commit and is unlocked.
 - Save, Load, Import, Export and Save As work as before.
+
+## Version 13: importing a picture of a font
+
+Menu, Import Font File also takes a picture: PNG, GIF (its first frame), JPEG, BMP, TGA.
+A picture tells nothing about itself, so the importer works out the background, the scale, the layout, the characters and the colours, and the dialog lets every one of them be set by hand.
+The analysis is in `src/sheet.c` (no raylib), the reference glyphs in `src/sheetref.c`, the dialog and the making of the font in `src/fitdoc.inc`.
+
+### Background and ink
+
+- A picture with transparent pixels (more than 2 % of it): they are the background, every other pixel is ink.
+- Else the commonest colour is the background, and every pixel of another colour is ink.
+- A picture with more than 300 colours has noise (a JPEG): the background is the commonest colour counted coarsely, and a pixel is ink when it differs from it by more than 60 in a channel.
+
+### Scale
+
+A preview draws every font pixel as a block.
+The scale is the largest s (up to 24) for which nearly every change of colour along the rows and the columns lies on a lattice of pitch s (98.5 %, with noise 86 %).
+The picture is then brought back to one pixel per font pixel, taking the pixel in the middle of each block (with noise: the mean of the block).
+
+### Layout
+
+Three layouts, tried in this order:
+
+- Marker row: a strip whose top (or bottom) row holds single pixels of one colour.
+  Each marker stands over a column that separates two glyphs: a glyph is the columns between two markers, and the marker's own column belongs to no glyph.
+  A pixel of another colour in that row is ink of a glyph.
+  Ink under the next marker that touches the glyph (a shadow that spills over) stays with that glyph.
+  What follows the last glyph (a closing marker at the edge) is dropped.
+- Grid: cells of one size.
+  The width is the smallest pitch for which every stretch of ink between blank columns lies inside one cell; a pitch a little larger that divides the width of the picture, with no margin, is taken instead when there is one.
+  Stretches far longer than most (glyphs that touch) do not count.
+  The height comes from the text rows in the same way.
+  When the glyphs fill their cells and leave no gaps (plates, outlines that touch), the period of the picture tells the cell: the smallest divisor of the size at which the picture repeats, for the height the one closest to the width.
+  A grid whose cells are mostly blank is no grid.
+- Rows: text rows cut where a row of pixels is blank, glyphs cut where a column is blank.
+  A band far lower than the others (dots, accents) joins its closest neighbour.
+  A stretch about twice as wide as most is two glyphs that touch, and is cut where the fewest pixels are inked.
+  A picture with noise is always read as rows.
+
+A sheet that holds the same glyphs several times (one font in several colours) is told by cells that repeat exactly; one copy is imported, the dialog chooses which.
+
+### Characters
+
+Sheets list their characters in runs of ascending codes: ASCII from the space or from `!`, the upper half of code page 437 after `~`, capitals then digits, `1` to `9` then `0`.
+So the characters are not read one by one, but as the best sequence.
+
+- Each glyph is compared with the same character of reference fonts: GNU Unifont and Noto Sans Regular, Bold and Black, about 900 glyphs, made once (two seconds).
+  The shape is compared on a grid of 8 x 10 after stretching the ink box to it, and the place in the line (top, bottom and width in line heights) counts too, which tells `,` from `'` and `o` from `O`.
+- A glyph of several colours (an outline, a shadow, a bevel) is read from all its ink and from single colours of it, alone and left out, and keeps its best reading.
+- The sequence is found by dynamic programming over the cells: a glyph that continues the run of the one before it gets a bonus (0.5, a full match is 1), a higher code a small one.
+  A blank cell holds the place of a missing character, or no place at all (the end of a row).
+- Capitals standing in the places of the small letters are accepted there.
+- A code given twice stays with the glyph that stands in a run; the other takes its best code that is still free, or none.
+- The candidates are ASCII, Latin-1, the upper half of code page 437 and a few more (the euro sign, arrows, the ligatures of French).
+
+A first character can be typed in the dialog; the glyphs are then counted from it, cell by cell, and nothing is recognised.
+
+On the 49 pictures of the test collection the layout is found for all, and 97.4 % of the 3843 characters whose truth is known get the right code.
+
+### Colours and metrics
+
+- The colours of the ink become the palette of the font, at most 36; when there are more (a JPEG), the pair that costs least to merge is merged until 36 are left.
+- A font of one ink colour is imported black on white, without colour lines; a font of several on a transparent background.
+- The baseline is where most glyphs end; ascent and descent are how far the ink reaches above and below it.
+- In a grid and in a marker strip the advance is the width of the cell and the glyph keeps its place in it; a grid makes a monospaced font.
+  In rows the advance is the width of the ink and a gap of a twelfth of the height.
+- A space is added when the sheet has none.
+- A glyph left without a character is kept, without a code point.
+
+### The dialog
+
+The dialog of a picture has Family and Style, the layout (Auto, Grid, Rows, Marker row; what was found is told beside it), the cell of a grid, the scale, the copy of a sheet with several, the first character, "One colour", what was found in words, and a preview of every glyph in its colours over the character it will get (amber when the match is weak).
+Every change runs the analysis again.
+
+### Not done
+
+- The picture is not kept as a layer under the font.
+- A photograph of lettering is cut into glyphs and read, but its glyphs come in at the size of the picture and in up to 36 colours; they are not brought down to a pixel grid.
+- Kerning is not guessed.
+- Sheets whose characters follow no run at all (punctuation in the designer's own order) get wrong codes for those glyphs; the preview shows them, and they can be changed in the font view.

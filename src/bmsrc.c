@@ -15,6 +15,7 @@
 #define STBI_ONLY_GIF
 #define STBI_ONLY_BMP
 #define STBI_ONLY_TGA
+#define STBI_ONLY_JPEG
 #define STBI_MAX_DIMENSIONS (1 << 12)
 #if defined(__GNUC__)
 #pragma GCC diagnostic push
@@ -1859,4 +1860,36 @@ void bm_plain_free(BmPlain *p) {
     if (!p) return;
     free(p->pix);
     memset(p, 0, sizeof *p);
+}
+
+/* ------------------------------------------------------------------ plain images (for sheet.h) */
+
+unsigned char *bm_load_rgba(const char *path, int *w, int *h, char *err, size_t errlen)
+{
+    FILE *f = fopen(path, "rb");
+    unsigned char *file = NULL, *rgba = NULL, *out = NULL;
+    long n = 0;
+    int iw = 0, ih = 0, comp = 0;
+    if (w) *w = 0;
+    if (h) *h = 0;
+    if (!f) { if (err && errlen) snprintf(err, errlen, "cannot open the file"); return NULL; }
+    if (fseek(f, 0, SEEK_END) == 0) n = ftell(f);
+    if (n <= 0 || n > (64L << 20) || fseek(f, 0, SEEK_SET) != 0) { fclose(f); if (err && errlen) snprintf(err, errlen, "empty or too large"); return NULL; }
+    file = (unsigned char *)malloc((size_t)n);
+    if (!file || fread(file, 1, (size_t)n, f) != (size_t)n) { fclose(f); free(file); if (err && errlen) snprintf(err, errlen, "cannot read the file"); return NULL; }
+    fclose(f);
+    rgba = stbi_load_from_memory(file, (int)n, &iw, &ih, &comp, 4);
+    free(file);
+    if (!rgba || iw <= 0 || ih <= 0) {
+        if (rgba) stbi_image_free(rgba);
+        if (err && errlen) snprintf(err, errlen, "not an image this program reads (PNG, GIF, JPEG, BMP, TGA)");
+        return NULL;
+    }
+    out = (unsigned char *)malloc((size_t)iw * (size_t)ih * 4);
+    if (out) memcpy(out, rgba, (size_t)iw * (size_t)ih * 4);
+    stbi_image_free(rgba);
+    if (!out) { if (err && errlen) snprintf(err, errlen, "out of memory"); return NULL; }
+    if (w) *w = iw;
+    if (h) *h = ih;
+    return out;
 }
