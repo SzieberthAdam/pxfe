@@ -122,7 +122,8 @@ static int KeyByName(const char *n)
         {"DEL", KEY_DELETE}, {"BACKSPACE", KEY_BACKSPACE}, {"TAB", KEY_TAB}, {"SPACE", KEY_SPACE}, {"UP", KEY_UP},
         {"DOWN", KEY_DOWN}, {"LEFT", KEY_LEFT}, {"RIGHT", KEY_RIGHT}, {"PGUP", KEY_PAGE_UP}, {"PGDN", KEY_PAGE_DOWN},
         {"HOME", KEY_HOME}, {"END", KEY_END}, {"EQUAL", KEY_EQUAL}, {"PLUS", KEY_EQUAL}, {"MINUS", KEY_MINUS},
-        {"KP_ADD", KEY_KP_ADD}, {"KP_SUBTRACT", KEY_KP_SUBTRACT}, {"F1", KEY_F1}, {"F2", KEY_F2}, {"F3", KEY_F3},
+        {"KP_ADD", KEY_KP_ADD}, {"KP_SUBTRACT", KEY_KP_SUBTRACT}, {"SHIFT", KEY_LEFT_SHIFT}, {"CTRL", KEY_LEFT_CONTROL}, {"ALT", KEY_LEFT_ALT},
+        {"BACK", KEY_BACKSPACE}, {"F1", KEY_F1}, {"F2", KEY_F2}, {"F3", KEY_F3},
     };
     if (n[0] && !n[1]) {
         char c = n[0];
@@ -353,6 +354,8 @@ static bool GetInt(const char *name, long *v)
     else if (!strcmp(name, "undo")) *v = undoN;
     else if (!strcmp(name, "redo")) *v = redoN;
     else if (!strcmp(name, "editor")) *v = inEditor;
+    else if (!strcmp(name, "eglyph")) *v = (inEditor && ed && Editor_GlyphIndex(ed) >= 0 && Editor_GlyphIndex(ed) < font.count) ? font.glyphs[Editor_GlyphIndex(ed)].codepoint : -1;   /* the code of the glyph the glyph view shows */
+    else if (!strcmp(name, "baseshift")) *v = baseShift;          /* how many rows the baseline was moved up in all (down: negative) */
     else if (!strcmp(name, "inbrowser")) *v = inBrowser && !inFinder;
     else if (!strcmp(name, "nav")) *v = navView;                  /* 0 Typefaces, 1 Typeface, 2 Fonts, 3 Font, 4 Glyph, 5 Glyphs */
     else if (!strcmp(name, "navactive")) *v = navActive;          /* the blue segment: 0, 1 or 2 */
@@ -388,6 +391,10 @@ static bool GetInt(const char *name, long *v)
     else if (!strcmp(name, "bsel")) *v = browser ? Browser_SelectedVisible(browser) : -1;
     else if (!strcmp(name, "btypefaces")) *v = browser ? Browser_TypefaceTotal(browser) : -1;     /* typefaces of the library (badge of the Typefaces tab) */
     else if (!strcmp(name, "bboxes")) *v = browser ? Browser_BoxCount(browser) : -1;               /* typeface boxes of the Typefaces tab */
+    else if (!strcmp(name, "tfocus")) *v = Th_TextIs(NULL);                                         /* a text field has the keyboard */
+    else if (!strcmp(name, "bcolors")) *v = browser ? Browser_ColorFilter(browser) : -1;             /* the Colours filter: 0 is Any */
+    else if (!strcmp(name, "bcolorvals")) *v = browser ? Browser_ColorValues(browser) : -1;        /* counts the Colours dropdown lists */
+    else if (!strncmp(name, "bcolorval", 9)) *v = browser ? Browser_ColorValue(browser, atoi(name + 9)) : -1;   /* bcolorval0: the first of them */
     else if (!strncmp(name, "bboxvars", 8)) *v = browser ? Browser_BoxVariants(browser, atoi(name + 8)) : -1;   /* bboxvars0: variants shown in box 0 */
     else if (!strcmp(name, "bupd10") || !strcmp(name, "bupdmax10") || !strcmp(name, "bfr10") || !strcmp(name, "bfrmax10")) {   /* browser frame times, tenths of ms */
         float ua = 0, um = 0, fa = 0, fm = 0;
@@ -411,8 +418,18 @@ static bool GetInt(const char *name, long *v)
     else if (!strcmp(name, "emetrics")) *v = ed ? Editor_ShowMetrics(ed) : -1;                      /* metric lines of the glyph view on */
     else if (!strcmp(name, "ehidden")) *v = ed ? Editor_CurrentHidden(ed) : -1;                     /* the edited glyph's layer is hidden */
     else if (!strcmp(name, "etool")) *v = ed ? Editor_Tool(ed) : -1;
+    else if (!strncmp(name, "etoolslot", 9)) *v = Editor_StripTool(atoi(name + 9));                    /* etoolslot3: the tool number of the strip's 4th button, in the strip's order */
+    else if (!strcmp(name, "etoolcols")) *v = ed ? Editor_ToolCols(ed) : -1;
     else if (!strcmp(name, "eink")) *v = ed ? Editor_Ink(ed) : -1;
     else if (!strcmp(name, "ezoom")) *v = ed ? Editor_Zoom(ed) : -1;
+    else if (!strcmp(name, "eselcount")) *v = ed ? Editor_SelCount(ed) : -1;                        /* cells selected in the glyph view */
+    else if (!strcmp(name, "efloating")) *v = ed ? Editor_Floating(ed) : -1;                        /* selected pixels are lifted and float over the glyph */
+    else if (!strcmp(name, "epp")) *v = ed ? Editor_PixelPerfect(ed) : -1;                           /* the glyph view's Pixel-perfect option is on */
+    else if (!strcmp(name, "efilled")) *v = ed ? Editor_Filled(ed) : -1;                             /* the bar's Filled option of the rectangle and the ellipse is on */
+    else if (!strcmp(name, "ecurve")) *v = ed ? Editor_CurveStage(ed) : -1;                         /* the curve being made: 0 none, 1 end points set, 2 first control point set */
+    else if (!strcmp(name, "epoly")) *v = ed ? Editor_PolyVertices(ed) : -1;                         /* the polygon being made: its vertices (0 none) */
+    else if (!strcmp(name, "econtig")) *v = ed ? Editor_Contiguous(ed) : -1;                        /* the bar's Contiguous option of the fill is on */
+    else if (!strcmp(name, "eclip")) *v = Editor_ClipCount();                                       /* cells on the glyph view's clipboard */
     else if (!strcmp(name, "scroll")) *v = (long)scrollY;
     else if (!strcmp(name, "panelscroll")) *v = (long)panelScroll;
     else if (!strcmp(name, "toasts")) *v = Th_ToastCount();
@@ -432,6 +449,13 @@ static bool GetInt(const char *name, long *v)
     }
     else return false;
     return true;
+}
+
+/* a code of a script: what the clone dialog takes, or #n for the n-th glyph without a code point */
+static bool PlayCode(const char *tok, int32_t *cp)
+{
+    if (tok[0] == '#') { *cp = PX_CODE_UNCODED_FIRST + atoi(tok + 1); return true; }
+    return ParseCodepoint(tok, cp);
 }
 
 static bool Compare(long a, const char *op, long b)
@@ -616,6 +640,16 @@ static void DoAssert(char **t, int n)
             else if (!strcmp(p, "ink") && n >= 5) { int c = 0; for (int i = 0; i < g->w * g->h; i++) c += g->pix[i] != '.'; ok = c == atoi(t[4]); if (!ok) PlayLog("  actual ink %d", c); }
             else { PLAY_FAIL("bad glyph property '%s'", p); return; }
         }
+    } else if (!strcmp(k, "esel")) {
+        /* assert esel bounds X Y W H | cell X Y [0|1] | none: the glyph view's selection; X is a column from the pen, Y a row of the font box (0 = its top row) */
+        int bx, by, bw, bh;
+        if (!ed || n < 3) { PLAY_FAIL("assert esel bounds|cell|none"); return; }
+        if (!strcmp(t[2], "none")) ok = Editor_SelCount(ed) == 0;
+        else if (!strcmp(t[2], "bounds") && n >= 7) {
+            ok = Editor_SelBounds(ed, &bx, &by, &bw, &bh) && (t[3][0] == '*' || bx == atoi(t[3])) && (t[4][0] == '*' || by == atoi(t[4])) && bw == atoi(t[5]) && bh == atoi(t[6]);   /* * matches any X or Y */
+            if (!ok) { if (Editor_SelBounds(ed, &bx, &by, &bw, &bh)) PlayLog("  actual bounds %d %d %d %d", bx, by, bw, bh); else PlayLog("  nothing selected"); }
+        } else if (!strcmp(t[2], "cell") && n >= 5) ok = Editor_SelCell(ed, atoi(t[3]), atoi(t[4])) == (n < 6 || atoi(t[5]) != 0);
+        else { PLAY_FAIL("bad esel property '%s'", t[2]); return; }
     } else if (!strcmp(k, "sel")) {
         int gi = GlyphByTok(t[2]);
         RecountSel();
@@ -638,7 +672,7 @@ static void DoAssert(char **t, int n)
         if (!ok) PlayLog("  actual segment '%s'", sg >= 0 && sg < 3 ? navText[sg] : "(none)");
     } else if (!strcmp(k, "kern")) {
         int32_t a, b;
-        ok = n >= 5 && ParseCodepoint(t[2], &a) && ParseCodepoint(t[3], &b) && px_font_kern(&font, a, b) == atoi(t[4]);
+        ok = n >= 5 && PlayCode(t[2], &a) && PlayCode(t[3], &b) && px_font_kern(&font, a, b) == atoi(t[4]);
     } else if (!strcmp(k, "title")) {
         char want[200] = "";
         for (int i = 2; i < n; i++) { if (i > 2) strcat(want, " "); strncat(want, t[i], 150); }
@@ -921,7 +955,7 @@ static void PlayExecLine(const char *line)
     Mods m = {false, false, false};
     int btn = MOUSE_BUTTON_LEFT;
     bool isKey = !strcmp(t[0], "key") || !strcmp(t[0], "keydown") || !strcmp(t[0], "keyup");
-    bool isMouse = !strcmp(t[0], "click") || !strcmp(t[0], "dblclick") || !strcmp(t[0], "drag") || !strcmp(t[0], "move") || !strcmp(t[0], "wheel");
+    bool isMouse = !strcmp(t[0], "click") || !strcmp(t[0], "dblclick") || !strcmp(t[0], "drag") || !strcmp(t[0], "move") || !strcmp(t[0], "wheel") || !strcmp(t[0], "mousedown") || !strcmp(t[0], "mouseup");   /* mousedown and mouseup take the words right and middle (and the modifiers) */
     for (int i = (isKey || isMouse) ? (isKey ? 2 : 1) : n; i < n; i++) {
         if (!strcmp(t[i], "ctrl")) m.ctrl = true;
         else if (!strcmp(t[i], "shift")) m.shift = true;
@@ -952,7 +986,7 @@ static void PlayExecLine(const char *line)
         QMods(f, m, !strcmp(c, "mousedown"));
         QEv(f, !strcmp(c, "mousedown") ? PEV_MOUSE_DOWN : PEV_MOUSE_UP, btn, 0);
     } else if (!strcmp(c, "resize")) {
-        if (na < 3) PLAY_FAIL("resize W H"); else { SetWindowSize(atoi(t[1]), atoi(t[2])); QWait(3); }
+        if (na < 3) PLAY_FAIL("resize W H"); else { SetWindowMinSize(1, 1); SetWindowSize(atoi(t[1]), atoi(t[2])); QWait(3); }   /* below the application's minimum too */
     } else if (!strcmp(c, "wheel")) {
         int dy = na > 1 ? atoi(t[1]) : 1;
         if (na > 2 && Target(t + 2, na - 2, &x, &y)) QMove((int)x, (int)y);

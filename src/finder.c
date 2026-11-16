@@ -562,7 +562,7 @@ static void draw_grid(Finder *f, Rectangle g)
             snprintf(lab, sizeof lab, "%d font%s", e->nFonts, e->nFonts == 1 ? "" : "s");
             Vector2 lm = Th_MeasureSmall(lab);
             Th_TextSmall(lab, cr.x + floorf((cr.width - lm.x) / 2), cr.y + cr.height - FD_LABEL_H + 1, TH_TEXT_DIM);
-            if (hov && IsMouseButtonReleased(MOUSE_BUTTON_LEFT)) {
+            if (Th_Released(cr, "fcell", hov)) {
                 double now = GetTime();
                 Finder_Select(f, di);
                 f->reveal = -1;

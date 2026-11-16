@@ -85,7 +85,7 @@ assert glyph U+0020 pixel 2 2 0
 assert glyph U+0020 ink 11
 assert undo 5
 shot tests/tmp/shots/06_editor_line.png
-# rectangle tool (key R): outline, then filled with shift held
+# rectangle tool (key R): outline, then filled with the bar's Filled toggle
 key r
 wait 2
 assert etool 3
@@ -96,10 +96,17 @@ assert glyph U+0020 pixel 7 2 0
 assert glyph U+0020 pixel 6 1 .
 assert glyph U+0020 pixel 6 2 .
 assert undo 6
-drag @ecell:5,0 @ecell:7,3 shift
+assert w.Filled 1
+click @Filled
+wait 2
+assert efilled 1
+drag @ecell:5,0 @ecell:7,3
 wait 3
 assert glyph U+0020 pixel 6 1 0
 assert undo 7
+click @Filled
+wait 2
+assert efilled 0
 shot tests/tmp/shots/06_editor_rect.png
 # eraser (key E) with a left drag, then fill (key F) of the enclosed hole
 key e

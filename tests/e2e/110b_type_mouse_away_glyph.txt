@@ -1,0 +1,42 @@
+# 110b. The glyph view's fields take typing while the mouse is away from them (font fa96e358, unlocked): the code point and the advance.
+wait 5
+click @Unlock
+wait 6
+click @cell:U+0041
+key enter
+wait 6
+assert editor 1
+assert eglyph U+0041
+click @g.code
+wait 3
+assert tfocus 1
+move 400 600
+wait 3
+key a ctrl
+type U+0042
+wait 3
+move 150 30
+wait 3
+key enter
+wait 4
+assert glyph U+0042 exists 1
+assert glyph U+0041 exists 0
+# a number field (it is a Th_TextField): click it, move the mouse into the glyph canvas, type
+click @g.advance.value
+wait 3
+assert tfocus 1
+move 300 300
+wait 3
+key a ctrl
+type 9
+wait 3
+key enter
+wait 4
+assert glyph U+0042 advance 9
+# a dialog over the view takes the keyboard from a field: New Font opens by Ctrl+N
+click @g.advance.value
+wait 3
+assert tfocus 1
+key escape
+wait 3
+assert tfocus 0

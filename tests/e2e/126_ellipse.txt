@@ -1,0 +1,202 @@
+# 126. The Ellipse tool (version 19), font 0820dc69 unlocked, glyph U+0020 (empty, advance 4; font box rows 0..7, @ecell:x,y).
+# Key O (E is the Eraser), the strip's Ellipse button; a drag is the bounding box, one undo step; Shift makes a circle, Ctrl draws from the centre;
+# the ring is one cell thick with no L corner; the Filled toggle fills it; Esc cancels; the right button draws '.'.
+wait 5
+click @Unlock
+wait 4
+sleep 600
+dblclick @cell:U+0020
+wait 5
+assert editor_glyph U+0020
+assert glyph U+0020 empty
+assert undo 0
+
+key o
+wait 3
+assert etool 10
+assert w.Filled 1
+assert w.Pixel-perfect 0
+key b
+wait 2
+assert etool 0
+click @Ellipse
+wait 3
+assert etool 10
+key e
+wait 2
+assert etool 1
+key o
+wait 2
+
+# the ring of a 5 x 5 box (1,1)..(5,5): 12 cells, the rows .###. / #...# / #...# / #...# / .###.
+drag @ecell:1,1 @ecell:5,5
+wait 3
+assert glyph U+0020 ink 12
+assert glyph U+0020 pixel 2 1 0
+assert glyph U+0020 pixel 4 1 0
+assert glyph U+0020 pixel 1 1 .
+assert glyph U+0020 pixel 5 1 .
+assert glyph U+0020 pixel 1 3 0
+assert glyph U+0020 pixel 5 3 0
+assert glyph U+0020 pixel 3 3 .
+assert glyph U+0020 pixel 3 5 0
+assert glyph U+0020 pixel 3 6 .
+assert undo 1
+key z ctrl
+wait 3
+assert glyph U+0020 empty
+assert undo 0
+
+# dragged the other way: the same ring
+drag @ecell:5,5 @ecell:1,1
+wait 3
+assert glyph U+0020 ink 12
+assert glyph U+0020 pixel 3 1 0
+key z ctrl
+wait 3
+
+# Shift: a circle of the longer side (4 across, 3 down: 5 x 5)
+drag @ecell:1,1 @ecell:5,4 shift
+wait 3
+assert glyph U+0020 ink 12
+assert glyph U+0020 pixel 3 5 0
+assert glyph U+0020 pixel 5 3 0
+assert glyph U+0020 pixel 3 6 .
+key z ctrl
+wait 3
+# Ctrl: the press cell (3,3) is the centre, the corner (5,4) is mirrored to (1,2): 5 x 3, the rows .###. / #...# / .###.
+drag @ecell:3,3 @ecell:5,4 ctrl
+wait 3
+assert glyph U+0020 ink 8
+assert glyph U+0020 pixel 3 2 0
+assert glyph U+0020 pixel 3 4 0
+assert glyph U+0020 pixel 1 3 0
+assert glyph U+0020 pixel 5 3 0
+assert glyph U+0020 pixel 3 3 .
+assert glyph U+0020 pixel 1 2 .
+assert undo 1
+key z ctrl
+wait 3
+# Shift and Ctrl: a circle from the centre, 5 x 5 again
+drag @ecell:3,3 @ecell:4,5 shift ctrl
+wait 3
+assert glyph U+0020 ink 12
+assert glyph U+0020 pixel 3 1 0
+assert glyph U+0020 pixel 1 3 0
+assert glyph U+0020 pixel 5 3 0
+assert glyph U+0020 pixel 3 5 0
+key z ctrl
+wait 3
+assert glyph U+0020 empty
+
+# the preview does not change the glyph; Shift pressed after the press makes the preview a circle; Esc cancels
+move @ecell:0,1
+mousedown
+wait 2
+move @ecell:6,4
+wait 3
+assert glyph U+0020 empty
+assert undo 0
+shot tests/tmp/shots/126_ellipse_preview.png
+keydown shift
+wait 3
+shot tests/tmp/shots/126_circle_preview.png
+keyup shift
+wait 2
+key esc
+wait 2
+mouseup
+wait 3
+assert glyph U+0020 empty
+assert undo 0
+assert editor 1
+
+# a wide ellipse, 8 x 6: the rows ..####.. / .#....#. / #......# / #......# / .#....#. / ..####..  (16 cells)
+drag @ecell:0,1 @ecell:7,6
+wait 3
+assert glyph U+0020 ink 16
+assert glyph U+0020 pixel 2 1 0
+assert glyph U+0020 pixel 5 1 0
+assert glyph U+0020 pixel 1 2 0
+assert glyph U+0020 pixel 0 3 0
+assert glyph U+0020 pixel 7 4 0
+assert glyph U+0020 pixel 3 3 .
+key z ctrl
+wait 3
+assert glyph U+0020 empty
+
+# a click is one cell; a box one cell wide or high is a line; two cells high is a solid band
+click @ecell:3,3
+wait 3
+assert glyph U+0020 ink 1
+key z ctrl
+wait 3
+drag @ecell:1,1 @ecell:1,5
+wait 3
+assert glyph U+0020 ink 5
+key z ctrl
+wait 3
+drag @ecell:0,2 @ecell:5,2
+wait 3
+assert glyph U+0020 ink 6
+key z ctrl
+wait 3
+drag @ecell:0,2 @ecell:5,3
+wait 3
+assert glyph U+0020 ink 12
+key z ctrl
+wait 3
+assert glyph U+0020 empty
+
+# Filled: the ring and its inside, 5 x 5 is 21 cells, 7 x 5 is 23; one undo step
+click @Filled
+wait 2
+assert efilled 1
+drag @ecell:1,1 @ecell:5,5
+wait 3
+assert glyph U+0020 ink 21
+assert glyph U+0020 pixel 3 3 0
+assert glyph U+0020 pixel 1 3 0
+assert glyph U+0020 pixel 1 1 .
+assert glyph U+0020 pixel 5 5 .
+assert undo 1
+shot tests/tmp/shots/126_ellipse_filled.png
+key z ctrl
+wait 3
+drag @ecell:0,1 @ecell:6,5
+wait 3
+assert glyph U+0020 ink 23
+assert glyph U+0020 pixel 3 3 0
+assert glyph U+0020 pixel 0 3 0
+assert glyph U+0020 pixel 0 2 .
+key z ctrl
+wait 3
+assert glyph U+0020 empty
+
+# the right button draws '.': a hole in a filled ellipse
+drag @ecell:0,0 @ecell:6,6
+wait 3
+assert glyph U+0020 pixel 3 3 0
+drag @ecell:2,2 @ecell:4,4 right
+wait 3
+assert glyph U+0020 pixel 3 3 .
+assert glyph U+0020 pixel 3 1 0
+assert undo 2
+key z ctrl
+key z ctrl
+wait 3
+assert glyph U+0020 empty
+
+# the bitmap grows to take an ellipse outside the box (the toggle goes off: a 3 x 3 ring is a diamond)
+click @Filled
+drag @ecell:5,5 @ecell:7,7
+wait 3
+assert glyph U+0020 ink 4
+assert glyph U+0020 pixel 6 5 0
+assert glyph U+0020 pixel 6 7 0
+assert glyph U+0020 pixel 7 6 0
+assert glyph U+0020 pixel 5 5 .
+key z ctrl
+wait 3
+assert glyph U+0020 empty
+assert efilled 0

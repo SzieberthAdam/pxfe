@@ -1,0 +1,177 @@
+# 107. Moving the baseline in the font view (font 0820dc69: ASCENT 6, DESCENT 2, CAPHEIGHT 5, XHEIGHT 4, H and A on the baseline, comma at y -2, space without ink).
+# Up by one row: ascent -1, descent +1, every stated height above the baseline -1, every glyph's offset y -1, the font layers' offset -1; the pixels stay where they are.
+wait 5
+assert readonly 1
+assert ptab 0
+assert w.Baseline_up 1
+assert w.Baseline_down 1
+shot tests/tmp/shots/107_locked.png
+# locked: both buttons are inert (and the font is not changed)
+click @Baseline_up
+wait 3
+assert m.ascent 6
+assert glyph U+0048 y 0
+assert undo 0
+assert baseshift 0
+assert modified 0
+click @Unlock
+wait 4
+assert readonly 0
+# state the underline and the strike-out so that they move too (-1 and 2 are what switching them on gives)
+click @underlineposition.on
+wait 3
+click @strikeoutposition.on
+wait 3
+assert has.underlineposition 1
+assert m.underlineposition -1
+assert has.strikeoutposition 1
+assert m.strikeoutposition 2
+# a font layer, to see that it stays in place on the screen
+addlayerfile testdata/bitmap/font.bdf
+wait 6
+assert flayers 1
+assert flayer 0 dy 0
+assert modified 1
+shot tests/tmp/shots/107_before.png
+wait 6
+# up, twice
+click @Baseline_up
+wait 3
+assert m.ascent 5
+assert m.descent 3
+assert m.capheight 4
+assert m.xheight 3
+assert m.underlineposition -2
+assert m.strikeoutposition 1
+assert m.linegap 1
+assert glyph U+0048 y -1
+assert glyph U+0041 y -1
+assert glyph U+002C y -3
+assert glyph U+0078 y -1
+assert glyph U+0020 y 0
+assert glyph U+0041 advance 6
+assert baseshift 1
+assert flayer 0 dy -1
+assert boxabove 5
+assert boxbelow 3
+click @Baseline_up
+wait 3
+assert m.ascent 4
+assert m.descent 4
+assert m.capheight 3
+assert m.xheight 2
+assert m.underlineposition -3
+assert m.strikeoutposition 0
+assert glyph U+0048 y -2
+assert glyph U+002C y -4
+assert glyph U+0020 y 0
+assert baseshift 2
+assert flayer 0 dy -2
+shot tests/tmp/shots/107_up2.png
+# every step is one undo step: undo puts back the font and the layer
+key z ctrl
+wait 3
+assert m.ascent 5
+assert m.descent 3
+assert m.underlineposition -2
+assert glyph U+0048 y -1
+assert glyph U+002C y -3
+assert baseshift 1
+assert flayer 0 dy -1
+key z ctrl
+wait 3
+assert m.ascent 6
+assert m.descent 2
+assert m.capheight 5
+assert m.xheight 4
+assert m.underlineposition -1
+assert m.strikeoutposition 2
+assert glyph U+0048 y 0
+assert glyph U+002C y -2
+assert baseshift 0
+assert flayer 0 dy 0
+# redo goes forward again
+key y ctrl
+wait 3
+assert m.ascent 5
+assert glyph U+0048 y -1
+assert baseshift 1
+assert flayer 0 dy -1
+key y ctrl
+wait 3
+assert m.ascent 4
+assert flayer 0 dy -2
+# down, back to where it was: the same font as before (the hash of the unlocked font is the one it had when the underline and strike-out were stated)
+click @Baseline_down
+wait 3
+click @Baseline_down
+wait 3
+assert m.ascent 6
+assert m.descent 2
+assert m.capheight 5
+assert m.xheight 4
+assert m.underlineposition -1
+assert m.strikeoutposition 2
+assert glyph U+0048 y 0
+assert glyph U+002C y -2
+assert baseshift 0
+assert flayer 0 dy 0
+# down once more: the ascent grows, the descent shrinks
+click @Baseline_down
+wait 3
+assert m.ascent 7
+assert m.descent 1
+assert m.capheight 6
+assert m.underlineposition 0
+assert glyph U+0048 y 1
+assert glyph U+002C y -1
+assert flayer 0 dy 1
+shot tests/tmp/shots/107_down1.png
+click @Baseline_down
+wait 3
+assert m.descent 0
+assert glyph U+002C y 0
+# the descent would become negative: the button is dim and does nothing
+click @Baseline_down
+wait 3
+assert m.descent 0
+assert m.ascent 8
+assert baseshift -2
+# up to the smallest x-height: the step that would make it negative is dim and does nothing
+key z ctrl
+wait 3
+key z ctrl
+wait 3
+key z ctrl
+wait 3
+key z ctrl
+wait 3
+key z ctrl
+wait 3
+key z ctrl
+wait 3
+assert baseshift 0
+assert m.ascent 6
+click @Baseline_up
+wait 3
+click @Baseline_up
+wait 3
+click @Baseline_up
+wait 3
+click @Baseline_up
+wait 3
+assert m.xheight 0
+assert m.capheight 1
+assert m.ascent 2
+assert m.descent 6
+click @Baseline_up
+wait 3
+assert m.xheight 0
+assert m.ascent 2
+assert baseshift 4
+shot tests/tmp/shots/107_limit.png
+# the edit counts as an edit of the font: leaving the view commits it, and the layers follow the new hash
+click @nav.0
+wait 16
+assert nav 1
+assert sql "select count(*) from pxfm where ascent = 2 and descent = 6" 1

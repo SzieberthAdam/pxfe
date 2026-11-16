@@ -1,0 +1,90 @@
+# 127. The rectangle and the ellipse are clipped to the selection (version 19), font 0820dc69 unlocked, glyph U+0020 (empty, advance 4).
+# Selection: columns 1..3 and rows 2..5 (12 cells); an undo drops the selection, so each block selects again.
+wait 5
+click @Unlock
+wait 4
+sleep 600
+dblclick @cell:U+0020
+wait 5
+assert editor_glyph U+0020
+assert glyph U+0020 empty
+
+# the rectangle outline: only its top row (row 2) crosses the columns 1..3, its sides and bottom are outside
+key m
+drag @ecell:1,2 @ecell:3,5
+wait 3
+assert eselcount 12
+key r
+drag @ecell:0,2 @ecell:6,6
+wait 3
+assert glyph U+0020 ink 3
+assert glyph U+0020 pixel 1 2 0
+assert glyph U+0020 pixel 3 2 0
+assert glyph U+0020 pixel 0 2 .
+assert glyph U+0020 pixel 4 2 .
+assert glyph U+0020 pixel 1 6 .
+assert undo 1
+assert eselcount 12
+key z ctrl
+wait 3
+assert glyph U+0020 empty
+
+# the filled rectangle covers the selection and nothing else
+key m
+drag @ecell:1,2 @ecell:3,5
+key r
+click @Filled
+wait 2
+drag @ecell:-1,0 @ecell:6,7
+wait 3
+assert glyph U+0020 ink 12
+assert glyph U+0020 pixel 1 2 0
+assert glyph U+0020 pixel 3 5 0
+assert glyph U+0020 pixel 0 3 .
+assert glyph U+0020 pixel 4 3 .
+assert glyph U+0020 pixel 2 1 .
+assert glyph U+0020 pixel 2 6 .
+assert undo 1
+key z ctrl
+wait 3
+click @Filled
+wait 2
+assert efilled 0
+
+# the ellipse ring of the box (2,0)..(6,7) (5 x 8) crosses the selection down its left side only: column 2, rows 2..5
+key m
+drag @ecell:1,2 @ecell:3,5
+key o
+drag @ecell:2,0 @ecell:6,7
+wait 3
+assert glyph U+0020 ink 4
+assert glyph U+0020 pixel 2 2 0
+assert glyph U+0020 pixel 2 3 0
+assert glyph U+0020 pixel 2 5 0
+assert glyph U+0020 pixel 3 3 .
+assert glyph U+0020 pixel 6 3 .
+assert glyph U+0020 pixel 4 0 .
+assert undo 1
+assert eselcount 12
+key z ctrl
+wait 3
+
+# the filled ellipse: the cells of the selection that it covers, columns 2 and 3
+key m
+drag @ecell:1,2 @ecell:3,5
+key o
+click @Filled
+wait 2
+drag @ecell:2,0 @ecell:6,7
+wait 3
+assert glyph U+0020 ink 8
+assert glyph U+0020 pixel 2 3 0
+assert glyph U+0020 pixel 3 5 0
+assert glyph U+0020 pixel 1 3 .
+assert glyph U+0020 pixel 4 3 .
+assert glyph U+0020 pixel 4 0 .
+assert undo 1
+assert eselcount 12
+key z ctrl
+wait 3
+assert glyph U+0020 empty

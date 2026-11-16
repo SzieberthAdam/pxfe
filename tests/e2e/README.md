@@ -176,6 +176,11 @@ The environment variable `PXFE_TRACE=1` prints one `TRACE load ...` or `TRACE im
   102: the glyph view of an imported font: the correction of one glyph draws that glyph again, the layer's offset and size draw every glyph again, a hand edit is kept; commit and Save.
   102b: a second process: the font, its typeface and its layer come back; a locked font does not change with its layer, an unlocked one does, and the hand-edited glyph is still told apart.
 - 106 (version 13, a picture of a font): the dialog of a picture (`ifsheet` 1; `iflayout` 1 grid, 2 rows, 3 marker row; `ifcellw`, `ifcellh`, `ifcells`, `ifglyphs`, `ifcolours`, `ifblocks`), its controls (`@if.layout_Auto`, `@if.layout_Grid`, `@if.layout_Rows`, `@if.layout_Marker_row`, `@if.cellw±`, `@if.cellh±`, `@if.scale±`, `@if.block±`, `@if.first`, `@if.mono`), the coloured font it makes (`palette` counts the ink colours of the open font, 0 for the default black), then a marker strip, rows of glyphs, an enlarged picture and a missing file through `importfont <picture>`.
+- 107 (version 14, the baseline): the font view's Font tab has a Baseline row with two buttons (`@Baseline_up`, `@Baseline_down`, dim while the font is locked or when the step would make a stated metric negative).
+  Up by one: ascent -1, descent +1, cap height, x-height, underline and strike-out position -1, every glyph with ink y -1, every font layer's `dy` -1; undo and redo put all of it back (`assert baseshift N` is the net number of rows the baseline was moved up, `assert flayer 0 dy`).
+- 108 (version 14, glyph fields): the glyph view's Glyph tab has fields (`@g.code`, `@g.char`, `@g.advance±` and `.value`, `@g.offx±` and `.value`, `@g.offy±` and `.value`), dim while the font is locked.
+  A new code moves the glyph (`assert eglyph <code>` is the code of the glyph the glyph view shows; kerning pairs are read with `assert kern U+0041 #0 -1`, `#n` is the n-th glyph without a code point); a code another glyph has, FFFFFF and a number that is no code point are refused with a toast.
+  The font view's selection section stays a list of facts (`assert w.g.code 0`).
 - 103 (not in `run_all.bat`): screenshots of version 10 in `tests\tmp\imp` (the menu, the dialog on Noto Sans Regular, the Layers tab of the font view, two glyph views with the outline under the pixels); the command is in the first lines of the script.
 - 93: the keyboard in menus (Down, Up, Home, Enter, Escape on the File menu; the highlight follows the mouse; Enter does not reach the selected card behind the menu; `assert menuhi N`).
 - 59: the navigation bar (Menu, Typefaces | Fonts | Glyphs, the Typeface, Font and Glyph views, Alt+Left); 59b: a font without a typeface ("Orphaned").
@@ -197,3 +202,48 @@ For each one it asserts read-only, not modified, and a current hash that equals 
 Then it unlocks the font, makes no edit, and asserts that nothing changes in the store.
 
 The fonts are chosen by hash, so the script depends on those fonts being in the library.
+
+- 109 (version 15, the Colours filter): runs on `testdata/lib_colors.pxfdb` (`run_all.bat` copies it over `e2e.pxfdb`).
+  The Colours dropdown (`@Colours_Dropdown`, items `@1`, `@2`, `@3`, `@Any`) lists the counts that occur; `assert bcolors` is the chosen count (0 is Any), `assert bcolorvals` the number of counts listed and `assert bcolorval<i>` the i-th.
+  A typeface box is shown when any of its variants matches.
+- 110 and 110b (version 15, typing with the mouse away): a focused field keeps taking keys when the mouse has left its region; `assert tfocus` is 1 while a text field has the keyboard.
+- 111 (version 15, press and release): `mousedown`, `move` and `mouseup` show that a button, a switch or a toggle acts only when the press began on it.
+- 112 to 116 (version 16, selection and moving): the marquee, lasso, wand and Move tools of the glyph view, on glyph U+0020 of the first test font.
+  Probes: `assert eselcount N` (cells selected), `assert efloating 0|1` (pixels are lifted and float), `assert eclip N` (cells on the glyph view's clipboard), `assert esel none`, `assert esel bounds X Y W H` (X from the pen, Y a row of the font box; `*` matches any X or Y), `assert esel cell X Y [0|1]`; `assert etool` is 5 marquee, 6 lasso, 7 wand, 8 move.
+  Widgets: `@Marquee`, `@Lasso`, `@Magic_Wand`, `@Move`, the mode control `@selmode.0` to `@selmode.3` (Set, Add, Sub, And) and the wand's `@8-way`.
+  `keydown shift`, `keydown ctrl` and `keydown alt` (and `keyup`) hold a modifier while the mouse moves, for example to make a marquee square after the press; `mousedown` and `mouseup` take no modifier words, `drag ... shift` does.
+  `112_select_move`: marquee, move by drag, drop, undo and redo (one step), Esc during a move, the arrow keys, a press outside, Ctrl+drag copy, the Move tool without a selection, a tool switch, Esc order.
+  `113_select_modes`: Ctrl+A, Ctrl+D, Ctrl+Shift+I, a square marquee, Shift, Alt and Shift+Alt, the bar's modes, the lasso, the keys and buttons of the tools.
+  `114_select_wand`: 4- and 8-connected wand, Shift and Alt, empty regions, a click outside, moving a wand selection.
+  `115_select_clipboard`: Delete, Backspace, cut, copy, paste, transparency of `.`, Esc and Ctrl+Z on a paste, a paste out of view (the top left of the view), the clipboard across glyphs, a paste dropped by Back.
+  `116_select_growth_locked`: a locked font refuses, Shift+arrow (8 cells) out of the box, the bitmap's growth and its undo, PageDown, Back and the padlock drop floating pixels.
+- 117 to 122 (version 17, line, curve and pixel-perfect): on glyph U+0020 of the first test font.
+  Probes: `assert epp 0|1` (the bar's Pixel-perfect is on), `assert ecurve 0|1|2` (the curve being made: none, end points set, first control point set); `assert etool 9` is the curve; `assert w.Pixel-perfect 1` tells whether the second row's control is drawn.
+  `mousedown` and `mouseup` take the words `right` and `middle` (a multi-segment right-button stroke).
+  `117_line_shift_undo`: the line, Shift's clean slopes, Ctrl from the centre, both, Esc, the right button, the eraser, the Line and Curve buttons.
+  `118_pencil_shift_click`: Shift+click lines from the last pencil or line cell, with the right button, no last cell after reopening the glyph.
+  `119_pixel_perfect`: strokes with Pixel-perfect off and on, a cell that held ink before the stroke, the right button, a stroke that leaves no empty margin, the toggle shown for the Pencil, Line and Curve only.
+  `120_curve`: three drags, Enter, Esc at every stage, Ctrl+Z, another tool, Shift and Ctrl, the right button, growth.
+  `121_clip_to_selection`: Pencil, Line, Rectangle, Curve, Eraser and the right button are clipped to the selection, the Fill is not, no selection paints everywhere, growth into a selection.
+  `122_line_curve_locked`: a locked font refuses; the padlock draws a half-made curve.
+- 124 (version 18, the tool strip): `assert etoolcols 1|2` (columns of the strip: one in a tall window, two in a short one), clicks on the strip's buttons by name, the canvas after a resize.
+- 125 to 129 (version 19, rectangle and ellipse): on glyph U+0020 of the first test font.
+  Probes: `assert efilled 0|1` (the bar's Filled is on), `assert etoolslot<N> T` (the Tool number of the strip's N-th button, from 0; -1 past the last); `assert etool 3` is the rectangle and `10` the ellipse; `@Filled` is the toggle and `@Ellipse` the strip's button.
+  `125_rectangle`: the outline, Shift (square), Ctrl (from the centre), both, the modifiers counted at the release (`keydown shift`, `keyup shift` around `mouseup`), Esc, a click, a line, Filled, the right button, growth.
+  `126_ellipse`: key O and the button (E stays the Eraser), the rings of 5 x 5, 8 x 6 and 5 x 3, circle, from the centre, preview, a line and a band, Filled, the right button, growth.
+  `127_shape_clip`: both tools, outlined and filled, are clipped to the selection.
+  `128_shape_locked`: a locked font refuses both tools; unlocked and locked again.
+  `129_strip_order`: the strip reads Line, Curve, Rectangle, Ellipse while the Tool numbers stay; the buttons by name in a tall and a short window.
+  The scripts also write screenshots to `tests\tmp\shots`: `125_rect_square_preview`, `125_rect_filled`, `126_ellipse_preview`, `126_circle_preview`, `126_ellipse_filled` and `129_strip`.
+- 130 to 136 (version 20, fill, eyedropper, polygon and contour): on glyph U+0020 of the first test font (132 on the font with two colours, 03696f65).
+  Probes: `assert epoly N` (vertices of the polygon being made), `assert econtig 0|1` (the bar's Contiguous), `assert efilled 0|1`; `assert etool 4` is the fill, `11` the eyedropper, `12` the polygon, `13` the contour; `@Contiguous`, `@8-way`, `@Filled`, `@Eyedropper`, `@Polygon` and `@Contour` are the widgets.
+  `alt` after a `click` holds Alt at the press; `mousedown right`, `move` and `mouseup right` make a right-button contour.
+  `130_fill`: the options, empty space, contiguous and global, 4- and 8-way, the right button, a click that changes nothing, growth, undo.
+  `131_fill_clip`: the selection is a wall and a limit for the fill; a click outside it fills nothing.
+  `132_eyedropper`: the key and the button, left and right button, picking `.`, Alt with every drawing tool (the tool stays, nothing is drawn), no undo step.
+  `133_polygon`: closing by Enter, by the first vertex and by a double click, Backspace, Esc, Ctrl+Z, another tool, Shift, Filled, a bow tie, the right button, the clip, growth.
+  `134_contour`: the outline and Filled, the right button, Esc, a click and a straight drag, a path that crosses itself, the clip, growth.
+  `135_tools_locked`: a locked font refuses the fill, the eyedropper, the polygon and the contour; the padlock draws a half-made polygon.
+  `136_strip_v20`: the strip's columns at 1110 x 600 (two), 1110 x 520 (two), 1110 x 480 (three) and 1400 x 900 (one), every button by name.
+  The scripts also write screenshots to `tests\tmp\shots`: `130_fill_grown`, `132_eyedropper`, `133_polygon_midway`, `133_polygon_filled`, `134_contour_preview`, `134_contour_filled`, `136_strip_1110x600` and `136_strip_1110x480`.
+- 123 (not in `run_all.bat`): screenshots of the bar for the Pencil, Line and Curve at 1400 x 900, 1110 x 600 and 1000 x 560 (`tests\tmp\shots\123_*.png`); the command is in the first lines of the script.

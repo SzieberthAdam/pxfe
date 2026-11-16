@@ -422,11 +422,28 @@ static void th_draw_label(Rectangle r, const char *label, Color c)
     Th_Text(label, x, y, c);
 }
 
-static bool th_blocked = false;
+static bool th_blocked = false, th_mouse_blocked = false;
 static const char *th_tip;
 static Rectangle th_tip_r;
 void Th_SetInputBlocked(bool b) { th_blocked = b; }
 bool Th_InputBlocked(void) { return th_blocked; }
+void Th_SetMouseBlocked(bool b) { th_mouse_blocked = b; }
+bool Th_MouseBlocked(void) { return th_blocked || th_mouse_blocked; }
+bool Th_MouseOnly(void) { return th_mouse_blocked; }
+
+/* The control the left button went down on (a release fires only the control that was pressed): a hash of its id and its rectangle. */
+static unsigned th_press_key;
+static bool th_press_set;
+bool Th_Released(Rectangle r, const char *id, bool hover)
+{
+    if (!hover) return false;
+    unsigned k = 2166136261u;
+    for (const char *p = id; p && *p; p++) k = (k ^ (unsigned char)*p) * 16777619u;
+    k = (k ^ (unsigned)(int)r.x) * 16777619u; k = (k ^ (unsigned)(int)r.y) * 16777619u;
+    k = (k ^ (unsigned)(int)r.width) * 16777619u; k = (k ^ (unsigned)(int)r.height) * 16777619u;
+    if (IsMouseButtonPressed(MOUSE_BUTTON_LEFT)) { th_press_key = k; th_press_set = true; }
+    return IsMouseButtonReleased(MOUSE_BUTTON_LEFT) && th_press_set && th_press_key == k;
+}
 
 #define TH_REG_MAX 384
 static struct { char name[64]; Rectangle r; } th_reg[TH_REG_MAX];
@@ -438,7 +455,7 @@ static bool th_wheel_used;
 bool Th_WheelUsed(void) { return th_wheel_used; }
 
 static bool th_menu_prev, th_menu_cur;   /* a menu was open at the end of the last frame / is open this frame (Th_MenuKeys) */
-void Th_RegClear(void) { th_menu_prev = th_menu_cur; th_menu_cur = false; th_reg_n = 0; th_tip = NULL; th_wheel_used = false; if (!th_ed.seen) th_ed.name[0] = 0; th_ed.seen = false; }
+void Th_RegClear(void) { if (IsMouseButtonPressed(MOUSE_BUTTON_LEFT)) th_press_set = false; th_menu_prev = th_menu_cur; th_menu_cur = false; th_reg_n = 0; th_tip = NULL; th_wheel_used = false; if (!th_ed.seen) th_ed.name[0] = 0; th_ed.seen = false; }
 
 void Th_Reg(const char *name, Rectangle r)
 {
@@ -473,7 +490,7 @@ static Color th_mix(Color a, Color b, float t)
     return (Color){ (unsigned char)(a.r + (b.r - a.r) * t), (unsigned char)(a.g + (b.g - a.g) * t), (unsigned char)(a.b + (b.b - a.b) * t), (unsigned char)(a.a + (b.a - a.a) * t) };
 }
 
-static bool th_hover(Rectangle r) { return !th_blocked && (Th_HoverFn ? Th_HoverFn(r) : CheckCollisionPointRec(GetMousePosition(), r)); }
+static bool th_hover(Rectangle r) { return !th_blocked && !th_mouse_blocked && (Th_HoverFn ? Th_HoverFn(r) : CheckCollisionPointRec(GetMousePosition(), r)); }
 
 /* Hint of the hovered button (set by Th_Button, read by the view's hint line or tooltip); cleared by Th_RegClear. */
 const char *Th_Tip(Rectangle *r) { if (r) *r = th_tip_r; return th_tip; }
@@ -508,6 +525,48 @@ static void th_icon(int ic, Rectangle r, Color c)
         DrawRectangleLinesEx((Rectangle){x - 3, y - 7, 6, 7}, 1.5f, c);
         if (ic == TH_IC_UNLOCK) DrawRectangle((int)x + 1, (int)y - 3, 4, 3, TH_PANEL);
         break;
+    case TH_IC_MARQUEE:   /* a dashed rectangle */
+        for (int i = 0; i < 12; i += 4) {
+            DrawRectangle((int)x - 6 + i, (int)y - 5, 2, 1, c); DrawRectangle((int)x - 6 + i, (int)y + 5, 2, 1, c);
+        }
+        for (int i = 0; i < 10; i += 4) {
+            DrawRectangle((int)x - 6, (int)y - 5 + i, 1, 2, c); DrawRectangle((int)x + 5, (int)y - 5 + i, 1, 2, c);
+        }
+        break;
+    case TH_IC_LASSO:   /* a loop with a tail */
+        DrawEllipseLines((int)x, (int)y - 2, 6, 4, c);
+        DrawLineEx((Vector2){x - 3, y + 1}, (Vector2){x - 5, y + 6}, 1.4f, c);
+        DrawLineEx((Vector2){x - 5, y + 6}, (Vector2){x - 1, y + 7}, 1.4f, c);
+        break;
+    case TH_IC_WAND:   /* a stick with a spark */
+        DrawLineEx((Vector2){x - 6, y + 6}, (Vector2){x + 1, y - 1}, 2.2f, c);
+        DrawLineEx((Vector2){x + 4, y - 7}, (Vector2){x + 4, y - 1}, 1.2f, c);
+        DrawLineEx((Vector2){x + 1, y - 4}, (Vector2){x + 7, y - 4}, 1.2f, c);
+        break;
+    case TH_IC_ELLIPSE: DrawEllipseLines((int)x, (int)y, 7, 5, c); break;
+    case TH_IC_PICK:   /* a dropper: bulb, tube and tip */
+        DrawCircleV((Vector2){x + 4, y - 4}, 3.2f, c);
+        DrawLineEx((Vector2){x + 2, y - 2}, (Vector2){x - 4, y + 4}, 3.4f, c);
+        DrawLineEx((Vector2){x - 4, y + 4}, (Vector2){x - 7, y + 7}, 1.4f, c);
+        break;
+    case TH_IC_POLY:   /* an irregular polygon with its corners marked */
+        {
+            Vector2 p[5] = {{x - 6, y + 4}, {x - 4, y - 5}, {x + 3, y - 6}, {x + 7, y + 1}, {x + 1, y + 6}};
+            for (int i = 0; i < 5; i++) { DrawLineEx(p[i], p[(i + 1) % 5], 1.3f, c); DrawRectangle((int)p[i].x - 1, (int)p[i].y - 1, 3, 3, c); }
+        }
+        break;
+    case TH_IC_CONTOUR:   /* a wobbly hand-drawn loop */
+        DrawSplineCatmullRom((Vector2[9]){{x - 4, y + 5}, {x - 7, y + 1}, {x - 4, y - 5}, {x + 2, y - 6}, {x + 7, y - 1}, {x + 3, y + 5}, {x - 4, y + 5}, {x - 7, y + 1}, {x - 4, y - 5}}, 9, 1.4f, c);
+        break;
+    case TH_IC_CURVE: DrawSplineBezierCubic((Vector2[4]){{x - 6, y + 6}, {x - 4, y - 10}, {x + 4, y + 10}, {x + 6, y - 6}}, 4, 1.5f, c); DrawRectangle((int)x - 8, (int)y + 4, 3, 3, c); DrawRectangle((int)x + 5, (int)y - 7, 3, 3, c); break;
+    case TH_IC_MOVE:   /* four arrows */
+        DrawLineEx((Vector2){x - 6, y}, (Vector2){x + 6, y}, 1.3f, c);
+        DrawLineEx((Vector2){x, y - 6}, (Vector2){x, y + 6}, 1.3f, c);
+        th_tri((Vector2){x - 3, y - 4}, (Vector2){x, y - 7}, (Vector2){x + 3, y - 4}, c);
+        th_tri((Vector2){x - 3, y + 4}, (Vector2){x + 3, y + 4}, (Vector2){x, y + 7}, c);
+        th_tri((Vector2){x - 4, y - 3}, (Vector2){x - 7, y}, (Vector2){x - 4, y + 3}, c);
+        th_tri((Vector2){x + 4, y - 3}, (Vector2){x + 4, y + 3}, (Vector2){x + 7, y}, c);
+        break;
     case TH_IC_CHEV_RIGHT: DrawLineEx((Vector2){x - 2, y - 4}, (Vector2){x + 2, y}, 1.4f, c); DrawLineEx((Vector2){x + 2, y}, (Vector2){x - 2, y + 4}, 1.4f, c); break;
     }
 }
@@ -531,7 +590,7 @@ bool Th_Button(Rectangle r, const char *label, int flags, const char *hint)
     th_draw_rounded_button(s, fill, line);
     if (icon) th_icon(icon - 1, s, ink); else th_draw_label(s, label, ink);
     if (over && hint) { th_tip = hint ? hint : label; th_tip_r = s; }
-    return hover && IsMouseButtonReleased(MOUSE_BUTTON_LEFT);
+    return Th_Released(s, label, hover);
 }
 
 bool Th_Toggle(Rectangle r, const char *label, bool *on, int flags, const char *hint)
@@ -568,7 +627,7 @@ int Th_Segmented(Rectangle r, const ThSeg *g)
             th_rich(TH_F_BODY, g->labels[i], seg.x + (seg.width - lw) * 0.5f, seg.y + (seg.height - lh) * 0.5f, tc, over, true);
         } else th_draw_label(seg, g->labels[i], tc);
         if (over && g->hints && g->hints[i]) { th_tip = g->hints[i]; th_tip_r = seg; }
-        if (hover && IsMouseButtonReleased(MOUSE_BUTTON_LEFT)) clicked = i;
+        if (Th_Released(seg, nm, hover)) clicked = i;
     }
     return clicked;
 }
@@ -630,7 +689,7 @@ bool Th_Section(const char *title, float x, float *y, float w, int flags, const 
     }
     Th_HLine(tx + m.x + TH_GAP, x1, *y + 2 + m.y / 2, TH_LINE_SOFT);
     *y += r.height;
-    return hv && IsMouseButtonReleased(MOUSE_BUTTON_LEFT);
+    return Th_Released(r, title, hv);
 }
 
 Rectangle Th_Row(float x, float *y, float w, const char *label, const char *value, int flags)
@@ -753,7 +812,7 @@ static bool th_hash_copy(Rectangle r, const char *name, const char *hash, const 
     if (!hash || !hash[0] || !th_hover(r)) return false;
     if (Th_NoticeFn) Th_NoticeFn(what, false);
     DrawRectangleRounded(r, 0.3f, 6, TH_HOVER);
-    if (!IsMouseButtonReleased(MOUSE_BUTTON_LEFT)) return true;
+    if (!Th_Released(r, name, true)) return true;
     SetClipboardText(hash);
     if (Th_NoticeFn) Th_NoticeFn(what, true);
     return true;
@@ -996,7 +1055,7 @@ static bool th_check(Rectangle r, const char *label, bool *v, int flags, const c
         }
     }
     if (label) Th_Text(label, lx, s.y + (s.height - Th_Measure(label).y) / 2, off ? TH_TEXT_DIM : TH_TEXT);
-    if (over && IsMouseButtonReleased(MOUSE_BUTTON_LEFT)) { *v = !on; return true; }
+    if (Th_Released(s, name, over)) { *v = !on; return true; }
     return false;
 }
 bool Th_Check(Rectangle r, const char *label, bool *v, int flags, const char *name) { return th_check(r, label, v, flags, name, false); }
@@ -1014,7 +1073,7 @@ bool Th_Dropdown(Rectangle r, const char *name, const char *value, bool dim, boo
     Th_FitText(value, TH_F_BODY, s.width - 36, fit, sizeof fit);
     Th_Text(fit, s.x + 8, s.y + (s.height - Th_Measure(fit).y) / 2, dim ? TH_TEXT_DIM : TH_TEXT);
     th_icon(TH_IC_CHEV_DOWN, (Rectangle){ s.x + s.width - 24, s.y, 20, s.height }, TH_TEXT_DIM);
-    return over && IsMouseButtonReleased(MOUSE_BUTTON_LEFT);
+    return Th_Released(s, name, over);
 }
 
 /* Number box: a stepper whose value is a text field (typed digits are applied on Enter, Tab or a click elsewhere, Escape drops them).
@@ -1159,10 +1218,10 @@ int Th_Menu(const ThMenu *m, bool *open)
     if ((IsKeyPressed)(KEY_END)) hi = th_menu_step(m, m->n, -1);
     if (more && hi >= 0) { if (hi < *m->scroll) *m->scroll = hi; else if (hi >= *m->scroll + vis) *m->scroll = hi - vis + 1; }
     Th_Raised(r, 1);
-    bool grab = false, pb = th_blocked;
-    th_blocked = false;   /* the widgets under a popup are blocked, the popup is not */
+    bool grab = false, pb = th_blocked, pm = th_mouse_blocked;
+    th_blocked = th_mouse_blocked = false;   /* the widgets under a popup are blocked, the popup is not */
     if (more) grab = Th_ScrollRows(r, m->scroll, m->n, vis, TH_ROW_H, true);
-    th_blocked = pb;
+    th_blocked = pb; th_mouse_blocked = pm;
     int sc = more ? *m->scroll : 0;
     float y = r.y + 4;
     for (int k = 0; k < vis; k++) {

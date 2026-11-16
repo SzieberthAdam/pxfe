@@ -1,0 +1,64 @@
+# 111. A release-fired control acts only when the press began on it (version 15), font 0820dc69 unlocked.
+# Th_Button, Th_Toggle, switches, segmented controls and dropdowns used to fire on any release over them.
+wait 5
+click @Unlock
+wait 4
+assert readonly 0
+assert baseshift 0
+
+# press on Baseline up, release over Baseline down: neither acts
+move @Baseline_up
+mousedown
+wait 2
+move @Baseline_down
+wait 2
+mouseup
+wait 4
+assert baseshift 0
+assert modified 0
+
+# press on the glyph grid, release over Baseline up: it does not act
+move @cell:U+0048
+mousedown
+wait 2
+move @Baseline_up
+wait 2
+mouseup
+wait 4
+assert baseshift 0
+
+# press on Baseline up, release away from it: it does not act
+move @Baseline_up
+mousedown
+wait 2
+move @cell:U+0048
+wait 2
+mouseup
+wait 4
+assert baseshift 0
+
+# press and release on the same button: it acts, and so does a plain click
+move @Baseline_up
+mousedown
+wait 2
+mouseup
+wait 4
+assert baseshift 1
+click @Baseline_down
+wait 4
+assert baseshift 0
+
+# a switch: press on a button, release over the switch of the underline position
+assert has.underlineposition 0
+move @Baseline_up
+mousedown
+wait 2
+move @underlineposition.on
+wait 2
+mouseup
+wait 4
+assert has.underlineposition 0
+assert baseshift 0
+click @underlineposition.on
+wait 4
+assert has.underlineposition 1

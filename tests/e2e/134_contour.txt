@@ -1,0 +1,175 @@
+# 134. The Contour tool (version 20), font 0820dc69 unlocked, glyph U+0020 (empty, advance 4; font box rows 0..7).
+# Key C and the strip's Contour: a freehand drag; on the release the path is closed and drawn with the pixel-perfect rule (the corner cells of its Ls go);
+# with Filled the inside too (even-odd).  The drag (0,1) (3,1) (3,6) (0,6) (0,2) has 13 outline cells and 21 filled ones.
+wait 5
+click @Unlock
+wait 4
+sleep 600
+dblclick @cell:U+0020
+wait 5
+assert editor_glyph U+0020
+assert glyph U+0020 empty
+assert undo 0
+
+key c
+wait 2
+assert etool 13
+assert w.Filled 1
+assert efilled 0
+key b
+wait 2
+click @Contour
+wait 2
+assert etool 13
+
+# the outline: nothing changes during the drag, one undo step at the release
+move @ecell:0,1
+mousedown
+move @ecell:3,1
+move @ecell:3,6
+move @ecell:0,6
+move @ecell:0,2
+wait 3
+assert glyph U+0020 empty
+assert undo 0
+shot tests/tmp/shots/134_contour_preview.png
+mouseup
+wait 3
+assert glyph U+0020 ink 13
+assert glyph U+0020 pixel 0 1 0
+assert glyph U+0020 pixel 2 1 0
+assert glyph U+0020 pixel 3 1 .
+assert glyph U+0020 pixel 3 2 0
+assert glyph U+0020 pixel 3 6 .
+assert glyph U+0020 pixel 0 6 .
+assert glyph U+0020 pixel 1 6 0
+assert glyph U+0020 pixel 1 3 .
+assert undo 1
+key z ctrl
+wait 3
+assert glyph U+0020 empty
+
+# Filled: the inside too
+click @Filled
+wait 2
+assert efilled 1
+move @ecell:0,1
+mousedown
+move @ecell:3,1
+move @ecell:3,6
+move @ecell:0,6
+move @ecell:0,2
+mouseup
+wait 3
+assert glyph U+0020 ink 21
+assert glyph U+0020 pixel 1 3 0
+assert glyph U+0020 pixel 2 5 0
+assert glyph U+0020 pixel 3 1 .
+assert glyph U+0020 pixel 0 6 .
+assert glyph U+0020 pixel 0 7 .
+assert undo 1
+shot tests/tmp/shots/134_contour_filled.png
+
+# the right button draws '.': a hole in it, one more undo step
+move @ecell:1,3
+mousedown right
+move @ecell:2,3
+move @ecell:2,4
+move @ecell:1,4
+mouseup right
+wait 3
+assert glyph U+0020 pixel 1 3 .
+assert glyph U+0020 pixel 2 4 .
+assert glyph U+0020 pixel 0 3 0
+assert glyph U+0020 pixel 3 4 0
+assert undo 2
+key z ctrl
+key z ctrl
+wait 3
+assert glyph U+0020 empty
+
+# Esc cancels the drag; nothing is drawn
+move @ecell:0,1
+mousedown
+move @ecell:3,1
+move @ecell:3,4
+key esc
+wait 2
+mouseup
+wait 3
+assert glyph U+0020 empty
+assert undo 0
+assert editor 1
+
+# a click is one cell, a straight drag is a line (the closing edge runs back over it)
+click @Filled
+wait 2
+assert efilled 0
+click @ecell:2,3
+wait 3
+assert glyph U+0020 ink 1
+assert undo 1
+key z ctrl
+wait 3
+drag @ecell:0,2 @ecell:3,2
+wait 3
+assert glyph U+0020 ink 4
+assert glyph U+0020 pixel 0 2 0
+assert glyph U+0020 pixel 3 2 0
+key z ctrl
+wait 3
+
+# a stroke through the empty box that crosses itself is filled even-odd: a figure of eight leaves a pinch, never a gap
+click @Filled
+wait 2
+move @ecell:0,0
+mousedown
+move @ecell:3,3
+move @ecell:3,0
+move @ecell:0,3
+mouseup
+wait 3
+assert glyph U+0020 pixel 1 1 0
+assert glyph U+0020 pixel 2 2 0
+assert glyph U+0020 pixel 1 0 .
+assert glyph U+0020 pixel 1 3 .
+key z ctrl
+wait 3
+assert glyph U+0020 empty
+
+# clipped to the selection; the bitmap grows outside the box
+key m
+drag @ecell:1,1 @ecell:2,2
+wait 3
+assert eselcount 4
+key c
+move @ecell:0,0
+mousedown
+move @ecell:3,0
+move @ecell:3,3
+move @ecell:0,3
+mouseup
+wait 3
+assert glyph U+0020 ink 4
+assert glyph U+0020 pixel 0 0 .
+assert glyph U+0020 pixel 1 1 0
+key z ctrl
+wait 3
+move @ecell:5,5
+mousedown
+move @ecell:7,5
+move @ecell:7,7
+move @ecell:5,7
+mouseup
+wait 3
+assert glyph U+0020 pixel 6 5 0
+assert glyph U+0020 pixel 5 5 0
+assert glyph U+0020 pixel 7 6 0
+assert glyph U+0020 pixel 7 7 .
+key z ctrl
+wait 3
+assert glyph U+0020 empty
+click @Filled
+wait 2
+assert efilled 0
+assert undo 0

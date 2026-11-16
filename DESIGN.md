@@ -1062,3 +1062,523 @@ Every change runs the analysis again.
 - A photograph of lettering is cut into glyphs and read, but its glyphs come in at the size of the picture and in up to 36 colours; they are not brought down to a pixel grid.
 - Kerning is not guessed.
 - Sheets whose characters follow no run at all (punctuation in the designer's own order) get wrong codes for those glyphs; the preview shows them, and they can be changed in the font view.
+
+## Version 14: the baseline, and the facts of a glyph
+
+Two edits of an unlocked font that were missing: moving the baseline, and setting a glyph's code point, advance and offsets by hand.
+Both are in-place edits like every other (version 12): one undo step each, the font's hash changes, the commit follows at the usual places.
+
+### The baseline
+
+The Font tab's FONT METRICS section has a Baseline row under Descent: two icon buttons, up and down (`@Baseline_up`, `@Baseline_down`).
+The baseline moves one row and everything else stays where it is on the screen.
+
+- Up by 1: the ascent falls by 1 and the descent grows by 1.
+  Down is the mirror.
+- Every other stated height counted from the baseline moves with it: cap height, x-height, underline position and strike-out position fall by 1 when the baseline goes up.
+  Thicknesses, line gap, internal leading and quad width do not change.
+  A metric that is not stated stays not stated.
+- Every glyph with ink gets its offset y changed by the same amount (y is up from the baseline, so its bitmap stays where it is).
+  A glyph without ink keeps its offset (0, 0).
+- The font layers sit on the baseline's origin, so each moves its offset y by the same amount, and the layer the glyphs are drawn from moves what it drew them with, so none of its glyphs is drawn again.
+- A step that would make a metric go below its smallest value (ascent, descent, cap height and x-height are never negative; the positions may be) is refused: the button is dim and its hint says why.
+  The buttons are dim while the font is locked.
+- One step is one undo step.
+  The font layers are outside the font's undo snapshots, so the undo stack keeps beside each snapshot the net number of rows the baseline had been moved (`baseShift`); an undo or redo moves every font layer by the difference.
+  A layer added after a step is moved by an undo of that step too.
+
+### The facts of a glyph
+
+In the glyph view's Glyph tab the code point, character, advance and offset x and y are fields (Th_TextField, Th_Number), dim and inert while the font is locked.
+The font view's selection section shows the same facts as text.
+
+- Advance: a number, 0 or more.
+  Offset x and y: numbers, any sign; they are dim for a glyph without ink.
+  A change is one undo step; steps on one field within 0.8 s are merged.
+- Code point: hex digits, with or without `U+` or `0x`.
+  Character: one character (UTF-8), or the word `space`; it sets the code point.
+  A field is applied on Enter, Tab or a click elsewhere.
+- Refused with a message (an error toast, nothing changes): a code another glyph of the font has (no silent swap), `FFFFFF` (the default glyph's code), a number above 10FFFF, text that is no code.
+  The default glyph's fields for the code are dim: it cannot be given another code.
+  An uncoded glyph can be given a code point; the later uncoded glyphs are renumbered as when one is deleted.
+- The glyph keeps its bitmap, offsets and advance and moves to its place in the order (`px_font_remove_glyph` and `px_font_add_glyph`).
+  The glyph view stays on it (`Editor_SetGlyphIndex`: the index changes, the view does not), and so does the selection.
+- Kerning pairs that name the old code follow the new code (both sides of a pair; the other side is renumbered too when it is a later uncoded glyph).
+- Undo and redo bring the glyph view back to the glyph by the code it had.
+
+### Not done
+
+- No keyboard shortcut for the baseline.
+- The font layers added after a baseline step are moved by an undo of that step.
+
+## Version 15: filtering by colours, typing while the mouse is away, press-and-release
+
+Three small changes of the shared widgets and of the library views' filter.
+
+### The Colours filter
+
+The FILTER section of the library views' side panel has a third dropdown, Colours, under Style and Format.
+It works in the Typefaces tab and in the Fonts tab, and in the Typeface view's lists the filter is not shown, as for Style and Format.
+
+- The number of colours of a font is the number of ink colours it uses: the pixel characters other than `.` (the background) that its palette lists, and at least 1.
+  A font without COLOR lines is a classic one-colour font, and so is a font whose palette lists only `.`.
+  The count is read from `pxfm_color` with the other facts of the font (`StoreEntry.colors`), or from the loaded palette (`LibInfo.colors`), so it is known once the info of the font is.
+- The values are Any and the counts that occur in the tab, as numbers in numeric order.
+  The list follows the info that arrives while it is open: a font that states no ascent or descent is loaded for its info while the dropdown is open or a count is chosen.
+  A chosen count that no font of the tab has is dropped only when the info of every font is known.
+- A font whose info is not known yet does not match a chosen count.
+- In the Typefaces tab a variant row matches when its font has the chosen count, and a typeface box is shown when any of its variants matches, with the variants that match.
+  This is the rule of the Style and Format filters too.
+- The choice is kept in the `[browser]` section of the settings file (`colors=`) and cleared by Clear filters.
+- Script names: `@Colours_Dropdown`, `assert bcolors` (0 is Any), `assert bcolorvals`, `assert bcolorval<i>`.
+
+### Typing while the mouse is away
+
+A focused text field takes its keys unless a modal dialog or a popover blocks the input.
+Before, the panels blocked the scrolled widgets with the same flag when the mouse left their scroll area, so a field stopped taking keys as soon as the mouse wandered off.
+`theme.h` now has two gates:
+
+- `Th_SetInputBlocked`: mouse and keyboard.
+  Used for modal dialogs (New Font, Import folder and picture, Export, the unsaved prompt), the progress screen, the frame after a document opened (`swallowMouse`), open popovers and menus (the Style, Format and Colours lists, the context menu, the file and "..." menus, the Add Layer popover), and in main.c while a panel field is being edited (the glyph canvas ignores the mouse and keys then).
+  Every `Th_SetInputBlocked` call in `browser.c`, `main.c`, `fitdoc.inc` and `sample.c` is of these kinds.
+- `Th_SetMouseBlocked` (`Th_MouseBlocked` reads both gates, `Th_MouseOnly` the second): the mouse only.
+  Used by the code that draws a scrolled region for the widgets outside its visible part or under a pinned block: the browser panel's scroll area, the Usage and Similar lists (`insight.c`, `panel.inc`, `gpanel.inc`).
+  A text field that has the keyboard keeps taking keys; a click elsewhere still ends the editing.
+- The mouse-only readers (`hov` in browser.c, the editor's `hit`, the layers' `hov`, `cx_hover` of insight.c) read `Th_MouseBlocked`.
+- `SampleEdit` already took only the modal and popover block (its `blocked` argument), so it was not affected.
+- Ctrl+F in the browser focuses the filter as before.
+
+### A press must begin on the control
+
+A release-fired control used to act on any release over it, so a button that moved under the mouse (the first edit of a font adds a box above the metrics) was triggered by a press that began on another.
+`Th_Released(rect, name, hover)` is true only when the press of this click began on the same control (same name and rectangle).
+`Th_Button` (and so `Th_Toggle` and `Th_Lock`), `Th_Check`, `Th_Switch`, `Th_Segmented`, `Th_Dropdown`, a foldable `Th_Section`, the copy of a hash, the palette swatches, the glyph finder's cells, the usage and similar rows and the Add Layer popover's lists use it.
+The stepper acts on the press, and a menu's items on the release of a press that began on the open menu.
+The Baseline buttons lost their local workaround.
+
+### Tests
+
+`109_color_filter` (on `testdata/lib_colors.pxfdb`, a copy of `lib.pxfdb` with palettes for two fonts), `110_type_mouse_away` and `110b_type_mouse_away_glyph`, and `111_press_release`.
+
+### Not done
+
+- The Colours count is of palette entries, not of distinct RGBA values: two pixel characters with the same colour count twice.
+
+## Version 16: selection and moving
+
+The glyph view gets the selection tools of the common pixel editors: a rectangular marquee, a lasso, a magic wand and a Move tool, with the commands that go with a selection (select all, deselect, invert, delete, cut, copy, paste, move by the arrow keys).
+The behaviour is modelled on common pixel editors; the code is written for pxfe.
+The line, ellipse and fill tools of the same family come later; this version only prepares the table they join.
+
+### The tool table
+
+`editor.c` has one table, `kTool[]`: name, shortcut as shown, raylib key, icon, group and whether it is a selection tool.
+The tool strip (version 18), the shortcuts, the status line and the tooltips all read it, so a new tool is a row in the table, a `Tool` value, an icon in `theme.c` and, when it works with the mouse, a branch in `canvas_input`.
+The drawing tools are as before; the selection tools (group 3 since version 18) follow after a gap.
+
+| Tool | Key | Value of `etool` |
+| --- | --- | --- |
+| Pencil, Eraser, Line, Rectangle, Fill | B, E, L, R, F | 0 to 4 |
+| Marquee | M | 5 |
+| Lasso | Q | 6 |
+| Magic Wand | W | 7 |
+| Move | V | 8 |
+
+Choosing another tool drops floating pixels (see below).
+The tools are off, as the others, while the font is locked or the glyph's layer is hidden.
+
+### The mask
+
+`selection.c` and `selection.h` (no raylib, tested by `tests/test_selection.c`) hold a selection as a cell mask: a bounding box with one byte per cell, in glyph space (x from the pen, y a row counted down from the baseline, as in `editor.c`).
+A non-empty mask is always tight.
+The mask is not limited to rectangles, so add, subtract and intersect work.
+
+- `sel_combine` meets a new shape with the selection in one of four modes: replace, add, subtract, intersect.
+- `sel_invert` turns the cells of a rectangle (the glyph box across the advance, and the bitmap where it reaches out of it) into their opposite; selected cells outside the rectangle are dropped.
+- `sel_polygon` fills a closed path: a cell is inside when its centre is (even-odd rule), and the cells the outline passes through are in too, so a thin loop or a line still selects something.
+- `sel_wand` selects the cells joined to the clicked one that hold the same character, inside the same region (4-connected, or 8-connected).
+- `SelBitmap`, `selbm_clear` and `selbm_stamp` read, clear and write a character bitmap; `SelFloat` is the lifted pixels with their shape.
+
+### How a selection is made
+
+- The mode comes from the bar (the segmented control Set, Add, Sub, And, script names `@selmode.0` to `@selmode.3`) and from the keys at the press: Shift adds, Alt subtracts, Shift and Alt together intersect.
+  The keys win over the bar.
+- Marquee: drag a rectangle of cells.
+  Shift pressed after the press (not already down at it) makes it a square, from the start cell towards the pointer.
+- Lasso: drag a free path; the cells inside it and on it are selected when the button goes up.
+- Magic wand: click.
+  The bar's toggle 8-way (`@8-way`, shown with the wand) also joins diagonal neighbours; the default is 4-connected.
+  The region is the font box across the advance and the bitmap, so empty cells are a group too; a click outside it selects nothing.
+- A click without a drag (the mouse moved less than 3 pixels) with the marquee or the lasso deselects, in Set mode, when it is outside the selection.
+  A drag within one cell selects that cell.
+- While a shape is dragged it is drawn in the accent colour; Esc cancels the drag.
+- The selection is shown with marching ants: a 1 px dashed outline round the selected cells, dark dashes (`TH_TEXT`) and light dashes (`TH_PANEL`) that move, over a faint tint of the accent colour.
+- Ctrl+A selects all (the glyph box across the advance and the bitmap), Ctrl+D deselects, Ctrl+Shift+I inverts.
+- Esc deselects when a selection exists (and cancels a float first); with nothing selected it closes the glyph view as before.
+- The selection is kept while the glyph view stays on the glyph, and goes with a new Editor_Open (another glyph, an undo or redo).
+  Selecting is not an undo step.
+
+### Moving: the float
+
+A move does not change the glyph until it is dropped.
+The selected pixels are copied into a float (`SelFloat`), drawn over the glyph with the cells they came from drawn empty (a copy leaves them), and the selection moves with the float.
+The drop writes the result and is one undo step (`EditorBeforeChange` is called once, at the drop); a cancel leaves the glyph as it was.
+
+- Lift: a drag that starts inside the selection with the marquee or the lasso in Set mode and with no Shift or Alt (in the bar's Add, Sub and And modes a press inside the selection changes the selection instead), a drag anywhere with the Move tool, the arrow keys, the bar's MOVE buttons.
+  The lift happens at the first whole cell of movement, so a click inside the selection lifts nothing.
+- The Move tool with no selection takes the whole bitmap (a rectangle of the bitmap's box); the selection goes away with the drop.
+- Ctrl at the press makes the drag move a copy: the original stays.
+  (Alt is the subtract modifier, so it is not used for this.)
+- Whole cells only: the float is at the cell under the pointer, offset by the cell where the press began.
+- Arrow keys with a selection nudge by 1 cell, Shift+arrow by 8 cells (`NUDGE_BIG`).
+  Without a selection Shift+arrow moves the whole bitmap by 1 cell as before.
+- The bar's four MOVE buttons do the same as the plain arrow keys when there is a selection (their tooltip says so), and move the whole bitmap by 1 cell as before when there is not.
+- Transparency: a cell of the float that holds `.` does not overwrite what it lands on; only pixels other than `.` are written.
+  A move first clears the cells it came from (the whole selection, `.` cells included), then writes the pixels.
+- The drop: Enter, choosing another tool, a press outside the float (with the marquee or the lasso; the press also deselects), leaving the glyph (Back, previous and next glyph, the padlock, Save, Export and every other commit through `Editor_Flush`, the navigation).
+- Cancel: Esc (it cancels the float, the next Esc deselects), Esc during a drag, and Ctrl+Z while pixels float (the pixels are thrown away, no undo step is taken); Ctrl+Y does the same.
+- A drop that would change nothing (a move by 0 cells, a selection without ink) takes no undo step.
+- Growth: the pixels may land outside the bitmap and the font box.
+  The drop grows the bitmap the way the pencil does (`ensure`), writes, and then crops the bitmap to its ink (`px_glyph_crop`; the hash is that of the cropped bitmap anyway).
+  The bitmap is limited to 4096 cells a side, as for the pencil; a drop that would exceed it is refused with a toast and cancelled.
+
+### Delete, cut, copy, paste
+
+- Delete and Backspace clear the selected cells to `.`: one undo step, none when no selected cell holds ink.
+  With a float that is a move, the pixels vanish and the place they came from is cleared; with a float that is a copy or a paste they are thrown away.
+- Ctrl+C copies the selected pixels (or the floating ones) into the clipboard of the program, Ctrl+X copies and deletes.
+  The clipboard keeps the pixel characters and the cells they had, and lives for the session, so it also works into another glyph and another font; it is not the system clipboard.
+- Ctrl+V pastes as a float at the cells the pixels were copied from.
+  When they are not all in view, the pixels' top-left cell goes to the top-left cell of the view.
+  The tool becomes the marquee when it was not a selection tool, so the float can be dragged.
+  The paste is written by the drop (one undo step) and thrown away by Esc.
+- A locked font (and a hidden layer) refuses Delete, Cut and Paste with the toast "The font is locked"; the selection tools are off, so there is nothing to select.
+
+### The layers
+
+The selection acts on the glyph's own pixels only.
+The reference layers are not read or written.
+Alt+drag with a reference layer selected still moves that layer (it was there first); use the bar's Sub mode to subtract then.
+
+### Not done
+
+- Undo of the selection itself (only the pixel edits are undo steps).
+- Bar buttons for select all, deselect and invert (the keys only), and a single-cell selection with the marquee needs a drag of at least 3 pixels (the wand also does it).
+- The selection does not limit the other tools' painting (changed in version 17: the drawing tools are clipped to it).
+- The system clipboard (a paste from another program).
+- Selection by colour range, feathering, rotation and scaling of the floating pixels.
+
+### Tests
+
+- `tests/test_selection.c`: 44 checks of the mask, wand, polygon, combine, invert, bitmap and float functions (in `build.bat test`).
+- `112_select_move` (marquee, move by drag, drop, undo and redo, Esc, nudge, a press outside, Ctrl+drag copy, the Move tool, the tool switch), `113_select_modes` (select all, deselect, invert, square, Shift, Alt, the bar's modes, the lasso, the keys), `114_select_wand`, `115_select_clipboard` (delete, cut, copy, paste, transparency, another glyph, a paste out of view, a paste dropped by Back), `116_select_growth_locked` (a locked font refuses, Shift+arrow out of the box, the bitmap's growth and undo, PageDown, Back and the padlock drop the pixels).
+- Play probes: `assert eselcount`, `efloating`, `eclip`, `assert esel bounds X Y W H` (`*` matches any X or Y), `esel cell X Y [0|1]`, `esel none`; `keydown shift` (and `ctrl`, `alt`) holds a key while the mouse moves.
+
+## Version 17: line, curve and pixel-perfect
+
+The glyph view gets the line and curve tools of the common pixel editors, a pixel-perfect option for freehand strokes, and drawing that is limited to the selection.
+The behaviour is modelled on common pixel editors; the code is written for pxfe from textbook algorithms (Bresenham for the line, the cubic Bezier polynomial sampled at steps under one cell for the curve).
+The rectangle, the ellipse and the fill of the same family come later (the rectangle and the ellipse in version 19); the rectangle and the fill are as before, except for the clip below.
+
+### The raster functions
+
+`src/raster.c` and `.h` (no raylib, no pxfont; `tests/test_raster.c`) hold the cell paths:
+
+- `ras_line` is Bresenham.
+  The line is walked from its smaller end (smaller x, then smaller y) and reversed when needed, so a line from A to B and one from B to A cover the same cells, and the path always runs from the first end to the second.
+- `ras_snap` is the constrained angle, `ras_ends` adds the centre mode (see below).
+- `ras_is_corner` and `ras_pixel_perfect` are the pixel-perfect rule.
+- `ras_bezier` is the cubic curve.
+
+### Line
+
+Drag from the start cell to the end cell: the preview is drawn while the mouse is down, the line is drawn at the release, one undo step.
+Esc during the drag cancels it.
+The right mouse button draws with `.` (it erases), as for the pencil, the rectangle and the fill before.
+
+- Shift constrains the angle.
+  The vector from the start to the pointer is turned to the nearest multiple of 15 degrees and then to the clean pixel slope that stands for it: 0, 15, 30, 45, 60, 75 and 90 degrees become the slopes 0, 1:4 (14 degrees), 1:2 (27 degrees), 1:1, 2:1 (63 degrees), 4:1 (76 degrees) and 1:0, in all four quadrants.
+  The end is cut to a whole number of steps of that slope (the nearest one to the pointer along it), so every constrained line has a regular stair: an exact 2:1 line is made of runs of exactly two cells.
+- Ctrl draws from the centre: the press cell is the middle of the line and the far end is mirrored through it.
+  Ctrl was picked because Alt is the subtract modifier of the selection tools and, with a reference layer selected, moves that layer.
+  Shift and Ctrl together give a constrained line from the centre.
+- The modifiers are read live: the preview and the line follow them until the release.
+- Shift+click with the Pencil draws a line from the last cell the pencil or the line ended on to the clicked cell (one undo step), and the drag goes on as freehand from there.
+  There is no last cell in a glyph view that was just opened, after an undo or a redo, or before the first stroke: Shift+click is then an ordinary click.
+
+### Curve
+
+The Curve is a tool of its own (`etool` 9): Shift+L chooses it, L chooses the line, and since version 18 it has its own button in the tool strip.
+In version 17 it was a hidden row of the table, a variant of the Line button with a Line / Curve control in the bar's second row; version 18 removed both.
+
+The curve is a cubic Bezier with two end points and two control points, made with three drags:
+
+1. The first drag sets the two end points, like a line (Shift and Ctrl work as for the line).
+   The preview is the straight line.
+   A click without a drag sets nothing.
+2. The second drag pulls the first control point to the cell under the pointer (where the drag ends), the third the second one.
+3. The curve is drawn when the third drag is released, or on Enter at any point after the first drag; the control points that are not set yet lie on their end points.
+   Esc cancels (and so does Ctrl+Z); choosing another tool, leaving the glyph, the padlock and every commit of the application draw it as it is.
+
+While the curve is being made the glyph does not change: its cells are drawn as a preview, with the handles (a square for each end point, a circle for each control point, a line from each end point to its control point).
+The right button draws the curve with `.`; the second and third drag must use the same button as the first.
+The path is 8-connected with no gap and no cell twice in a row, and it has no L corner (the pixel-perfect rule is always applied to a curve).
+The drawing is one undo step; it grows the bitmap as the pencil does.
+
+### Pixel-perfect
+
+The bar's Pixel-perfect toggle (second row, shown for the Pencil, the Line and the Curve) is off by default.
+When it is on, a freehand pencil stroke is kept one cell wide: when three consecutive cells of the stroke make an L (two steps along different axes, the first and last cell touching diagonally), the middle cell is taken back.
+The cell goes back to what it held before the stroke painted it, so a cell that was inked before the stroke stays inked, and the right button's erase puts the ink back.
+The rule works while the stroke is drawn, and the bitmap is cropped at the end of the stroke when it left an empty margin.
+Lines are never made of L corners, and the curve always applies the rule, so the toggle changes the pencil only; it is shown for the Line and Curve so that the option is in reach while drawing.
+The choice is kept in `pxfe.ini` (`[app] pixelPerfect`, 0 or 1), as the other editor options.
+
+### Drawing inside the selection
+
+When there is a selection (version 16), the Pencil, the Eraser, the Line, the Curve and the Rectangle draw only inside it: the cells outside are left alone, the preview does not show them, and the stroke is still one undo step.
+The selection is not changed by drawing.
+The Fill was not limited in this version; since version 20 it is clipped too (see "Version 20: fill, eyedropper, polygon and contour").
+Pixels that float from an arrow key land (one undo step) when a drawing tool is pressed on the canvas, and the drawing is then clipped to the selection at its new place.
+The selection may reach beyond the bitmap: painting there grows the bitmap as before.
+
+### Not done
+
+- The ellipse and the rectangle's own options (Shift for a square, from the centre) came with version 19; the fill's options came with version 20.
+- Thick brushes and a brush shape (the pixel-perfect rule is for one-cell strokes).
+- Dragging a handle of a curve again after the third drag, and a curve with more than two control points.
+
+### Tests
+
+- `tests/test_raster.c`: 51 checks (Bresenham end points, order and symmetry for 169 directions, the constrained angles, the L rule, random walks, the Bezier curve's connectivity, no gaps, no doubled cells and no L corners on 300 random curves; in `build.bat test`).
+- `117_line_shift_undo`, `118_pencil_shift_click`, `119_pixel_perfect`, `120_curve` (three drags, Enter, Esc at every stage, Ctrl+Z, a tool change, Shift and Ctrl, the right button, growth), `121_clip_to_selection`, `122_line_curve_locked`.
+- Play probes: `assert epp 0|1` (Pixel-perfect on), `assert ecurve 0|1|2` (the curve's stage); `mousedown` and `mouseup` take the word `right` (and `middle`).
+- `123_shots_v17` (not in `run_all.bat`) takes the screenshots of the bar at 1400 x 900 and at the narrow sizes.
+
+## Version 18: the tool strip
+
+The tool buttons leave the glyph view's bar and stand in a vertical strip at the left edge of the canvas area, as in common pixel editors.
+The top bar keeps Back, the glyph navigation, Fit, the zoom, Metrics and Layers; the second row keeps the options (INK, the padlock, Pixel-perfect or the selection mode, MOVE, ADVANCE).
+
+### The strip
+
+- It lies between the window's left edge and the canvas, from the bottom of the bar to the top of the status line; the canvas is that much narrower (the editor's cell mapping, Fit and the advance handle use the canvas rectangle, so they follow).
+- The buttons are the square icon buttons of the bar (`TH_ROW_H`, 28 px) with 2 px between them and 6 px of padding; the strip is 40 px wide with one column and 72 px with two.
+- The active tool is lit as before; the tooltip is "Name  (Key)", for example "Pencil  (B)"; the script names are the same as in the bar (`@Pencil`, `@Line`, `@Curve`, `tool.N`).
+- `draw_strip` lays the buttons out from `kTool[]`: group by group (a gap of 8 px between groups), inside a group in table order, rows with `hidden` have no button.
+  The groups are 0 draw (Pencil, Eraser), 1 shapes (Line, Rectangle, Curve; since version 19 Line, Curve, Rectangle, Ellipse), 2 fill, 3 selection (Marquee, Lasso, Magic Wand, Move).
+- One column while all the buttons fit the strip's height, otherwise the buttons wrap into a second column (and a third, if need be) as soon as the next one would not fit.
+  With ten tools one column needs about 330 px, so two columns appear only when the strip is shorter (a window under about 560 px high, or a tall preview).
+- A later tool (the ellipse, say) is a row in `kTool[]` with its group: the strip needs no other change.
+
+### The bar after the change
+
+- The narrow-window rules of versions 16 and 17 are gone: the bar no longer drops the glyph's name, tightens its gaps or hides the Line / Curve control when the window is narrow, because the nine tools no longer take room in row 1.
+  At the application's smallest size (1110 x 600) the second row shows Pixel-perfect, or Set, Add, Sub, And with 8-way, and the MOVE and ADVANCE controls.
+- The second row still checks that its controls fit before it draws them, which only a font with a big palette (up to 37 swatches) can now fail; the keys work then.
+- The Line / Curve segmented control is gone (the Curve has its button), so the script names `@linemode.0` and `@linemode.1` are gone; scripts click `@Line` and `@Curve`.
+
+### Tests
+
+- `124_tool_strip`: one column at 1400 x 900, two columns at 1110 x 480, a click on a button of the strip chooses the tool, the canvas still draws after the resize.
+- Play: `assert etoolcols 1|2` (the strip's columns); `resize` can now go below the application's minimum size (it clears the minimum first).
+- `117_line_shift_undo` and `122_line_curve_locked` use the Line and Curve buttons instead of the control.
+
+## Version 19: rectangle and ellipse
+
+The Rectangle gets its modifiers and a Filled option, and the Ellipse is a new tool.
+The behaviour is modelled on common pixel editors; the code is pxfe's own (the textbook midpoint ellipse in a bounding box).
+
+### Dragging
+
+- Both tools take the bounding box: the press cell is one corner, the cell under the mouse at the release is the other.
+- Shift makes the box a square (a circle for the ellipse): both sides become the longer one, in the direction of the drag.
+- Ctrl draws from the centre: the press cell is the middle of the box and the far corner is mirrored through it, as for the Line.
+  Shift and Ctrl together make a square from the centre.
+- The modifiers count while the button is down: the preview follows them from frame to frame and the release uses those that are held at that moment.
+- Esc cancels the drag; nothing is drawn and no undo step is taken.
+- The preview is drawn with the ink (the right button previews with `.`), and the glyph is unchanged until the release.
+- The release is one undo step.
+  The drawing is clipped to the selection like the other drawing tools, grows the bitmap, and is refused when the font is locked.
+- A click is one cell; a box one cell wide or high is a line.
+- The right button draws with `.`.
+
+The Rectangle keeps its key R (some other editors use U).
+The Ellipse is O, because E is the Eraser.
+Shift at the press of the key does not choose a filled variant; Filled is a toggle in the bar (see below), so that one rule covers both tools and the mouse.
+
+### The Filled option
+
+- The second row shows one toggle, `Filled` (script name `@Filled`), for the Rectangle and the Ellipse; the Pixel-perfect toggle is shown for the Pencil, the Line and the Curve as before.
+- Off, a tool draws the outline; on, it draws the outline and the inside with the ink.
+- It is a property of the two tools together, kept in `pxfe.ini` (`[app] filled`) like Pixel-perfect, and `Editor_Filled` and `Editor_SetFilled` are its API.
+- The earlier rule of version 17 that Shift filled the Rectangle is gone: Shift is the square now.
+
+### The raster
+
+`src/raster.c` has three new functions (no raylib; `tests/test_raster.c` tests them):
+
+- `ras_box(sx, sy, hx, hy, square, center, box)`: the normalized box of a drag with the two modifiers.
+- `ras_rect(out, x0, y0, x1, y1, filled)`: the cells of a rectangle, its outline or all of them.
+- `ras_ellipse(out, x0, y0, x1, y1, filled)`: the cells of the ellipse that fills the box.
+
+The ellipse is the midpoint (Bresenham type) ellipse in a bounding box:
+
+- The four mirrored quadrants are stepped from the middle of the sides towards the top and the bottom, with the error terms in integers, so the ring is symmetric in both axes by construction, for even and odd widths and heights alike.
+- The cells are sorted and joined: the mirrors meet on the axes, and no cell is in the list twice.
+- A flat or narrow ellipse stops early, so the loop finishes the tip; the ring then always touches the box on all four sides.
+- The pixel-perfect rule is applied to the set, not to a path: a ring cell with exactly two ring neighbours, each a straight step away along different axes, is the middle of an L and is dropped.
+  The two neighbours touch diagonally, so the ring stays whole and one cell thick.
+- A filled ellipse fills each row of that ring from its first to its last cell, so the filled shape has the outline of the ring and no holes.
+- A box one cell wide or high is a line, and a box two cells wide or high is a solid band (there is no room for a ring).
+- Very narrow ellipses (a short side of 3 or 4 cells with a long side of twice that or more) end in a two-cell cap; from a short side of 5 and a ratio under 3 to 1 every ring cell has exactly two neighbours.
+
+The rectangle outline is the box's border; its filled form is the whole box.
+A drag over 4096 cells in a side is as large as a glyph's bitmap can be; the cells are a list, built for each frame of the preview.
+
+### The strip
+
+- The strip shows the shape group as Line, Curve, Rectangle, Ellipse.
+  The table `kTool[]` keeps its rows and so the numbers of the tools that the scripts use (Curve is 9, Ellipse is 10); a second array, `kStrip[]`, is the order of the buttons, and `draw_strip` lays them out from it.
+- A tool joins the strip by a row in `kTool[]` and a place in `kStrip[]`.
+- Ellipse has its own icon `TH_IC_ELLIPSE` (an oval outline).
+
+### Tests
+
+- `tests/test_raster.c` (78 checks in all): `ras_box`, `ras_rect`, and for every box from 1 x 1 to 12 x 12 the ellipse's symmetry, no cell twice, a single 8-connected piece, the four sides touched, no L corner, a line for 1 cell and a band for 2, the filled shape (it holds the ring and every row is one run); a 21 x 21 circle is within a cell of the ideal radius; 200 random boxes up to 60 x 60.
+- `125_rectangle`: the outline, square, from the centre, both, the modifiers counted at the release, Esc, the click and the line, Filled, the right button, growth.
+- `126_ellipse`: key O and the button (E stays the Eraser), the ring of 5 x 5, 8 x 6 and 5 x 3, circle, from the centre, preview, line and band, Filled (21 and 23 cells), the right button, growth.
+- `127_shape_clip`: the rectangle and the ellipse, outlined and filled, are clipped to the selection.
+- `128_shape_locked`: a locked font refuses both tools, the buttons are off.
+- `129_strip_order`: the strip's order (`assert etoolslot<N> T`, the tool number of the N-th button) and the buttons by name, in a tall and a short window.
+- `06_editor` and `121_clip_to_selection` use the Filled toggle instead of Shift.
+- Play: `assert efilled 0|1`, `assert etoolslot<N> T`.
+
+## Version 20: fill, eyedropper, polygon and contour
+
+The last tool family of the glyph view: the paint bucket gets its options and the clip, the eyedropper and two shape tools (polygon and contour) are new.
+The behaviour is modelled on common pixel editors; the code is pxfe's own (a textbook flood fill on a character grid, a textbook even-odd scanline fill).
+
+### The paint bucket (Fill)
+
+- Key F, the strip's Fill button (as before; the tool number stays 4).
+- The region is the glyph box as the wand sees it: the advance across the font box (ascent plus descent), widened to the bitmap where that reaches out of the box.
+  Empty space can be filled, and the bitmap grows to hold what is filled; a cell outside the region is not part of it.
+- The second row shows two toggles for the Fill:
+  - `Contiguous` (script name `@Contiguous`, on by default; `assert econtig 0|1`): on, the fill takes the cells joined to the clicked one that hold the same pixel character; off, it takes every cell of the region that holds that character.
+  - `8-way` (`@8-way`): the wand's own switch, shared with it, so one setting serves both tools; off, cells join by their sides, on also by their corners.
+- The selection is a wall and a limit (since version 20; version 17 left the Fill unclipped): only selected cells are filled, the fill does not pass through unselected cells, and a click outside the selection fills nothing.
+  Without a selection nothing limits it.
+- A click on a cell that already holds the ink changes nothing and takes no undo step; otherwise the fill is one undo step.
+- The left button fills with the ink, the right button with `.` (it clears the character that was clicked, contiguous or global).
+- A locked font refuses it.
+
+### The eyedropper
+
+- Key I, the strip's Eyedropper button (tool number 11, in the fill group beside the Fill).
+- A click makes the pixel character under the cursor the ink.
+  A cell outside the bitmap is empty space, `.`.
+  `.` is an ink of every font (the last swatch of the INK palette is the eraser ink), so picking empty space sets the ink to `.`, and the Pencil then erases; a character that the font's palette does not hold is not taken.
+- pxfe has one ink and no second one for the eraser, so the right button picks exactly as the left one does.
+- Alt held at the press turns the Pencil, Line, Curve, Rectangle, Ellipse, Polygon, Contour or Fill into the eyedropper for that click: the ink is picked, nothing is drawn, and the tool stays what it was (so there is nothing to switch back; the temporary pick lasts the click).
+  The Eraser and the selection tools are not included (Alt subtracts in the selection tools).
+  Where a reference layer other than the glyph itself is selected, Alt+drag still moves that layer, as before: the layer wins.
+- Picking changes neither the glyph nor the undo stack.
+- A locked font refuses the tool like the others.
+
+### The polygon
+
+- Key D (free: Ctrl+D is Deselect and is read only with Ctrl), the strip's Polygon button (tool number 12, in the shape group after the Ellipse).
+- A click adds a vertex, and a line follows the mouse from the last vertex (the preview, drawn with the ink; the right button previews and draws `.`).
+  Nothing changes in the glyph until the polygon is closed.
+- It is closed by Enter, by a click on the last vertex again (a double click) or by a click on the first vertex; Esc throws it away and Backspace takes the last vertex back (Backspace is Delete elsewhere, but with a polygon being made it belongs to the polygon).
+  Choosing another tool, leaving the glyph, the padlock and `Editor_Flush` close it; Ctrl+Z throws it away (as for the Curve).
+- Shift makes each new edge a clean angle from the last vertex, as for the Line (the slopes 0, 1:4, 1:2, 1:1, 2:1, 4:1, 1:0).
+- The outline is the line raster between the vertices and from the last back to the first (sharp corners: the vertices stay).
+  With the bar's Filled the inside is added by the even-odd rule: a cell is inside when its centre is, so a self-crossing polygon has holes where it crosses itself, and a pentagram's middle stays empty.
+  A single vertex is one cell, two are a line, collinear vertices are a line.
+- One undo step; the drawing is clipped to the selection, grows the bitmap, and is refused when the font is locked.
+
+### The contour
+
+- Key C (Ctrl+C is Copy and needs Ctrl), the strip's Contour button (tool number 13).
+- A freehand drag: the path of the mouse is the contour (the cells between two mouse positions are joined by the line raster), and on the release the path is closed, from where it ended to where it began, and drawn.
+  It is a lasso that paints.
+- The outline is pixel-perfect: the corner cell of every L of the path is dropped, as for the Pencil with Pixel-perfect on.
+  With Filled the inside is added by the even-odd rule, so a path that crosses itself is filled like the polygon's.
+- The preview is drawn while the button is down (closed and filled as it will be); Esc cancels the drag.
+  A click is one cell and a straight drag is a line.
+- The right button draws `.`.
+- One undo step; clipped to the selection, grows the bitmap, refused when the font is locked.
+
+### The Filled toggle
+
+The second row shows `Filled` for the Rectangle, the Ellipse, the Polygon and the Contour: the one option covers the four, is kept in `pxfe.ini` (`[app] filled`) and its API is `Editor_Filled` and `Editor_SetFilled` as in version 19.
+The Pixel-perfect toggle stays with the Pencil, the Line and the Curve; the contour is always pixel-perfect.
+
+### The raster
+
+`src/raster.c` has two new functions (no raylib; `tests/test_raster.c` tests them):
+
+- `ras_flood(out, pix, rx, ry, rw, rh, sx, sy, contiguous, diagonals, clip)`: the cells of a paint-bucket fill in the region of `rw * rh` characters whose top-left cell is `(rx, ry)`.
+  Contiguous is an explicit stack (each cell is pushed once) in four or eight directions; not contiguous marks every cell with the seed's character.
+  The optional `clip` mask is a wall (a cell with 0 is neither filled nor passed through), and a seed on such a cell or outside the region fills nothing.
+  The cells come in row order.
+- `ras_polygon(out, v, n, closed, filled)`: the outline is `ras_line` between consecutive vertices (and from the last to the first when closed and `n >= 3`); a filled closed polygon adds the cells whose centres the even-odd rule finds inside, row by row from the sorted edge crossings, and returns the union in row order without duplicates.
+
+In the editor, `region_pix` builds the character grid of the glyph region once for the wand (`sel_wand_at`) and the Fill (`fill_at`), so both see the same region.
+`fill_at` replaces the older `flood_fill`.
+
+### The strip
+
+- The strip reads Pencil, Eraser; Line, Curve, Rectangle, Ellipse, Polygon, Contour; Fill, Eyedropper; Marquee, Lasso, Magic Wand, Move: fourteen buttons in four groups.
+  `kTool[]` keeps the tool numbers (Eyedropper 11, Polygon 12, Contour 13) and `kStrip[]` is the order.
+- A column holds buttons while they fit the strip's height.
+  A group that does not fit the rest of a column starts the next one, so a group is not split while it fits one; a group taller than a column still wraps button by button.
+- At the smallest window (1110 x 600) the strip is about 364 px high and fourteen buttons need about 454 px, so there are two columns: the drawing, shape and fill groups in the first (ten buttons) and the selection group in the second.
+  At 1110 x 520 it is two columns as well; at 1110 x 480 three.
+  In a window 900 px high it is one column.
+- Icons `TH_IC_PICK` (a dropper), `TH_IC_POLY` (a polygon with its corners marked) and `TH_IC_CONTOUR` (a wobbly loop).
+
+### The shortcuts of the glyph view
+
+| Key | What it does |
+| --- | --- |
+| B | Pencil |
+| E | Eraser |
+| L | Line |
+| Shift+L | Curve (also its button) |
+| R | Rectangle |
+| O | Ellipse |
+| D | Polygon |
+| C | Contour |
+| F | Paint bucket (Fill) |
+| I | Eyedropper |
+| M, Q, W, V | Marquee, Lasso, Magic Wand, Move |
+| 0 to 9 | pick that ink when the font's palette has it |
+| Alt at the click | with the Pencil, Line, Curve, Rectangle, Ellipse, Polygon, Contour or Fill: pick the ink under the cursor |
+| Right button | draws with `.` (the fill, the shapes, the polygon and the contour too) |
+| Shift | the Line and the Curve's end points, the Polygon's edges: clean angles; the Rectangle and Ellipse: a square or circle; the Pencil: a line from the last cell |
+| Ctrl | the Line, Curve, Rectangle and Ellipse: draw from the centre |
+| Enter | draws the curve or polygon being made; drops floating pixels |
+| Esc | cancels a drag, the polygon or the curve being made, the float, the selection, then closes the glyph view |
+| Backspace | the polygon being made: its last vertex goes; otherwise clears the selection |
+| Delete | clears the selection |
+| Ctrl+A, Ctrl+D, Ctrl+Shift+I | select all, deselect, invert |
+| Ctrl+C, Ctrl+X, Ctrl+V | copy, cut, paste |
+| Ctrl+Z, Ctrl+Y | undo, redo (a float, a curve or a polygon being made is thrown away first) |
+| Arrow keys | move the selection by 1 cell, Shift+arrow by 8; with no selection Shift+arrow moves the bitmap |
+| PgUp, PgDn | the previous and the next glyph |
+
+### Tests
+
+- `tests/test_raster.c` (110 checks in all): the flood fill (contiguous and global, 4 and 8 directions, a diagonal wall, the clip as a wall and a limit, a seed outside the region or the clip, an empty region such as the growth region) and the polygon (a triangle, a rectangle, a concave U, a bow tie and a pentagram by the even-odd rule against a naive ray count, a point, two points, collinear and repeated vertices, a sliver, negative coordinates).
+- `130_fill`: the options, empty space, contiguous and global, 4- and 8-way, the right button, a click that changes nothing, growth, undo.
+- `131_fill_clip`: the selection is a wall and a limit, a click outside fills nothing, the right button and the global fill are clipped, two rooms.
+- `132_eyedropper` (font 03696f65, two colours): the key and the button, left and right, `.`, Alt with every drawing tool, the tool stays, no undo step.
+- `133_polygon`: closing by Enter, by the first vertex and by a double click, Backspace, Esc, Ctrl+Z, another tool, Shift, Filled, a bow tie, the right button, the clip, growth.
+- `134_contour`: the outline and Filled, the right button, Esc, a click and a straight drag, a path that crosses itself, the clip, growth.
+- `135_tools_locked`: a locked font refuses the four tools; the padlock draws a half-made polygon.
+- `136_strip_v20`: the strip at 1110 x 600 (two columns), 1110 x 520 (two), 1110 x 480 (three) and 1400 x 900 (one), every button by name.
+- Changed: `129_strip_order` (the new order), `124_tool_strip` and `129_strip_order` use 1110 x 520 for their short window, `121_clip_to_selection` (the Fill is clipped).
+- Play: `assert epoly N` (vertices of the polygon being made), `assert econtig 0|1`.

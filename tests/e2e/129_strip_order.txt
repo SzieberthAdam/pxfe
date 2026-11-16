@@ -1,0 +1,65 @@
+# 129. The order of the tool strip (version 19, extended in version 20), font 0820dc69 unlocked, glyph U+0020.
+# The shape group reads Line, Curve, Rectangle, Ellipse, Polygon, Contour and the fill group Fill, Eyedropper; the Tool numbers (and so the script names) stay as they were:
+# Pencil 0, Eraser 1, Line 2, Rectangle 3, Fill 4, Marquee 5, Lasso 6, Wand 7, Move 8, Curve 9, Ellipse 10, Eyedropper 11, Polygon 12, Contour 13.  assert etoolslot<N> is the Tool number of the N-th button.
+wait 5
+click @Unlock
+wait 4
+sleep 600
+dblclick @cell:U+0020
+wait 5
+assert editor_glyph U+0020
+
+assert etoolslot0 0
+assert etoolslot1 1
+assert etoolslot2 2
+assert etoolslot3 9
+assert etoolslot4 3
+assert etoolslot5 10
+assert etoolslot6 12
+assert etoolslot7 13
+assert etoolslot8 4
+assert etoolslot9 11
+assert etoolslot10 5
+assert etoolslot11 6
+assert etoolslot12 7
+assert etoolslot13 8
+assert etoolslot14 -1
+
+# the buttons answer to their names, in the tall and the short window
+resize 1400 900
+wait 8
+assert etoolcols 1
+click @Ellipse
+wait 2
+assert etool 10
+click @Rectangle
+wait 2
+assert etool 3
+click @Curve
+wait 2
+assert etool 9
+click @Polygon
+wait 2
+assert etool 12
+click @Contour
+wait 2
+assert etool 13
+click @Eyedropper
+wait 2
+assert etool 11
+click @Fill
+wait 2
+assert etool 4
+shot tests/tmp/shots/129_strip.png
+resize 1110 520
+wait 8
+assert etoolcols 2
+click @Ellipse
+wait 2
+assert etool 10
+click @Line
+wait 2
+assert etool 2
+resize 1400 900
+wait 8
+assert editor 1

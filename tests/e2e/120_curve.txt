@@ -1,0 +1,200 @@
+# 120. The Curve tool (version 17), font 0820dc69 unlocked, glyph U+0020 (empty, advance 4; font box rows 0..7).
+# Three drags: the end points, then the first and the second control point; the curve is drawn after the third release or on Enter, Esc cancels.
+# Nothing is written before that; the drawing is one undo step.  Probe: assert ecurve 0|1|2 (no curve, end points set, first control point set).
+wait 5
+click @Unlock
+wait 4
+sleep 600
+dblclick @cell:U+0020
+wait 5
+assert editor_glyph U+0020
+assert glyph U+0020 empty
+assert ecurve 0
+
+# Shift+L is the curve tool; the bar shows Line / Curve with Curve selected
+key l shift
+wait 3
+assert etool 9
+assert ecurve 0
+
+# 1st drag: the end points, a straight preview, nothing written
+drag @ecell:0,5 @ecell:6,5
+wait 3
+assert ecurve 1
+assert glyph U+0020 empty
+assert undo 0
+# 2nd drag: the first control point goes to where the drag ends
+drag @ecell:1,5 @ecell:1,1
+wait 3
+assert ecurve 2
+assert glyph U+0020 empty
+shot tests/tmp/shots/120_curve_handles.png
+# 3rd drag: the second control point, and the curve is drawn
+drag @ecell:5,5 @ecell:5,1
+wait 3
+assert ecurve 0
+assert undo 1
+assert glyph U+0020 pixel 0 5 0
+assert glyph U+0020 pixel 6 5 0
+assert glyph U+0020 pixel 3 2 0
+assert glyph U+0020 pixel 3 5 .
+assert glyph U+0020 pixel 3 3 .
+assert glyph U+0020 ink 9
+shot tests/tmp/shots/120_curve_done.png
+# one undo step takes it all away
+key z ctrl
+wait 3
+assert undo 0
+assert glyph U+0020 empty
+
+# Enter draws the curve with what is set: after the end points it is the straight line, after the first control point a bent one
+drag @ecell:0,6 @ecell:5,6
+wait 3
+assert ecurve 1
+key enter
+wait 3
+assert ecurve 0
+assert glyph U+0020 ink 6
+assert undo 1
+key z ctrl
+wait 3
+drag @ecell:0,6 @ecell:5,6
+drag @ecell:2,6 @ecell:2,2
+wait 3
+assert ecurve 2
+key enter
+wait 3
+assert ecurve 0
+assert glyph U+0020 pixel 0 6 0
+assert glyph U+0020 pixel 5 6 0
+assert glyph U+0020 pixel 2 6 .
+assert undo 1
+key z ctrl
+wait 3
+assert glyph U+0020 empty
+
+# Esc cancels, at every stage; nothing is written and there is no undo step
+drag @ecell:0,6 @ecell:5,6
+wait 2
+key esc
+wait 3
+assert ecurve 0
+assert glyph U+0020 empty
+assert undo 0
+assert editor 1
+drag @ecell:0,6 @ecell:5,6
+drag @ecell:2,6 @ecell:2,2
+wait 2
+key esc
+wait 3
+assert ecurve 0
+assert glyph U+0020 empty
+assert undo 0
+assert editor 1
+# Esc during a drag
+move @ecell:0,6
+mousedown
+wait 2
+move @ecell:5,6
+wait 2
+assert ecurve 0
+key esc
+wait 2
+mouseup
+wait 3
+assert ecurve 0
+assert glyph U+0020 empty
+assert undo 0
+drag @ecell:0,6 @ecell:5,6
+move @ecell:2,6
+mousedown
+wait 2
+move @ecell:2,2
+wait 2
+key esc
+wait 2
+mouseup
+wait 3
+assert ecurve 0
+assert glyph U+0020 empty
+assert undo 0
+assert editor 1
+
+# a click without a drag sets no end points
+click @ecell:3,3
+wait 3
+assert ecurve 0
+assert glyph U+0020 empty
+
+# Ctrl+Z while a curve is being made throws it away
+drag @ecell:0,6 @ecell:5,6
+wait 2
+key z ctrl
+wait 3
+assert ecurve 0
+assert glyph U+0020 empty
+assert undo 0
+
+# another tool draws it: the curve being made is not lost
+drag @ecell:0,6 @ecell:5,6
+drag @ecell:2,6 @ecell:2,3
+wait 2
+key b
+wait 3
+assert etool 0
+assert ecurve 0
+assert glyph U+0020 pixel 0 6 0
+assert glyph U+0020 pixel 5 6 0
+assert undo 1
+key z ctrl
+wait 3
+assert glyph U+0020 empty
+
+# Shift constrains the end points, Ctrl makes the press cell the middle (as for the line)
+key l shift
+drag @ecell:2,3 @ecell:6,4 shift ctrl
+wait 3
+assert ecurve 1
+key enter
+wait 3
+assert glyph U+0020 pixel -2 2 0
+assert glyph U+0020 pixel 6 4 0
+assert glyph U+0020 pixel 2 3 0
+key z ctrl
+wait 3
+assert glyph U+0020 empty
+
+# the right button draws with '.': a curve over ink erases it
+key l
+drag @ecell:0,4 @ecell:6,4
+drag @ecell:0,5 @ecell:6,5
+wait 3
+assert glyph U+0020 ink 14
+key l shift
+drag @ecell:0,4 @ecell:6,4 right
+wait 3
+assert ecurve 1
+key enter
+wait 3
+assert glyph U+0020 ink 7
+assert glyph U+0020 pixel 3 4 .
+assert glyph U+0020 pixel 3 5 0
+key z ctrl
+key z ctrl
+key z ctrl
+wait 3
+assert glyph U+0020 empty
+
+# a curve that leaves the bitmap grows it; its undo takes the growth back
+drag @ecell:-1,0 @ecell:7,0
+drag @ecell:0,-1 @ecell:0,7
+drag @ecell:7,-1 @ecell:7,7
+wait 3
+assert ecurve 0
+assert undo 1
+assert glyph U+0020 pixel -1 0 0
+assert glyph U+0020 pixel 7 0 0
+key z ctrl
+wait 3
+assert glyph U+0020 empty
+assert undo 0

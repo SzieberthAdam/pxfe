@@ -477,7 +477,7 @@ int Layers_CachedFonts(const Layers *l) { return l ? l->ncache : 0; }
 
 static bool hov(Rectangle vis, Rectangle r)
 {
-    if (Th_InputBlocked()) return false;
+    if (Th_MouseBlocked()) return false;
     Vector2 m = GetMousePosition();
     return CheckCollisionPointRec(m, r) && CheckCollisionPointRec(m, vis);
 }
@@ -695,7 +695,7 @@ float Layers_DrawPanel(Layers *l, Rectangle area, Rectangle vis)
         Th_TextRich(fit, tx, card.y + 27, c2, TH_F_SMALL, hov(vis, head));
 
         /* a click on the row selects it */
-        if (!ctl && hov(vis, head) && IsMouseButtonReleased(MOUSE_BUTTON_LEFT)) l->sel = i;
+        if (!ctl && Th_Released(head, "lay_head", hov(vis, head))) l->sel = i;
 
         /* the details of the selected layer */
         if (selected && !cur) {
@@ -713,7 +713,7 @@ float Layers_DrawPanel(Layers *l, Rectangle area, Rectangle vis)
                 DrawRectangleRounded(sw, 0.25f, 6, kSwatch[k]);
                 if (on) DrawRectangleRoundedLinesEx((Rectangle){sw.x - 2, sw.y - 2, sw.width + 4, sw.height + 4}, 0.25f, 6, 2, TH_ACCENT);
                 else if (hv) DrawRectangleRoundedLinesEx(sw, 0.25f, 6, 2, withA(TH_TEXT, 90));
-                if (hv && IsMouseButtonReleased(MOUSE_BUTTON_LEFT)) a->color = kSwatch[k];
+                if (Th_Released(sw, sn, hv)) a->color = kSwatch[k];
             }
             {
                 char hx[12];
@@ -1040,7 +1040,7 @@ void Layers_DrawPopover(Layers *l, Rectangle panel)
             float hw = Th_HashShort("Font", e->pxfm, rr.x + rr.width - 8, rr.y + (ROW_H - Th_Measure("M").y) / 2, TH_HASH_RIGHT, NULL);
             Th_FitText(nm, TH_F_BODY, rr.width - 72 - hw - 18, fit, sizeof fit);
             Th_Text(fit, rr.x + 72, rr.y + (ROW_H - Th_Measure(fit).y) / 2, on ? TH_ACCENT : TH_TEXT);
-            if (hv && IsMouseButtonReleased(MOUSE_BUTTON_LEFT)) l->fontSel = ei;
+            if (Th_Released(rr, rn, hv)) l->fontSel = ei;
         }
         y += lr.height + 12;
     }

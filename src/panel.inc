@@ -97,6 +97,59 @@ static void RatioRow(float px, float y)
     }
 }
 
+/* The BASELINE row of the font metrics: two buttons move the baseline one row up or down while everything stays where it is on the screen.
+ * Up by 1: the ascent falls by 1 and the descent grows by 1, and so every height counted from the baseline falls by 1 (cap height, x-height, the
+ * positions of the underline and the strike-out), every glyph's offset y falls by 1 (its bitmap stays where it is), and the font layers (they sit on
+ * the baseline's origin) move their offset by -1.  Down is the mirror.  Thicknesses, line gap, internal leading and quad width do not change.
+ * Only the stated metrics move.  A step that would make a metric go below its smallest value (the ascent, descent, cap height and x-height are
+ * never negative) is refused. */
+static const PxMetric kAboveBaseline[] = {PXM_ASCENT, PXM_CAPHEIGHT, PXM_XHEIGHT, PXM_UNDERLINEPOSITION, PXM_STRIKEOUTPOSITION};
+
+/* why the baseline cannot move one row up (dir 1) or down (dir -1), NULL when it can */
+static const char *BaselineWhy(int dir)
+{
+    if (!hasFont) return "No font is open";
+    if (readOnly) return "The font is locked: unlock it first";
+    int d = -dir;   /* what the heights above the baseline get */
+    for (size_t i = 0; i < sizeof kAboveBaseline / sizeof kAboveBaseline[0]; i++) {
+        PxMetric m = kAboveBaseline[i];
+        if (font.has[m] && font.m[m] + d < MetricMin(m)) return TextFormat("The %s cannot go below %d", px_metric_label(m), MetricMin(m));
+    }
+    if (font.has[PXM_DESCENT] && font.m[PXM_DESCENT] - d < 0) return "The descent cannot go below 0";
+    return NULL;
+}
+
+static void CmdBaseline(int dir)
+{
+    const char *why = BaselineWhy(dir);
+    if (why) { Th_Toast(TH_TOAST_ERR, "%s", why); return; }
+    PushUndo(0);
+    int d = -dir;
+    for (size_t i = 0; i < sizeof kAboveBaseline / sizeof kAboveBaseline[0]; i++)
+        if (font.has[kAboveBaseline[i]]) font.m[kAboveBaseline[i]] += d;
+    if (font.has[PXM_DESCENT]) font.m[PXM_DESCENT] -= d;
+    for (int i = 0; i < font.count; i++) {
+        PxGlyph *g = &font.glyphs[i];
+        if (g->w > 0 || (g->lazy && g->hash[0])) g->y += d;   /* a glyph without ink has no offset (0, 0) */
+    }
+    LayersShiftY((float)d);
+    baseShift += dir;
+    needHash = true;
+}
+
+static void BaselineRow(float px, float y)
+{
+    float x = px + 16, ty = Fl(y + (TH_ROW_H - Th_Measure("A").y) / 2);
+    Th_Text("Baseline", x, ty, TH_TEXT_DIM);
+    float right = px + PANEL_W - 16;
+    const char *whyUp = BaselineWhy(1), *whyDown = BaselineWhy(-1);
+    Rectangle bd = {right - TH_ROW_H, y, TH_ROW_H, TH_ROW_H}, bu = {right - 2 * TH_ROW_H - 4, y, TH_ROW_H, TH_ROW_H};
+    bool up = Th_Button(bu, "Baseline up", TH_BTN_ICON(TH_IC_UP) | TH_BTN_OFF(!whyUp), whyUp ? whyUp : "Move the baseline up one row: ascent -1, descent +1, the glyphs stay where they are");
+    bool down = Th_Button(bd, "Baseline down", TH_BTN_ICON(TH_IC_DOWN) | TH_BTN_OFF(!whyDown), whyDown ? whyDown : "Move the baseline down one row: ascent +1, descent -1, the glyphs stay where they are");
+    if (up) CmdBaseline(1);
+    else if (down) CmdBaseline(-1);   /* a button acts only when the press began on it (Th_Released) */
+}
+
 /* "Find in Library" of the Glyph tab (also Ctrl+Shift+F and the toolbar), with the code point at the right. */
 static void FindRow(float px, float *y, int32_t insCode)
 {
@@ -168,24 +221,146 @@ static void DrawTypefaceTab(float px, float pw, float *yp, const PxtfTypeface *t
     uiBlocked = svBlocked;
 }
 
-/* The facts of a glyph as label/value rows (the Glyph tab, the selection of the font view). */
-static void GlyphFacts(float px, float *y, const PxGlyph *g, bool character)
+/* ---- editing the facts of a glyph (the glyph view's Glyph tab) ---- */
+
+/* hex digits of a code, "U+" or "0x" before them allowed; up to FFFFFF (SetGlyphCode says what is wrong with it) */
+static bool ParseHexCode(const char *in, int32_t *cp)
+{
+    while (*in == ' ') in++;
+    if ((in[0] == 'U' || in[0] == 'u') && in[1] == '+') in += 2;
+    else if (in[0] == '0' && (in[1] == 'x' || in[1] == 'X')) in += 2;
+    long v = 0;
+    int n = 0;
+    for (; (in[n] >= '0' && in[n] <= '9') || ((in[n] | 32) >= 'a' && (in[n] | 32) <= 'f'); n++) v = v * 16 + (in[n] <= '9' ? in[n] - '0' : (in[n] | 32) - 'a' + 10);
+    if (n == 0 || n > 6) return false;
+    for (const char *q = in + n; *q; q++) if (*q != ' ') return false;
+    *cp = (int32_t)v;
+    return true;
+}
+
+/* one character (UTF-8), or the word "space" */
+static bool ParseCharCode(const char *in, int32_t *cp)
+{
+    if (!strcmp(in, " ") || !strcmp(in, "space")) { *cp = 0x20; return true; }
+    char s[40];
+    snprintf(s, sizeof s, "%s", in);
+    char *p = s;
+    while (*p == ' ') p++;
+    size_t n = strlen(p);
+    while (n > 0 && p[n - 1] == ' ') p[--n] = 0;
+    if (n == 0) return false;
+    int sz = 0;
+    int c = GetCodepointNext(p, &sz);
+    if ((size_t)sz != n || (c == 0x3F && p[0] != '?')) return false;
+    *cp = c;
+    return true;
+}
+
+/* Gives glyph gi (not the default glyph) another code point.  A code another glyph has, the code of the default glyph and a number that is no code point
+ * are refused with a message.  The glyph keeps its bitmap, offsets and advance and moves to its place in the order; its kerning pairs follow the new
+ * code.  Returns the glyph's index afterwards (gi when nothing changed). */
+static int SetGlyphCode(int gi, int32_t cp)
+{
+    if (readOnly || gi < 0 || gi >= font.count) return gi;
+    int32_t oc = font.glyphs[gi].codepoint;
+    if (cp == oc) return gi;
+    if (oc == PX_CODE_DEFAULT) { Th_Toast(TH_TOAST_ERR, "The default glyph keeps its code"); return gi; }
+    if (cp == PX_CODE_DEFAULT) { Th_Toast(TH_TOAST_ERR, "FFFFFF is the code of the default glyph: use Set Default"); return gi; }
+    if (!px_code_is_codepoint(cp)) { Th_Toast(TH_TOAST_ERR, "%X is no code point (the largest is 10FFFF)", (unsigned)cp); return gi; }
+    if (px_font_find(&font, cp) >= 0) { Th_Toast(TH_TOAST_ERR, "U+%04X belongs to another glyph of this font: re-code or delete that one first", (unsigned)cp); return gi; }
+    PxGlyph t;
+    if (!px_glyph_copy(&t, &font.glyphs[gi]) && font.glyphs[gi].pix) return gi;
+    PushUndo(0);
+    PxKern *kept = (PxKern *)malloc(sizeof(PxKern) * (size_t)(font.kernCount > 0 ? font.kernCount : 1));
+    int nk = 0;
+    for (int i = 0; kept && i < font.kernCount; i++)
+        if (font.kern[i].first == oc || font.kern[i].second == oc) kept[nk++] = font.kern[i];
+    px_font_remove_glyph(&font, gi);   /* drops the pairs of the old code, and renumbers the later uncoded glyphs when it was one */
+    t.codepoint = cp;
+    int ni = px_font_add_glyph(&font, &t);
+    px_glyph_free(&t);
+    for (int i = 0; i < nk; i++) {   /* the pairs follow the glyph (the other side of a pair may have been renumbered) */
+        int32_t a = kept[i].first, b = kept[i].second;
+        bool ao = a == oc, bo = b == oc;   /* decided before the renumbering: a later uncoded glyph takes over the number oc had */
+        if (px_code_is_uncoded(oc)) {
+            if (px_code_is_uncoded(a) && a > oc) a--;
+            if (px_code_is_uncoded(b) && b > oc) b--;
+        }
+        px_font_set_kern(&font, ao ? cp : a, bo ? cp : b, kept[i].value);
+    }
+    free(kept);
+    SelResize();
+    SelOnly(ni);
+    revealIdx = ni;
+    if (inEditor && ed) Editor_SetGlyphIndex(ed, ni);   /* the same glyph, now at another place */
+    needHash = true;
+    Th_Toast(TH_TOAST_OK, "The glyph is now U+%04X%s", (unsigned)cp, nk ? " (its kerning pairs came along)" : "");
+    return ni;
+}
+
+/* The facts of glyph gi as label/value rows (the Glyph tab of the glyph view, the selection of the font view).  `editable`: the code point, the
+ * character, the advance and the offsets are fields (dim and inert while the font is locked); the font view's selection shows them as text. */
+static void GlyphFacts(float px, float *y, int gi, bool character, bool editable)
 {
     float x = px + 16, w = PANEL_W - 32;
-    char cl[64], ch[16] = "—";
+    const PxGlyph *g = &font.glyphs[gi];
+    char cl[64], ch[16] = "";
     CodeLabel(g->codepoint, cl, sizeof cl);
-    Th_Row(x, y, w, px_code_is_uncoded(g->codepoint) ? "No code point" : g->codepoint == PX_CODE_DEFAULT ? "Glyph" : "Code point", cl, TH_ROW_UNI);
-    if (character) {
+    if (px_code_is_codepoint(g->codepoint)) {
         int len = 0;
-        const char *u = px_code_is_codepoint(g->codepoint) ? CodepointToUTF8(g->codepoint, &len) : "";
+        const char *u = CodepointToUTF8(g->codepoint, &len);
         bool shown = g->codepoint >= 0x21 && g->codepoint != 0x7F && g->codepoint != 0xAD && g->codepoint <= 0x17F && !(g->codepoint >= 0x80 && g->codepoint < 0xA1);
         if (shown) snprintf(ch, sizeof ch, "%.*s", len, u);
         else if (g->codepoint == 0x20) snprintf(ch, sizeof ch, "space");
-        Th_Row(x, y, w, "Character", ch, 0);
     }
-    Th_Row(x, y, w, "Advance", TextFormat("%d", g->advance), 0);
+    const char *codeLabel = px_code_is_uncoded(g->codepoint) ? "No code point" : g->codepoint == PX_CODE_DEFAULT ? "Glyph" : "Code point";
+    if (!editable) {
+        Th_Row(x, y, w, codeLabel, cl, TH_ROW_UNI);
+        if (character) Th_Row(x, y, w, "Character", ch[0] ? ch : "—", 0);
+        Th_Row(x, y, w, "Advance", TextFormat("%d", g->advance), 0);
+        Th_Row(x, y, w, "Bitmap", g->w > 0 ? TextFormat("%d x %d", g->w, g->h) : "empty", 0);
+        Th_Row(x, y, w, "Offset x, y", TextFormat("%d, %d", g->x, g->y), 0);
+        return;
+    }
+    bool en = !readOnly;
+    int f;
+    Rectangle r = Th_Row(x, y, w, codeLabel, NULL, 0);
+    f = Th_TextField(r, "g.code", cl, 40, TH_TF_COMMIT | TH_TF_SELECT | (en && g->codepoint != PX_CODE_DEFAULT ? 0 : TH_TF_DISABLED), NULL);
+    if (f & (TH_TF_ENTER | TH_TF_BLUR)) {
+        int32_t cp;
+        if (!strcmp(Th_TextValue(), cl)) { /* untouched */ }
+        else if (!ParseHexCode(Th_TextValue(), &cp)) Th_Toast(TH_TOAST_ERR, "Type a code point as hex digits, for example U+00E9");
+        else gi = SetGlyphCode(gi, cp);
+    }
+    g = &font.glyphs[gi];
+    if (character) {
+        r = Th_Row(x, y, w, "Character", NULL, 0);
+        f = Th_TextField(r, "g.char", ch, 16, TH_TF_COMMIT | TH_TF_SELECT | (en && g->codepoint != PX_CODE_DEFAULT ? 0 : TH_TF_DISABLED), "none");
+        if (f & (TH_TF_ENTER | TH_TF_BLUR)) {
+            int32_t cp;
+            if (!strcmp(Th_TextValue(), ch)) { /* untouched */ }
+            else if (!ParseCharCode(Th_TextValue(), &cp)) Th_Toast(TH_TOAST_ERR, "Type one character");
+            else gi = SetGlyphCode(gi, cp);
+        }
+        g = &font.glyphs[gi];
+    }
+    int nv;
+    r = Th_Row(x, y, w, "Advance", NULL, 0);
+    if (Th_Number((Rectangle){r.x + r.width - 100, r.y, 100, TH_ROW_H}, "g.advance", g->advance, 0, 99999, TH_NUM_WHEEL | (en ? 0 : TH_TF_DISABLED), &nv)) {
+        PushUndo(1000 + gi * 4);
+        font.glyphs[gi].advance = nv;
+    }
     Th_Row(x, y, w, "Bitmap", g->w > 0 ? TextFormat("%d x %d", g->w, g->h) : "empty", 0);
-    Th_Row(x, y, w, "Offset x, y", TextFormat("%d, %d", g->x, g->y), 0);
+    r = Th_Row(x, y, w, "Offset x, y", NULL, 0);
+    bool eo = en && g->w > 0;   /* a glyph without ink has no offset */
+    if (Th_Number((Rectangle){r.x + r.width - 212, r.y, 100, TH_ROW_H}, "g.offx", g->x, -9999, 9999, TH_NUM_WHEEL | (eo ? 0 : TH_TF_DISABLED), &nv)) {
+        PushUndo(1001 + gi * 4);
+        font.glyphs[gi].x = nv;
+    }
+    if (Th_Number((Rectangle){r.x + r.width - 100, r.y, 100, TH_ROW_H}, "g.offy", g->y, -9999, 9999, TH_NUM_WHEEL | (eo ? 0 : TH_TF_DISABLED), &nv)) {
+        PushUndo(1002 + gi * 4);
+        font.glyphs[gi].y = nv;
+    }
 }
 
 static void DrawSelectionSection(float px, float *yp)
@@ -195,7 +370,7 @@ static void DrawSelectionSection(float px, float *yp)
         int fi = FirstSelected();
         const PxGlyph *g = &font.glyphs[fi];
         char h[33];
-        GlyphFacts(px, &y, g, false);
+        GlyphFacts(px, &y, fi, false, false);
         px_glyph_hash(g, h);
         y += 4;
         {   /* how to get into the glyph view (double click or Enter do the same) */
@@ -281,6 +456,7 @@ static void DrawMetricsPanel(Rectangle p)
         for (size_t i = 0; i < sizeof rows / sizeof rows[0]; i++) {
             MetricRow(px, y, rows[i].m, rows[i].c);
             y += TH_ROW_H + 4;
+            if (rows[i].m == PXM_DESCENT) { BaselineRow(px, y); y += TH_ROW_H + 4; }
         }
         RatioRow(px, y);
         y += TH_ROW_H + 4;
@@ -321,14 +497,14 @@ static void DrawMetricsPanel(Rectangle p)
             Th_Text("Similar fonts need a font of the library.", px + 16, y, TH_TEXT_DIM);
             y += TH_ROW_H;
         }
-        bool prevB = Th_InputBlocked();
-        if (!CheckCollisionPointRec(Mouse(), cr)) Th_SetInputBlocked(true);   /* an entry scrolled out of the panel must not react */
+        bool prevB = Th_MouseOnly();
+        if (!CheckCollisionPointRec(Mouse(), cr)) Th_SetMouseBlocked(true);   /* an entry scrolled out of the panel must not react */
         bool clicked = false;
         InsightTarget tg;
         memset(&tg, 0, sizeof tg);
         Insight_SetVisible(insight, cr);
         float used = Insight_Draw(insight, (Rectangle){px, y, PANEL_W, cr.y + cr.height - y > 200 ? cr.y + cr.height - y : 200}, mask, &clicked, &tg);
-        Th_SetInputBlocked(prevB);
+        Th_SetMouseBlocked(prevB);
         y += used;
         if (clicked && tg.action != INSIGHT_NONE) { panelTarget = tg; panelTargetSet = true; }
     } else if (insight) {

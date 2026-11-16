@@ -153,6 +153,9 @@ static void ImportFontOpen(void);
 static FlLayer *FollowCopy(void);          /* fitdoc.inc: the settings of the layer the glyphs are drawn from, for an undo snapshot */
 static void FollowRestore(FlLayer *snap);
 static void FitSnapDrop(void);
+static void LayersShiftY(float d);         /* fitdoc.inc: every font layer moves by d rows (the baseline moved) */
+static bool filledShapes = false;      /* the glyph view's Filled option for the rectangle and the ellipse (kept in pxfe.ini, key filled) */
+static bool pixelPerfect = false;      /* the glyph view's Pixel-perfect option (kept in pxfe.ini, key pixelPerfect) */
 static int panelTab = 0;               /* tab of the right-hand panel: 0 Font, 1 Glyph, 2 Similar, 3 Layers (kept in pxfe.ini) */
 
 /* ------------------------------------------------------------------------------------------------
@@ -259,6 +262,10 @@ static int WrapLines(const char *text, float maxW, char lines[][160], int maxLin
 static PxFont *undoStack[UNDO_MAX + 1], *redoStack[UNDO_MAX + 1];
 static FlLayer *undoFit[UNDO_MAX + 1], *redoFit[UNDO_MAX + 1];   /* beside each snapshot: the settings its glyphs were drawn with (fitdoc.inc), or NULL */
 static int undoN = 0, redoN = 0;
+/* beside each snapshot: how far the baseline had been moved up in all (the font layers sit on it), and the code of the glyph the glyph view showed (-1: none) */
+static int undoBase[UNDO_MAX + 1], redoBase[UNDO_MAX + 1];
+static int32_t undoCode[UNDO_MAX + 1], redoCode[UNDO_MAX + 1];
+static int baseShift = 0;
 static int lastUndoKey = 0;
 static double lastUndoTime = 0;
 
@@ -310,9 +317,13 @@ static void PushUndo(int key)
         FlLayer_Free(undoFit[0]);
         memmove(&undoStack[0], &undoStack[1], sizeof(PxFont *) * (UNDO_MAX - 1));
         memmove(&undoFit[0], &undoFit[1], sizeof(FlLayer *) * (UNDO_MAX - 1));
+        memmove(&undoBase[0], &undoBase[1], sizeof(int) * (UNDO_MAX - 1));
+        memmove(&undoCode[0], &undoCode[1], sizeof(int32_t) * (UNDO_MAX - 1));
         undoN--;
     }
     undoFit[undoN] = FollowCopy();
+    undoBase[undoN] = baseShift;
+    undoCode[undoN] = (inEditor && ed && Editor_GlyphIndex(ed) >= 0 && Editor_GlyphIndex(ed) < font.count) ? font.glyphs[Editor_GlyphIndex(ed)].codepoint : -1;
     undoStack[undoN++] = s;
 }
 
@@ -356,7 +367,7 @@ static void EditorBefore(void *user) { (void)user; PushUndo(0); }
 static void OpenEditor(int idx)
 {
     if (!hasFont || idx < 0 || idx >= font.count) return;
-    if (!ed) ed = Editor_Create();
+    if (!ed) { ed = Editor_Create(); Editor_SetPixelPerfect(ed, pixelPerfect); Editor_SetFilled(ed, filledShapes); }
     Editor_Open(ed, &font, idx, EditorBefore, NULL);
     Editor_SetReadOnly(ed, readOnly);
     Editor_SetOriginalHash(ed, OrigGlyphHash(font.glyphs[idx].codepoint));
@@ -374,6 +385,8 @@ static void DoUndoRedo(bool redo)
     int *fn = redo ? &redoN : &undoN;
     PxFont **to = redo ? undoStack : redoStack;
     FlLayer **fromFit = redo ? redoFit : undoFit, **toFit = redo ? undoFit : redoFit;
+    int *fromBase = redo ? redoBase : undoBase, *toBase = redo ? undoBase : redoBase;
+    int32_t *fromCode = redo ? redoCode : undoCode, *toCode = redo ? undoCode : redoCode;
     int *tn = redo ? &undoN : &redoN;
     if (*fn == 0) return;
     PxFont *cur = (PxFont *)malloc(sizeof(PxFont));
@@ -386,7 +399,12 @@ static void DoUndoRedo(bool redo)
     font = *s;
     free(s);
     toFit[*tn] = curFit;
+    toBase[*tn] = baseShift;
+    int32_t hadCode = (inEditor && ed && Editor_GlyphIndex(ed) >= 0 && Editor_GlyphIndex(ed) < cur->count) ? cur->glyphs[Editor_GlyphIndex(ed)].codepoint : -1;
+    toCode[*tn] = hadCode;
     to[(*tn)++] = cur;
+    int32_t wantCode = fromCode[*fn];
+    if (fromBase[*fn] != baseShift) { LayersShiftY((float)(baseShift - fromBase[*fn])); baseShift = fromBase[*fn]; }   /* the layers follow the baseline back */
     FollowRestore(sFit);   /* the layer the glyphs are drawn from gets the settings this font was drawn with */
     needHash = true;
     lastUndoKey = 0;
@@ -394,6 +412,8 @@ static void DoUndoRedo(bool redo)
     SelClear(); /* indices may no longer match */
     if (inEditor) {
         int gi = Editor_GlyphIndex(ed);
+        if (wantCode >= 0 && (gi >= font.count || font.glyphs[gi].codepoint != hadCode) && px_font_find(&font, wantCode) >= 0)
+            gi = px_font_find(&font, wantCode);   /* the glyph is not where it was (its code changed): follow it by the code it had */
         if (gi >= font.count) gi = font.count - 1;
         if (gi >= 0) OpenEditor(gi); else inEditor = false;
     }
@@ -648,6 +668,7 @@ static void AdoptDocument(PxFont *nf, PxtfTypeface *nc, int variant, bool stored
     if (IsMouseButtonDown(MOUSE_BUTTON_LEFT)) swallowMouse = true;
     CommitEdits();      /* the document being left */
     docIsNew = false;
+    baseShift = 0;
     StackClear(undoStack, &undoN);
     StackClear(redoStack, &redoN);
     if (hasFont) px_font_free(&font);
@@ -696,6 +717,7 @@ static void AdoptDocument(PxFont *nf, PxtfTypeface *nc, int variant, bool stored
 /* the document goes (another database is installed) */
 static void DropDocument(void)
 {
+    baseShift = 0;
     StackClear(undoStack, &undoN);
     StackClear(redoStack, &redoN);
     if (hasFont) px_font_free(&font);
@@ -845,6 +867,7 @@ static bool OpenStoreTypeface(const char *pxtfHash, int variant)
  * yet (New Font, Import Font File) is added.  False when it failed (an error is shown). */
 static bool CommitEdits(void)
 {
+    if (inEditor && ed) Editor_Flush(ed);   /* pixels still floating in the glyph view are part of the edit */
     if (!hasFont || !store || !EditPending()) return true;
     char err[PX_ERR_LEN] = "";
     StoreEditResult er;
@@ -2052,6 +2075,7 @@ static void GoTypefaceOfFont(void)
 static void CloseGlyphView(void)
 {
     if (!inEditor || !ed) return;
+    Editor_Flush(ed);
     int gi = Editor_GlyphIndex(ed);
     inEditor = false;
     SelResize();
@@ -2652,8 +2676,8 @@ static void HandleShortcuts(void)
     if (alt && IsKeyPressed(KEY_LEFT)) { NavBack(); return; }
     if (inBrowser || inFinder || !hasFont) return;
     if (ctrl && shift && IsKeyPressed(KEY_F)) { CmdFindInLibrary(); return; }
-    if (ctrl && IsKeyPressed(KEY_Z) && !shift) { if (readOnly) Th_Toast(2, "The font is locked"); else DoUndoRedo(false); return; }
-    if (ctrl && (IsKeyPressed(KEY_Y) || (IsKeyPressed(KEY_Z) && shift))) { if (!readOnly) DoUndoRedo(true); return; }
+    if (ctrl && IsKeyPressed(KEY_Z) && !shift) { if (readOnly) Th_Toast(2, "The font is locked"); else if (inEditor && ed && Editor_CancelFloat(ed)) Th_Toast(0, "Cancelled"); else DoUndoRedo(false); return; }
+    if (ctrl && (IsKeyPressed(KEY_Y) || (IsKeyPressed(KEY_Z) && shift))) { if (!readOnly && !(inEditor && ed && Editor_CancelFloat(ed))) DoUndoRedo(true); return; }
     if (inEditor) return;
     if (ctx.open) return;
 
@@ -2752,6 +2776,8 @@ int main(int argc, char **argv)
     Th_HoverFn = Hov;
     Th_NoticeFn = HashNotice;
     Sample_LoadIni(IniPath());   /* the shared sample text and the font view strip settings */
+    { char v[8]; if (IniGetApp("pixelPerfect", v, sizeof v)) pixelPerfect = atoi(v) != 0; }
+    { char v[8]; if (IniGetApp("filled", v, sizeof v)) filledShapes = atoi(v) != 0; }
     { char v[8]; if (IniGetApp("fontTab", v, sizeof v)) { int t = atoi(v); panelTab = t < 0 || t > 3 ? 0 : t; } }
 
     px_font_init(&font);
@@ -2863,6 +2889,8 @@ int main(int argc, char **argv)
                 if (Editor_TakeLayersRequest(ed)) { glyphTab = 2; panelScroll = 0; }
                 Th_SetInputBlocked(uiBlocked);
                 if (Editor_TakeChanged(ed)) needHash = true;
+                if (Editor_PixelPerfect(ed) != pixelPerfect) { pixelPerfect = Editor_PixelPerfect(ed); IniSetApp("pixelPerfect", pixelPerfect ? "1" : "0"); }
+                if (Editor_Filled(ed) != filledShapes) { filledShapes = Editor_Filled(ed); IniSetApp("filled", filledShapes ? "1" : "0"); }
                 int gi = Editor_GlyphIndex(ed);
                 if (er == EDITOR_CLOSE) {
                     CloseGlyphView();

@@ -95,6 +95,7 @@ static void info_from_store(LibEntry *e, const StoreEntry *se) {
     in->above = se->ascent;
     in->below = se->descent;
     in->monospaced = se->monospaced;
+    in->colors = se->colors;
     in->hasRatio = se->hasRatio;
     in->ratioA = se->ratioA;
     in->ratioB = se->ratioB;
@@ -235,6 +236,7 @@ static bool draft_quick(const char *path, Library *lib, LibEntry *e, char err[PX
     if (!raw) return fail(err, "cannot read %s", path);
     LibInfo *in = &e->info;
     memset(in, 0, sizeof *in);
+    in->colors = 1;
     bool hasA = false, hasD = false, header = false;
     int a = 0, d = 0, ga = 0, gd = 0;
     char *ctext = NULL;
@@ -411,6 +413,12 @@ static void fill_info(const PxFont *f, LibInfo *in) {
     in->boxStated = f->has[PXM_ASCENT] && f->has[PXM_DESCENT];
     in->boxExact = px_font_box(f, &in->above, &in->below);
     in->monospaced = f->monospaced;
+    in->colors = 1;
+    if (f->hasPalette) {
+        int n = 0;
+        for (int i = 1; i < PX_NUM_PIXELS; i++) if (f->colorUsed[i]) n++;
+        if (n > 1) in->colors = n;
+    }
     in->hasRatio = f->hasRatio;
     in->ratioA = f->ratioA;
     in->ratioB = f->ratioB;

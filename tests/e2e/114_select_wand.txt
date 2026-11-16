@@ -1,0 +1,99 @@
+# 114. Magic wand (version 16), font 0820dc69 unlocked, glyph U+0020 (empty, advance 4).
+# The wand selects the cells joined to the one clicked that hold the same pixel character: 4-connected, 8-connected with the "8-way" toggle;
+# Shift adds, Alt subtracts; the region is the glyph box and the bitmap.
+wait 5
+click @Unlock
+wait 4
+sleep 600
+dblclick @cell:U+0020
+wait 5
+assert editor_glyph U+0020
+
+# pixels: A = (1,1) (2,1) (1,2), B = (4,1), C = (3,2); C touches A and B only at the corners
+click @ecell:1,1
+click @ecell:2,1
+click @ecell:1,2
+click @ecell:4,1
+click @ecell:3,2
+wait 3
+assert glyph U+0020 ink 5
+assert undo 5
+
+key w
+wait 2
+assert etool 7
+click @ecell:1,1
+wait 3
+assert eselcount 3
+assert esel bounds 1 1 2 2
+assert esel cell 2 1
+assert esel cell 3 2 0
+# selecting writes nothing
+assert undo 5
+
+# 8-way: the corner neighbours join
+click @8-way
+wait 2
+click @ecell:2,1
+wait 3
+assert eselcount 5
+assert esel bounds 1 1 4 2
+click @8-way
+wait 2
+
+# Shift adds, Alt subtracts
+click @ecell:1,1
+wait 3
+assert eselcount 3
+click @ecell:4,1 shift
+wait 3
+assert eselcount 4
+assert esel cell 4 1
+click @ecell:1,2 alt
+wait 3
+assert eselcount 1
+assert esel bounds 4 1 1 1
+
+# the empty cells that are connected: the whole box and the bitmap's reach (5 x 8 = 40 cells) except the 5 pixels
+click @ecell:0,0
+wait 3
+assert eselcount 35
+assert esel bounds 0 0 5 8
+assert esel cell 1 1 0
+assert esel cell 4 2 1
+# outside the glyph box and bitmap: nothing is selected
+click @ecell:9,9
+wait 3
+assert esel none
+
+# a wand click inside the selection selects again (it never moves); the bar's modes work with it
+click @ecell:1,1
+click @selmode.1
+wait 2
+click @ecell:4,1
+wait 3
+assert eselcount 4
+click @selmode.0
+wait 2
+
+# the wand's selection can be moved: A goes down by four rows with the Move tool
+click @ecell:1,1
+wait 3
+assert eselcount 3
+key v
+wait 2
+drag @ecell:1,1 @ecell:1,5
+wait 3
+assert efloating 1
+assert esel bounds 1 5 2 2
+key enter
+wait 3
+assert undo 6
+assert glyph U+0020 ink 5
+assert glyph U+0020 pixel 1 1 .
+assert glyph U+0020 pixel 1 5 0
+assert glyph U+0020 pixel 2 5 0
+assert glyph U+0020 pixel 1 6 0
+assert glyph U+0020 pixel 4 1 0
+assert glyph U+0020 pixel 3 2 0
+shot tests/tmp/shots/114_wand.png

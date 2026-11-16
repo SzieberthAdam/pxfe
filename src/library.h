@@ -41,6 +41,7 @@ typedef struct LibInfo {
                                 a few probe glyphs H g p y j | [ ] Å É Ç for it) */
     int  above, below;       /* the font box rows (px_font_box); size in pixels = above + below */
     bool monospaced;
+    int  colors;             /* ink colours (pixel characters other than ".", at least 1) */
     bool hasRatio; int ratioA, ratioB;
 } LibInfo;
 

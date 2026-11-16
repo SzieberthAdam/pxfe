@@ -96,6 +96,7 @@ typedef struct StoreEntry {
     bool hasAscent, hasDescent; int ascent, descent;
     bool hasHeight; int height;             /* ascent + descent when both are stated */
     bool monospaced;
+    int  colors;                             /* ink colours: palette entries other than ".", at least 1 */
     bool hasRatio; int ratioA, ratioB;
     int  glyphCount;                         /* glyph lines of the font without the FFFFFF line */
     bool hasDefault;                         /* has a FFFFFF line */

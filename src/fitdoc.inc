@@ -89,6 +89,16 @@ static void FollowRestore(FlLayer *snap)
     fitSnapSerial = l->serial;
 }
 
+/* The baseline moved: every font layer sits on the baseline origin, so its offset moves by d rows (y up) and the layers stay where they were on the
+ * screen.  What the followed layer drew the glyphs with moves too (the glyphs moved with the baseline, so none of them has to be drawn again). */
+static void LayersShiftY(float d)
+{
+    if (d == 0 || !flDoc) return;
+    for (int i = 0; i < flDoc->n; i++) flDoc->v[i]->s.dy += d;
+    if (fitSnap) fitSnap->s.dy += d;
+    flDoc->rev++;
+}
+
 /* ---- glyphs from pixels ---- */
 
 static bool GlyphFromFit(const FitBitmap *b, int32_t code, PxGlyph *g)

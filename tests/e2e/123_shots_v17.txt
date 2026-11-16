@@ -1,0 +1,33 @@
+# 123 (not in run_all.bat): screenshots of version 17 in tests\tmp\shots: the bar of the Pencil, Line and Curve at 1400 x 900 and at the narrowest window.
+# Start it like the others with the first test font:
+#   copy testdata\lib.pxfdb tests\tmp\e2e.pxfdb ; tests\tmp\pxfe_e2e.exe tests\tmp\e2e.pxfdb --font 0820dc69a21b1cdb3a44d2cff7d884d8 --ini tests\tmp\e2e.ini --play tests\e2e\123_shots_v17.txt
+wait 5
+click @Unlock
+wait 4
+sleep 600
+dblclick @cell:U+0020
+wait 5
+key l shift
+drag @ecell:0,6 @ecell:6,6
+drag @ecell:1,6 @ecell:1,1
+drag @ecell:5,6 @ecell:5,1
+wait 3
+key b
+click @Pixel-perfect
+wait 3
+shot tests/tmp/shots/123_wide_pencil.png
+resize 1110 600
+wait 8
+shot tests/tmp/shots/123_narrow_pencil.png
+key l
+wait 4
+shot tests/tmp/shots/123_narrow_line.png
+key l shift
+wait 4
+drag @ecell:0,5 @ecell:6,5
+drag @ecell:1,5 @ecell:1,1
+wait 4
+shot tests/tmp/shots/123_narrow_curve.png
+resize 1000 560
+wait 8
+shot tests/tmp/shots/123_narrowest_curve.png

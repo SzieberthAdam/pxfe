@@ -1,0 +1,157 @@
+# 113. Selection shapes and modes (version 16), font 0820dc69 unlocked, glyph U+0020 (empty, advance 4: the font box across it is 4 x 8 cells).
+# Select all, deselect, invert, the marquee (square with Shift after the press), add / subtract / intersect with Shift, Alt and the bar, the lasso, a click.
+wait 5
+click @Unlock
+wait 4
+sleep 600
+dblclick @cell:U+0020
+wait 5
+assert editor_glyph U+0020
+assert eselcount 0
+click @Marquee
+wait 2
+assert etool 5
+
+# Ctrl+A selects the whole glyph box, Ctrl+D deselects, Ctrl+Shift+I inverts
+key a ctrl
+wait 2
+assert eselcount 32
+assert esel bounds 0 0 4 8
+key d ctrl
+wait 2
+assert esel none
+key i ctrl shift
+wait 2
+assert eselcount 32
+key i ctrl shift
+wait 2
+assert esel none
+# nothing of this wrote to the font
+assert undo 0
+assert dirty 0
+
+# a rectangle; a click outside deselects, a click inside keeps it
+drag @ecell:1,1 @ecell:3,3
+wait 3
+assert esel bounds 1 1 3 3
+assert eselcount 9
+click @ecell:2,2
+wait 3
+assert eselcount 9
+assert efloating 0
+click @ecell:7,6
+wait 3
+assert esel none
+
+# Shift pressed after the press makes a square from the start cell towards the pointer
+move @ecell:1,1
+mousedown
+wait 2
+keydown shift
+move @ecell:4,2
+wait 3
+mouseup
+keyup shift
+wait 3
+assert esel bounds 1 1 4 4
+assert eselcount 16
+key d ctrl
+wait 2
+
+# Shift at the press adds, Alt subtracts, both intersect
+drag @ecell:1,1 @ecell:3,3
+drag @ecell:5,0 @ecell:6,1 shift
+wait 3
+assert eselcount 13
+assert esel bounds 1 0 6 4
+drag @ecell:2,2 @ecell:3,3 alt
+wait 3
+assert eselcount 9
+assert esel cell 2 2 0
+assert esel cell 1 3 1
+drag @ecell:1,1 @ecell:2,2 shift alt
+wait 3
+assert eselcount 3
+assert esel bounds 1 1 2 2
+assert efloating 0
+
+# the bar: Set, Add, Sub, And (the keys override it)
+key d ctrl
+drag @ecell:1,1 @ecell:3,3
+click @selmode.1
+wait 2
+drag @ecell:5,5 @ecell:6,6
+wait 3
+assert eselcount 13
+click @selmode.2
+wait 2
+drag @ecell:5,5 @ecell:6,5
+wait 3
+assert eselcount 11
+drag @ecell:0,7 @ecell:1,7 shift
+wait 3
+assert eselcount 13
+click @selmode.3
+wait 2
+drag @ecell:0,0 @ecell:3,3
+wait 3
+assert eselcount 9
+click @selmode.0
+wait 2
+drag @ecell:5,0 @ecell:6,1
+wait 3
+assert eselcount 4
+assert esel bounds 5 0 2 2
+shot tests/tmp/shots/113_modes.png
+
+# the lasso: the cells inside a closed path and the cells on it (a right triangle of 15 cells); a click deselects
+key q
+wait 2
+assert etool 6
+move @ecell:1,1
+mousedown
+wait 2
+move @ecell:5,1
+wait 2
+move @ecell:1,5
+wait 2
+mouseup
+wait 3
+assert esel bounds 1 1 5 5
+assert eselcount 15
+assert esel cell 1 5 1
+assert esel cell 5 5 0
+assert esel cell 5 1 1
+shot tests/tmp/shots/113_lasso.png
+# Shift adds a second loop
+move @ecell:6,6
+keydown shift
+mousedown
+move @ecell:7,6
+wait 2
+move @ecell:7,7
+wait 2
+mouseup
+keyup shift
+wait 3
+assert eselcount 18
+click @ecell:0,7
+wait 3
+assert esel none
+# the toolbar buttons and keys of the selection tools
+click @Magic_Wand
+wait 2
+assert etool 7
+click @Lasso
+wait 2
+assert etool 6
+key w
+wait 2
+assert etool 7
+key v
+wait 2
+assert etool 8
+key m
+wait 2
+assert etool 5
+assert undo 0

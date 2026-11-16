@@ -1,0 +1,103 @@
+# 131. The paint bucket is clipped to the selection (version 20), font 0820dc69 unlocked, glyph U+0020 (empty, advance 4; font box rows 0..7).
+# The selection is a wall and a limit: only its cells are filled, a click outside it fills nothing, with and without Contiguous.
+wait 5
+click @Unlock
+wait 4
+sleep 600
+dblclick @cell:U+0020
+wait 5
+assert editor_glyph U+0020
+assert glyph U+0020 empty
+
+# columns 1..2 and rows 2..4 are selected (6 cells): the fill covers those and no others
+key m
+drag @ecell:1,2 @ecell:2,4
+wait 3
+assert eselcount 6
+key f
+click @ecell:1,2
+wait 3
+assert glyph U+0020 ink 6
+assert glyph U+0020 pixel 1 2 0
+assert glyph U+0020 pixel 2 4 0
+assert glyph U+0020 pixel 0 2 .
+assert glyph U+0020 pixel 3 3 .
+assert glyph U+0020 pixel 1 5 .
+assert undo 1
+key z ctrl
+wait 3
+assert glyph U+0020 empty
+
+# a click outside the selection fills nothing and takes no undo step
+key m
+drag @ecell:1,2 @ecell:2,4
+wait 3
+assert eselcount 6
+key f
+click @ecell:3,6
+wait 3
+assert glyph U+0020 empty
+assert undo 0
+assert eselcount 6
+
+# the right button is clipped too
+click @ecell:1,3
+wait 3
+assert glyph U+0020 ink 6
+click @ecell:1,3 right
+wait 3
+assert glyph U+0020 ink 0
+key z ctrl
+wait 3
+key z ctrl
+wait 3
+assert glyph U+0020 empty
+
+# not contiguous, the global fill is clipped as well
+key m
+drag @ecell:1,2 @ecell:2,4
+wait 3
+key f
+click @Contiguous
+click @ecell:2,3
+wait 3
+assert glyph U+0020 ink 6
+assert glyph U+0020 pixel 0 3 .
+assert undo 1
+key z ctrl
+wait 3
+click @Contiguous
+wait 2
+assert econtig 1
+
+# the selection splits the empty space: two rectangles make two rooms, and the fill takes the one that was clicked
+key m
+drag @ecell:0,0 @ecell:1,1
+wait 3
+assert eselcount 4
+drag @ecell:3,6 @ecell:3,7 shift
+wait 3
+assert eselcount 6
+key f
+click @ecell:0,0
+wait 3
+assert glyph U+0020 ink 4
+assert glyph U+0020 pixel 3 6 .
+assert glyph U+0020 pixel 1 1 0
+key z ctrl
+wait 3
+assert glyph U+0020 empty
+
+# without a selection the fill covers the whole glyph box again
+key m
+click @ecell:3,3
+wait 3
+assert esel none
+key f
+click @ecell:1,1
+wait 3
+assert glyph U+0020 ink 32
+key z ctrl
+wait 3
+assert glyph U+0020 empty
+assert undo 0

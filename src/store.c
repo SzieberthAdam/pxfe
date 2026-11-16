@@ -884,7 +884,8 @@ static const char FONT_SQL[] =
     "SELECT hash, ascent, descent, height, monospaced, ratio_x, ratio_y,"
     " (SELECT COUNT(*) FROM pxfm_glyph g WHERE g.pxfm = m.hash AND g.code <> 16777215),"
     " EXISTS (SELECT 1 FROM pxfm_glyph g WHERE g.pxfm = m.hash AND g.code = 16777215),"
-    " (SELECT COUNT(*) FROM pxtf_variant v WHERE v.pxfm = m.hash)"
+    " (SELECT COUNT(*) FROM pxtf_variant v WHERE v.pxfm = m.hash),"
+    " (SELECT COUNT(*) FROM pxfm_color c WHERE c.pxfm = m.hash AND c.pixel <> '.')"
     " FROM pxfm m ORDER BY hash";
 
 typedef struct FontFacts {
@@ -893,7 +894,7 @@ typedef struct FontFacts {
     bool hasHeight; int height;
     bool monospaced;
     bool hasRatio; int ratioA, ratioB;
-    int glyphCount; bool hasDefault; int nVariants;
+    int glyphCount; bool hasDefault; int nVariants; int colors;
 } FontFacts;
 
 static bool read_facts(sqlite3 *db, FontFacts **out, int *n, char err[PX_ERR_LEN]) {
@@ -914,6 +915,7 @@ static bool read_facts(sqlite3 *db, FontFacts **out, int *n, char err[PX_ERR_LEN
         f->glyphCount = sqlite3_column_int(st, 7);
         f->hasDefault = sqlite3_column_int(st, 8) != 0;
         f->nVariants = sqlite3_column_int(st, 9);
+        f->colors = sqlite3_column_int(st, 10) > 1 ? sqlite3_column_int(st, 10) : 1;
     }
     sqlite3_finalize(st);
     *out = v; *n = cnt;
@@ -925,6 +927,7 @@ static void apply_facts(StoreEntry *e, const FontFacts *f) {
     e->hasHeight = f->hasHeight; e->height = f->height; e->monospaced = f->monospaced;
     e->hasRatio = f->hasRatio; e->ratioA = f->ratioA; e->ratioB = f->ratioB;
     e->glyphCount = f->glyphCount; e->hasDefault = f->hasDefault; e->nVariants = f->nVariants;
+    e->colors = f->colors;
 }
 
 static int cmp_facts_key(const void *k, const void *e) { return memcmp(k, ((const FontFacts *)e)->hash, 16); }

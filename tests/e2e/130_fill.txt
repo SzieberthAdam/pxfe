@@ -1,0 +1,159 @@
+# 130. The paint bucket (version 20), font 0820dc69 unlocked, glyph U+0020 (empty, advance 4; font box rows 0..7, so the glyph box is 4 x 8 = 32 cells).
+# Key F and the strip's Fill; the options Contiguous and 8-way; the region is the glyph box, so empty space is filled and the bitmap grows;
+# global fill takes every cell of the clicked pixel character; the right button fills with '.'; one undo step.
+wait 5
+click @Unlock
+wait 4
+sleep 600
+dblclick @cell:U+0020
+wait 5
+assert editor_glyph U+0020
+assert glyph U+0020 empty
+assert undo 0
+
+key f
+wait 2
+assert etool 4
+assert w.Contiguous 1
+assert w.8-way 1
+assert econtig 1
+assert w.Filled 0
+assert w.Pixel-perfect 0
+key b
+wait 2
+assert w.Contiguous 0
+click @Fill
+wait 2
+assert etool 4
+
+# empty space: the whole glyph box is filled and the bitmap grows to hold it; one undo step
+click @ecell:1,1
+wait 3
+assert glyph U+0020 ink 32
+assert glyph U+0020 size 4x8
+assert undo 1
+key z ctrl
+wait 3
+assert glyph U+0020 empty
+assert undo 0
+
+# contiguous: a ring (the rectangle's outline, 4 x 4 = 12 cells) divides the box; inside it is 4 cells, outside 16
+key r
+drag @ecell:0,0 @ecell:3,3
+wait 3
+assert glyph U+0020 ink 12
+key f
+click @ecell:1,1
+wait 3
+assert glyph U+0020 ink 16
+assert undo 2
+click @ecell:2,5
+wait 3
+assert glyph U+0020 ink 32
+assert undo 3
+key z ctrl
+key z ctrl
+wait 3
+assert glyph U+0020 ink 12
+assert undo 1
+
+# a click on a cell that already holds the ink changes nothing (no undo step)
+click @ecell:0,0
+wait 3
+assert glyph U+0020 ink 12
+assert undo 1
+
+# the right button fills with '.': the ring is cleared, a dot elsewhere stays (contiguous)
+key b
+click @ecell:2,6
+wait 3
+assert glyph U+0020 ink 13
+key f
+click @ecell:0,0 right
+wait 3
+assert glyph U+0020 ink 1
+assert glyph U+0020 pixel 2 6 0
+assert glyph U+0020 pixel 0 0 .
+assert undo 3
+key z ctrl
+wait 3
+assert glyph U+0020 ink 13
+
+# not contiguous: the same click takes every cell of that character in the box: the ring and the dot go together
+click @Contiguous
+wait 2
+assert econtig 0
+click @ecell:0,0 right
+wait 3
+assert glyph U+0020 ink 0
+assert undo 3
+key z ctrl
+wait 3
+assert glyph U+0020 ink 13
+
+# not contiguous, on the empty cells: all of them, inside the ring and outside, are filled in one step: the box is full
+click @ecell:1,1
+wait 3
+assert glyph U+0020 ink 32
+assert undo 3
+key z ctrl
+wait 3
+assert glyph U+0020 ink 13
+click @Contiguous
+wait 2
+assert econtig 1
+
+# 4-way and 8-way: a diamond (the 3 x 3 ellipse, 4 cells); its corner cell touches the middle one only diagonally
+key z ctrl
+key z ctrl
+key z ctrl
+wait 3
+assert glyph U+0020 empty
+assert undo 0
+key o
+drag @ecell:0,0 @ecell:2,2
+wait 3
+assert glyph U+0020 ink 4
+key f
+click @ecell:0,0
+wait 3
+assert glyph U+0020 ink 5
+assert glyph U+0020 pixel 1 1 .
+key z ctrl
+wait 3
+assert glyph U+0020 ink 4
+click @8-way
+wait 2
+click @ecell:0,0
+wait 3
+assert glyph U+0020 ink 32
+assert glyph U+0020 pixel 1 1 0
+assert glyph U+0020 pixel 3 7 0
+key z ctrl
+wait 3
+assert glyph U+0020 ink 4
+click @8-way
+wait 2
+key z ctrl
+wait 3
+assert glyph U+0020 empty
+
+# growth: a pixel to the right of the advance widens the region; the fill takes the new columns too
+key b
+click @ecell:6,3
+wait 3
+assert glyph U+0020 ink 1
+key f
+click @ecell:1,1
+wait 3
+assert glyph U+0020 ink 56
+assert glyph U+0020 pixel 5 7 0
+assert glyph U+0020 pixel 6 0 0
+assert undo 2
+shot tests/tmp/shots/130_fill_grown.png
+key z ctrl
+key z ctrl
+wait 3
+assert glyph U+0020 empty
+assert undo 0
+assert editor 1

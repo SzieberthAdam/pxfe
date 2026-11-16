@@ -173,6 +173,67 @@ call :run 105_lock "%DB% --font %H1%"
 call :run 105b_lock_reload "%DB% --font 36e0649997646b5da1e22ded4ab8f8db"
 call :fresh
 call :run 106_import_sheet "%DB%"
+call :fresh
+call :run 107_baseline "%DB% --font %H1%"
+call :fresh
+call :run 108_glyph_fields "%DB% --font %H4%"
+call :fresh
+copy /y testdata\lib_colors.pxfdb tests\tmp\e2e.pxfdb >nul
+call :run 109_color_filter "%DB%"
+call :fresh
+call :run 110_type_mouse_away "%DB%"
+call :fresh
+call :run 110b_type_mouse_away_glyph "%DB% --font %H4%"
+call :fresh
+call :run 111_press_release "%DB% --font %H1%"
+call :fresh
+call :run 112_select_move "%DB% --font %H1%"
+call :fresh
+call :run 113_select_modes "%DB% --font %H1%"
+call :fresh
+call :run 114_select_wand "%DB% --font %H1%"
+call :fresh
+call :run 115_select_clipboard "%DB% --font %H1%"
+call :fresh
+call :run 116_select_growth_locked "%DB% --font %H1%"
+call :fresh
+call :run 117_line_shift_undo "%DB% --font %H1%"
+call :fresh
+call :run 118_pencil_shift_click "%DB% --font %H1%"
+call :fresh
+call :run 119_pixel_perfect "%DB% --font %H1%"
+call :fresh
+call :run 120_curve "%DB% --font %H1%"
+call :fresh
+call :run 121_clip_to_selection "%DB% --font %H1%"
+call :fresh
+call :run 122_line_curve_locked "%DB% --font %H1%"
+call :fresh
+call :run 124_tool_strip "%DB% --font %H1%"
+call :fresh
+call :run 125_rectangle "%DB% --font %H1%"
+call :fresh
+call :run 126_ellipse "%DB% --font %H1%"
+call :fresh
+call :run 127_shape_clip "%DB% --font %H1%"
+call :fresh
+call :run 128_shape_locked "%DB% --font %H1%"
+call :fresh
+call :run 129_strip_order "%DB% --font %H1%"
+call :fresh
+call :run 130_fill "%DB% --font %H1%"
+call :fresh
+call :run 131_fill_clip "%DB% --font %H1%"
+call :fresh
+call :run 132_eyedropper "%DB% --font %H3%"
+call :fresh
+call :run 133_polygon "%DB% --font %H1%"
+call :fresh
+call :run 134_contour "%DB% --font %H1%"
+call :fresh
+call :run 135_tools_locked "%DB% --font %H1%"
+call :fresh
+call :run 136_strip_v20 "%DB% --font %H1%"
 
 echo.
 echo %RUNS% scripts run, %FAILS% failed

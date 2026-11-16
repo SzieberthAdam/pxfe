@@ -1,0 +1,63 @@
+# 122. A locked font refuses the line, the curve and the pencil (version 17), font 0820dc69 (locked), glyph U+0020 (empty, advance 4).
+# Then it is unlocked and a curve being made is thrown away when the font is locked again.
+wait 5
+assert locked 1
+assert readonly 1
+dblclick @cell:U+0020
+wait 5
+assert editor 1
+assert editor_glyph U+0020
+
+# the tool buttons are off and the keys do nothing
+click @Line
+wait 2
+assert etool 0
+key l
+wait 2
+assert etool 0
+key l shift
+wait 2
+assert etool 0
+assert w.linemode.0 0
+assert w.linemode.1 0
+
+# nothing is drawn: pencil, shift+click, right button
+drag @ecell:0,1 @ecell:5,1
+wait 3
+assert glyph U+0020 empty
+click @ecell:2,2
+click @ecell:5,5 shift
+click @ecell:3,3 right
+wait 3
+assert glyph U+0020 empty
+assert undo 0
+assert ecurve 0
+assert dirty 0
+assert editor 1
+
+# unlocked, the curve can be made
+click @Unlock
+wait 4
+key l shift
+wait 2
+assert etool 9
+drag @ecell:0,6 @ecell:5,6
+drag @ecell:2,6 @ecell:2,2
+wait 3
+assert ecurve 2
+assert glyph U+0020 empty
+
+# locking again draws the half-made curve first, as leaving the glyph does (the padlock commits what is pending); then nothing more can be done
+click @Lock
+wait 4
+assert ecurve 0
+assert glyph U+0020 pixel 0 6 0
+assert glyph U+0020 pixel 5 6 0
+assert undo 1
+key enter
+wait 3
+assert undo 1
+drag @ecell:0,1 @ecell:5,1
+wait 3
+assert glyph U+0020 pixel 0 1 .
+assert undo 1

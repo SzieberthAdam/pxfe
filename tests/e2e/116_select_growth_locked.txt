@@ -1,0 +1,153 @@
+# 116. Selection and moving, the limits (version 16), font 0820dc69, glyph U+0020 (empty, advance 4; font box rows 0..7).
+# A locked font refuses every selection command; a move out of the box grows the bitmap (Shift+arrow is 8 cells); leaving the glyph drops the pixels.
+wait 5
+assert locked 1
+assert readonly 1
+dblclick @cell:U+0020
+wait 5
+assert editor 1
+assert editor_glyph U+0020
+
+# locked: the selection tools are off, the keys refuse, and nothing changes
+click @Marquee
+wait 2
+assert etool 0
+key m
+wait 2
+assert etool 0
+key w
+key v
+wait 2
+assert etool 0
+key a ctrl
+wait 2
+assert esel none
+drag @ecell:0,0 @ecell:3,3
+wait 3
+assert esel none
+key v ctrl
+wait 3
+assert toast The font is locked
+key x ctrl
+key delete
+wait 3
+assert glyph U+0020 empty
+assert undo 0
+assert eclip 0
+shot tests/tmp/shots/116_locked.png
+
+# unlocked: a block of 3 x 3 at columns 1..3, rows 1..3
+click @Unlock
+wait 6
+assert locked 0
+drag @ecell:1,1 @ecell:3,1
+drag @ecell:1,2 @ecell:3,2
+drag @ecell:1,3 @ecell:3,3
+wait 3
+assert glyph U+0020 ink 9
+assert undo 3
+repeat 30 click @ezoom-
+wait 4
+
+# Shift+arrow moves the selection by 8 cells: down out of the box (the bitmap grows to take it), then left and up
+key m
+drag @ecell:0,0 @ecell:4,4
+wait 3
+assert eselcount 25
+key down shift
+wait 3
+assert efloating 1
+assert esel bounds 0 8 5 5
+assert glyph U+0020 top 1
+key enter
+wait 3
+assert undo 4
+assert glyph U+0020 top 9
+assert glyph U+0020 left 1
+assert glyph U+0020 size 3x3
+assert glyph U+0020 ink 9
+key left shift
+key up shift
+key up shift
+wait 3
+assert esel bounds -8 -8 5 5
+key enter
+wait 3
+assert undo 5
+assert glyph U+0020 left -7
+assert glyph U+0020 top -7
+assert glyph U+0020 size 3x3
+# a copy far from the original: the bitmap spans both (11 x 11), and an undo gives the 3 x 3 back
+drag @ecell:-6,-6 @ecell:2,2 ctrl
+wait 3
+assert efloating 1
+assert esel bounds 0 0 5 5
+key enter
+wait 3
+assert undo 6
+assert glyph U+0020 left -7
+assert glyph U+0020 top -7
+assert glyph U+0020 size 11x11
+assert glyph U+0020 ink 18
+shot tests/tmp/shots/116_grown.png
+key z ctrl
+wait 3
+assert undo 5
+assert glyph U+0020 size 3x3
+assert glyph U+0020 ink 9
+key z ctrl
+key z ctrl
+wait 3
+assert undo 3
+assert glyph U+0020 left 1
+assert glyph U+0020 top 1
+assert glyph U+0020 ink 9
+
+# leaving the glyph drops the floating pixels: the next glyph (PageDown)
+key m
+drag @ecell:0,0 @ecell:4,4
+key right
+wait 2
+assert efloating 1
+key pgdn
+wait 5
+assert editor 1
+assert undo 4
+assert glyph U+0020 left 2
+assert glyph U+0020 pixel 2 1 0
+# and Back
+key pgup
+wait 5
+assert editor_glyph U+0020
+assert eselcount 0
+drag @ecell:0,0 @ecell:5,4
+key right
+wait 2
+assert efloating 1
+click @Back
+wait 4
+assert editor 0
+assert undo 5
+assert glyph U+0020 left 3
+
+# locking while pixels float drops them first (the font is unlocked until then), then the font refuses
+sleep 600
+dblclick @cell:U+0020
+wait 5
+key m
+drag @ecell:0,0 @ecell:5,4
+key right
+wait 2
+assert efloating 1
+click @Lock
+wait 6
+assert locked 1
+assert efloating 0
+assert undo 6
+assert glyph U+0020 left 4
+key delete
+wait 3
+assert toast The font is locked
+assert glyph U+0020 left 4
+assert glyph U+0020 ink 9
+assert undo 6

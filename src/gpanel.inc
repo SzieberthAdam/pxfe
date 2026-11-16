@@ -5,11 +5,13 @@
 
 #define GPANEL_TABS_H 44
 
-static void DrawGlyphInfo(float px, float *yp, const PxGlyph *g)
+static void DrawGlyphInfo(float px, float *yp, int gi)
 {
     float y = *yp;
     char cur[33];
-    GlyphFacts(px, &y, g, true);
+    GlyphFacts(px, &y, gi, true, true);   /* editable while the font is unlocked; a new code point moves the glyph, so look it up again */
+    gi = Editor_GlyphIndex(ed);
+    const PxGlyph *g = &font.glyphs[gi];
     y += TH_GAP;
     Th_Section("GLYPH HASH", px + 16, &y, PANEL_W - 32, 0, NULL);
     const char *orig = Editor_OriginalHash(ed);
@@ -50,7 +52,7 @@ static void DrawGlyphPanel(Rectangle p)
 
     if (tab == 0 && g) {
         Th_Section("GLYPH", px + 16, &y, PANEL_W - 32, 0, NULL);
-        DrawGlyphInfo(px, &y, g);
+        DrawGlyphInfo(px, &y, gi);
         FindRow(px, &y, insCode);
     } else if (tab == 2) {
         float used = Layers_DrawPanel(Editor_Layers(ed), (Rectangle){px, y - 8, p.width, 0}, cr);
@@ -70,11 +72,11 @@ static void DrawGlyphPanel(Rectangle p)
             if (n) memcpy(insH[0], h, 33);
             Insight_SetGlyphs(insight, (const char (*)[33])insH, n);
             Insight_SetPreferredCode(insight, insCode);
-            bool prevB = Th_InputBlocked();
-            if (!CheckCollisionPointRec(Mouse(), cr)) Th_SetInputBlocked(true);   /* an entry scrolled out of the panel must not react */
+            bool prevB = Th_MouseOnly();
+            if (!CheckCollisionPointRec(Mouse(), cr)) Th_SetMouseBlocked(true);   /* an entry scrolled out of the panel must not react */
             Insight_SetVisible(insight, cr);
             float used = Insight_Draw(insight, (Rectangle){px, y, PANEL_W, cr.y + cr.height - y > 200 ? cr.y + cr.height - y : 200}, INSIGHT_SECTION_USAGE, &cl, &tg);
-            Th_SetInputBlocked(prevB);
+            Th_SetMouseBlocked(prevB);
             y += used;
             if (cl && tg.action != INSIGHT_NONE) { panelTarget = tg; panelTargetSet = true; }
         } else {

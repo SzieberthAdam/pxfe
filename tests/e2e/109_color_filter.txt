@@ -1,0 +1,102 @@
+# 109. The Colours filter of the library views (version 15): the number of ink colours of a font (the palette entries other than ".", at least 1).
+# Database testdata/lib_colors.pxfdb: typeface b5fbcdd0 holds font fa96e358 (3 colours); typeface b925951b holds 0820dc69 (1 colour, no palette)
+# and e6109c13 (2 colours); font 03696f65 (2 colours) belongs to no typeface.
+wait 10
+assert nav 0
+assert btab 0
+assert bvisible 3
+assert bboxes 2
+assert bcolors 0
+
+# the dropdown lists "Any" and the counts that occur, in numeric order; e6109c13 states no ascent, so its info is loaded when the list opens
+click @Colours_Dropdown
+waitfor bcolorvals = 3 5000
+assert bcolorvals 3
+assert bcolorval0 1
+assert bcolorval1 2
+assert bcolorval2 3
+shot tests/tmp/shots/109_colours_dropdown.png
+click @2
+wait 6
+assert bcolors 2
+assert bvisible 1
+assert bboxes 1
+assert bboxvars0 1
+shot tests/tmp/shots/109_colours_2.png
+
+# a typeface matches when any of its fonts matches: the box of b925951b shows for 1 and for 2, with only the variants that match
+click @Colours_Dropdown
+wait 6
+click @1
+wait 6
+assert bcolors 1
+assert bvisible 1
+assert bboxes 1
+assert bboxvars0 1
+click @Colours_Dropdown
+wait 6
+click @3
+wait 6
+assert bcolors 3
+assert bvisible 1
+assert bboxes 1
+click @Colours_Dropdown
+wait 6
+click @Any
+wait 6
+assert bcolors 0
+assert bvisible 3
+assert bboxes 2
+
+# the Fonts tab has the same filter: 4 fonts, 1 with one colour, 2 with two, 1 with three
+click @Fonts
+wait 10
+assert btab 1
+assert bvisible 4
+assert bcolorvals 3
+click @Colours_Dropdown
+wait 6
+click @2
+wait 6
+assert bvisible 2
+shot tests/tmp/shots/109_colours_fonts.png
+# it combines with the other filters
+click @Italic_only
+wait 6
+assert bvisible 1
+click @Italic_only
+wait 6
+assert bvisible 2
+
+# Clear filters in the empty state
+click @Colours_Dropdown
+wait 6
+click @3
+wait 6
+assert bvisible 1
+click @Filter
+type zzzz
+wait 6
+assert bvisible 0
+click @Clear_filters
+wait 6
+assert bcolors 0
+assert bvisible 4
+assert bfilter -
+
+# the choice is kept in the settings file
+click @Colours_Dropdown
+wait 6
+click @2
+wait 6
+assert bcolors 2
+click @Typefaces
+wait 10
+assert btab 0
+assert bcolors 2
+assert bvisible 1
+click @Colours_Dropdown
+wait 6
+click @Any
+wait 6
+assert bvisible 3

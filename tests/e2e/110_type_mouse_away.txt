@@ -1,0 +1,77 @@
+# 110. A text field that has the keyboard keeps taking keys when the mouse has left its region (version 15).
+# The browser panel blocks the scrolled widgets for the mouse when the mouse is outside its scroll area; that must not stop the typing.
+# A popover or a dialog still takes the keyboard away from the field.
+wait 10
+assert nav 0
+assert bfilter -
+
+# the name filter: click it, move the mouse to the grid, type
+click @Filter
+wait 3
+assert tfocus 1
+move 300 500
+wait 3
+type sans
+wait 4
+assert bfilter sans
+assert bvisible 2
+# the mouse over the status bar, then over the top bar: still typing
+move 600 885
+wait 3
+type x
+wait 3
+assert bfilter sansx
+key backspace
+wait 3
+assert bfilter sans
+move 700 20
+wait 3
+repeat 4 key backspace
+wait 3
+assert bfilter -
+assert bvisible 3
+
+# Ctrl+F focuses the filter, and typing works with the mouse elsewhere
+click @bside_View
+wait 3
+move 300 500
+key escape
+wait 3
+assert tfocus 0
+key f ctrl
+wait 3
+assert tfocus 1
+type bold
+wait 3
+assert bfilter bold
+key escape
+wait 3
+assert tfocus 0
+click @Filter_Clear
+wait 4
+assert bfilter -
+
+# a click elsewhere (on the grid) takes the keyboard away, and so does a press in the pinned block
+click @Filter
+wait 3
+assert tfocus 1
+click 300 500
+wait 3
+assert tfocus 0
+
+# an open popover takes the keyboard from the field behind it: the dropdown opens (its click leaves the field), nothing is typed
+click @Filter
+wait 3
+type ab
+wait 3
+assert bfilter ab
+click @Style_Dropdown
+wait 6
+assert tfocus 0
+type zz
+wait 3
+assert bfilter ab
+key escape
+wait 3
+click @Filter_Clear
+wait 4

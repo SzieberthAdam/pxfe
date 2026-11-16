@@ -1,0 +1,184 @@
+# 117. The Line tool (version 17), font 0820dc69 unlocked, glyph U+0020 (empty, advance 4; font box rows 0..7, @ecell:x,y).
+# A drag draws one line, one undo step; Shift constrains the angle (0, 14, 27, 45, 63, 76, 90 degrees, clean slopes), Ctrl draws from the centre,
+# Esc cancels, the right button draws with '.', the key L and the strip's Line and Curve buttons.
+wait 5
+click @Unlock
+wait 4
+sleep 600
+dblclick @cell:U+0020
+wait 5
+assert editor_glyph U+0020
+assert glyph U+0020 empty
+assert undo 0
+assert epp 0
+
+# the tool: key L, the button, the Curve button
+key l
+wait 3
+assert etool 2
+assert w.Curve 1
+assert w.Pixel-perfect 1
+
+# a plain line: 6 cells in one undo step
+drag @ecell:0,1 @ecell:5,1
+wait 3
+assert glyph U+0020 ink 6
+assert glyph U+0020 pixel 0 1 0
+assert glyph U+0020 pixel 5 1 0
+assert glyph U+0020 pixel 6 1 .
+assert undo 1
+key z ctrl
+wait 3
+assert undo 0
+assert glyph U+0020 empty
+
+# Shift: nearly horizontal (5 right, 1 down) goes to the 14 degree slope of 4:1, one whole step of it
+drag @ecell:0,6 @ecell:5,7 shift
+wait 3
+assert glyph U+0020 pixel 0 6 0
+assert glyph U+0020 pixel 4 7 0
+assert glyph U+0020 pixel 5 7 .
+assert glyph U+0020 ink 5
+key z ctrl
+wait 3
+assert glyph U+0020 empty
+
+# Shift: 8 right and 1 down is under 7.5 degrees: it goes flat, to the cell on the press row
+drag @ecell:-1,3 @ecell:7,4 shift
+wait 3
+assert glyph U+0020 pixel -1 3 0
+assert glyph U+0020 pixel 7 3 0
+assert glyph U+0020 pixel 7 4 .
+assert glyph U+0020 ink 9
+key z ctrl
+wait 3
+
+# Shift: 4 right and 5 down is nearer 45 degrees than 63: the end is the diagonal's 5th step
+drag @ecell:1,1 @ecell:5,6 shift
+wait 3
+assert glyph U+0020 pixel 1 1 0
+assert glyph U+0020 pixel 5 5 0
+assert glyph U+0020 pixel 6 6 0
+assert glyph U+0020 pixel 5 6 .
+assert glyph U+0020 ink 6
+key z ctrl
+wait 3
+
+# Shift: 2:1 (6 right, 3 down) stays a clean 2:1; nearly vertical goes straight down; upward and to the left works too
+drag @ecell:0,1 @ecell:6,4 shift
+wait 3
+assert glyph U+0020 pixel 6 4 0
+assert glyph U+0020 ink 7
+key z ctrl
+wait 3
+drag @ecell:3,-1 @ecell:4,7 shift
+wait 3
+assert glyph U+0020 pixel 3 -1 0
+assert glyph U+0020 pixel 3 7 0
+assert glyph U+0020 pixel 4 7 .
+assert glyph U+0020 ink 9
+key z ctrl
+wait 3
+drag @ecell:6,6 @ecell:2,2 shift
+wait 3
+assert glyph U+0020 pixel 2 2 0
+assert glyph U+0020 pixel 6 6 0
+assert glyph U+0020 ink 5
+key z ctrl
+wait 3
+assert glyph U+0020 empty
+assert undo 0
+
+# Ctrl: the press cell is the centre of the line
+drag @ecell:3,3 @ecell:5,3 ctrl
+wait 3
+assert glyph U+0020 pixel 1 3 0
+assert glyph U+0020 pixel 3 3 0
+assert glyph U+0020 pixel 5 3 0
+assert glyph U+0020 pixel 0 3 .
+assert glyph U+0020 pixel 6 3 .
+assert glyph U+0020 ink 5
+assert undo 1
+key z ctrl
+wait 3
+
+# Shift and Ctrl together: constrained from the centre
+drag @ecell:3,4 @ecell:6,5 shift ctrl
+wait 3
+assert glyph U+0020 pixel -1 3 0
+assert glyph U+0020 pixel 7 5 0
+assert glyph U+0020 pixel 3 4 0
+assert glyph U+0020 ink 9
+key z ctrl
+wait 3
+assert glyph U+0020 empty
+
+# the preview does not change the glyph while the mouse is down; Esc cancels the drag
+move @ecell:1,1
+mousedown
+wait 2
+move @ecell:5,5
+wait 3
+assert glyph U+0020 empty
+assert undo 0
+shot tests/tmp/shots/117_line_preview.png
+key esc
+wait 2
+mouseup
+wait 3
+assert glyph U+0020 empty
+assert undo 0
+assert editor 1
+
+# the right button draws with '.': it erases along the line
+drag @ecell:0,2 @ecell:6,2
+wait 3
+assert glyph U+0020 ink 7
+drag @ecell:2,2 @ecell:4,2 right
+wait 3
+assert glyph U+0020 ink 4
+assert glyph U+0020 pixel 3 2 .
+assert glyph U+0020 pixel 1 2 0
+assert undo 2
+key z ctrl
+key z ctrl
+wait 3
+assert undo 0
+
+# the ink: another colour, the eraser tool draws '.' with the left button
+drag @ecell:0,5 @ecell:6,5
+wait 3
+assert glyph U+0020 ink 7
+key e
+wait 2
+assert etool 1
+drag @ecell:1,5 @ecell:3,5
+wait 3
+assert glyph U+0020 ink 4
+key l
+wait 2
+assert etool 2
+
+# the Curve button is tool 9; the Line button brings the line back
+click @Curve
+wait 3
+assert etool 9
+click @Line
+wait 3
+assert etool 2
+key l shift
+wait 3
+assert etool 9
+key l
+wait 3
+assert etool 2
+click @Pencil
+wait 2
+assert etool 0
+assert w.Pixel-perfect 1
+click @Eraser
+wait 2
+assert w.Pixel-perfect 0
+click @Line
+wait 2
+assert etool 2

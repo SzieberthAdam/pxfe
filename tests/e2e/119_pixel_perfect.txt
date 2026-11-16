@@ -1,0 +1,171 @@
+# 119. Pixel-perfect pencil strokes (version 17), font 0820dc69 unlocked, glyph U+0020 (empty, advance 4; font box rows 0..7).
+# The bar's Pixel-perfect option (Pencil, Line and Curve): a stroke whose cells make an L loses the middle one.  Off by default, kept in pxfe.ini.
+wait 5
+click @Unlock
+wait 4
+sleep 600
+dblclick @cell:U+0020
+wait 5
+assert editor_glyph U+0020
+assert glyph U+0020 empty
+assert etool 0
+assert epp 0
+assert w.Pixel-perfect 1
+
+# off: a stroke right, down, right, down keeps its L corners (5 cells)
+move @ecell:1,1
+mousedown
+wait 2
+move @ecell:2,1
+wait 2
+move @ecell:2,2
+wait 2
+move @ecell:3,2
+wait 2
+move @ecell:3,3
+wait 2
+mouseup
+wait 3
+assert glyph U+0020 ink 5
+assert glyph U+0020 pixel 2 1 0
+assert glyph U+0020 pixel 3 2 0
+assert undo 1
+shot tests/tmp/shots/119_pp_off.png
+key z ctrl
+wait 3
+assert glyph U+0020 empty
+
+# on: the corners go, the stair becomes a diagonal (3 cells), one undo step
+click @Pixel-perfect
+wait 3
+assert epp 1
+move @ecell:1,1
+mousedown
+wait 2
+move @ecell:2,1
+wait 2
+move @ecell:2,2
+wait 2
+move @ecell:3,2
+wait 2
+move @ecell:3,3
+wait 2
+mouseup
+wait 3
+assert glyph U+0020 ink 3
+assert glyph U+0020 pixel 1 1 0
+assert glyph U+0020 pixel 2 2 0
+assert glyph U+0020 pixel 3 3 0
+assert glyph U+0020 pixel 2 1 .
+assert glyph U+0020 pixel 3 2 .
+assert undo 1
+shot tests/tmp/shots/119_pp_on.png
+key z ctrl
+wait 3
+assert glyph U+0020 empty
+assert undo 0
+
+# a straight run is untouched, a single bend of two runs loses its corner cell
+move @ecell:0,5
+mousedown
+wait 2
+move @ecell:3,5
+wait 2
+move @ecell:3,7
+wait 2
+mouseup
+wait 3
+assert glyph U+0020 ink 5
+assert glyph U+0020 pixel 3 5 .
+assert glyph U+0020 pixel 3 6 0
+assert glyph U+0020 pixel 2 5 0
+assert undo 1
+key z ctrl
+wait 3
+
+# the same stroke in one mouse jump: a drag draws a straight line, never an L
+drag @ecell:0,0 @ecell:6,5
+wait 3
+assert glyph U+0020 ink 7
+key z ctrl
+wait 3
+assert glyph U+0020 empty
+
+# a corner cell that held ink before the stroke keeps it (the cell goes back to what it held)
+click @ecell:2,1
+wait 3
+assert glyph U+0020 ink 1
+move @ecell:1,1
+mousedown
+wait 2
+move @ecell:2,1
+wait 2
+move @ecell:2,2
+wait 2
+mouseup
+wait 3
+assert glyph U+0020 pixel 2 1 0
+assert glyph U+0020 pixel 1 1 0
+assert glyph U+0020 pixel 2 2 0
+assert glyph U+0020 ink 3
+assert undo 2
+key z ctrl
+key z ctrl
+wait 3
+assert glyph U+0020 empty
+
+# the right button strokes with '.': the L of an erase goes too, the cell keeps its ink
+drag @ecell:0,2 @ecell:5,2
+drag @ecell:0,3 @ecell:5,3
+wait 3
+assert glyph U+0020 ink 12
+move @ecell:1,2
+mousedown right
+wait 2
+move @ecell:2,2
+wait 2
+move @ecell:2,3
+wait 2
+mouseup right
+wait 3
+assert glyph U+0020 pixel 1 2 .
+assert glyph U+0020 pixel 2 3 .
+assert glyph U+0020 pixel 2 2 0
+assert glyph U+0020 ink 10
+key z ctrl
+key z ctrl
+key z ctrl
+wait 3
+assert glyph U+0020 empty
+
+# a stroke that leaves the bitmap does not leave an empty margin behind
+move @ecell:5,6
+mousedown
+wait 2
+move @ecell:6,6
+wait 2
+move @ecell:6,7
+wait 2
+mouseup
+wait 3
+assert glyph U+0020 size 2x2
+assert glyph U+0020 ink 2
+key z ctrl
+wait 3
+assert glyph U+0020 empty
+
+# the option is shown for the Pencil, the Line and the Curve, not for the Eraser, and a click on it again switches it off
+key l
+wait 3
+assert w.Pixel-perfect 1
+key l shift
+wait 3
+assert w.Pixel-perfect 1
+key e
+wait 3
+assert w.Pixel-perfect 0
+key b
+wait 3
+click @Pixel-perfect
+wait 3
+assert epp 0

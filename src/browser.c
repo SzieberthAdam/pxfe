@@ -51,7 +51,7 @@ typedef struct Card {
 } Card;
 
 typedef struct Popup {
-    bool open; int which;          /* 0 style, 1 format, 2 context menu */
+    bool open; int which;          /* 0 style, 1 format, 2 colours, 3 context menu */
     Rectangle anchor; int scroll;
 } Popup;
 
@@ -89,8 +89,8 @@ struct Browser {
     unsigned sampleCtr;            /* Sample_Counter() the cards were laid out for */
     int nLines;                    /* lines of the sample (at most MAX_LINES_B) */
 
-    char selStr[2][160];           /* chosen style / format ("" = Any) */
-    char **vals[2]; int nvals[2];  /* values present in the current tab, [0] is "Any" */
+    char selStr[3][160];           /* chosen style / format / number of colours ("" = Any) */
+    char **vals[3]; int nvals[3];  /* values present in the current tab, [0] is "Any" */
     Popup pop;
     int ctxN, ctxVi; bool ctxHdr; char ctxLabel[5][32]; BrowserAction ctxAct[5]; bool ctxPick; BrowserChoice ctxChoice;
     BrowserAction lastAction; char lastPxfm[33], lastPxtf[33];
@@ -132,7 +132,7 @@ struct Browser {
 static float snapf(float v) { return floorf(v + 0.5f); }
 static Rectangle RR(float x, float y, float w, float h) { return (Rectangle){ x, y, w, h }; }
 static bool pt_in(Rectangle r, Vector2 p) { return CheckCollisionPointRec(p, r); }
-static bool hov(const Browser *b, Rectangle r) { return !Th_InputBlocked() && !b->mouseEaten && pt_in(r, GetMousePosition()); }
+static bool hov(const Browser *b, Rectangle r) { return !Th_MouseBlocked() && !b->mouseEaten && pt_in(r, GetMousePosition()); }
 static Color alpha(Color c, int a) { c.a = (unsigned char)a; return c; }
 
 static int ci_cmp(const char *a, const char *b)
@@ -340,7 +340,47 @@ static int cmp_entries(const void *pa, const void *pb)
     return c ? c : ia - ib;
 }
 
-static bool needs_info(const Browser *b) { return b->mono || b->sortKey == SORT_SIZE || b->sortKey == SORT_GLYPHS; }
+/* the colour filter needs the info of every font while it is set or its dropdown is open (to list the counts that occur) */
+static bool needs_info(const Browser *b)
+{
+    return b->mono || b->selStr[2][0] || (b->pop.open && b->pop.which == 2) || b->sortKey == SORT_SIZE || b->sortKey == SORT_GLYPHS;
+}
+
+/* the number of ink colours of an entry, 0 while its info is not known */
+static int entry_colors(const LibEntry *e) { return e->info.ready && !e->info.failed ? e->info.colors : 0; }
+
+/* The values of the colour dropdown: "Any" and the counts of the fonts whose info is known, in numeric order.
+ * The chosen count is dropped only when the info of every font of the tab is known and none has it. */
+static void collect_colors(Browser *b)
+{
+    for (int i = 0; i < b->nvals[2]; i++) free(b->vals[2][i]);
+    free(b->vals[2]);
+    Library *L = tab_lib(b);
+    int s = tab_start(b), n = tab_count_of(b, b->tab);
+    int *cs = (int *)calloc((size_t)n + 1, sizeof(int));
+    int m = 0;
+    bool allKnown = true;
+    for (int i = 0; i < n; i++) {
+        int c = entry_colors(&L->e[s + i]);
+        if (c <= 0) { allKnown = false; continue; }
+        int j = m;
+        while (j > 0 && cs[j - 1] > c) j--;
+        if (j > 0 && cs[j - 1] == c) continue;
+        memmove(cs + j + 1, cs + j, sizeof(int) * (size_t)(m - j));
+        cs[j] = c; m++;
+    }
+    char **out = (char **)calloc((size_t)m + 1, sizeof(char *));
+    out[0] = _strdup("Any");
+    bool found = false;
+    for (int i = 0; i < m; i++) {
+        char t[16]; snprintf(t, sizeof t, "%d", cs[i]);
+        out[i + 1] = _strdup(t);
+        if (strcmp(t, b->selStr[2]) == 0) found = true;
+    }
+    free(cs);
+    b->vals[2] = out; b->nvals[2] = m + 1;
+    if (b->selStr[2][0] && !found && allKnown) b->selStr[2][0] = 0;
+}
 
 static void collect_values(Browser *b)
 {
@@ -349,6 +389,8 @@ static void collect_values(Browser *b)
         free(b->vals[k]);
         b->vals[k] = NULL; b->nvals[k] = 0;
     }
+    for (int i = 0; i < b->nvals[2]; i++) free(b->vals[2][i]);
+    free(b->vals[2]); b->vals[2] = NULL; b->nvals[2] = 0;
     Library *L = tab_lib(b);
     int s = tab_start(b), n = tab_count_of(b, b->tab);
     for (int k = 0; k < 2; k++) {
@@ -378,6 +420,7 @@ static void collect_values(Browser *b)
             if (!found) b->selStr[k][0] = 0;
         }
     }
+    collect_colors(b);
 }
 
 static void sel_set(Browser *b, int vi, bool reveal)
@@ -463,6 +506,7 @@ static void rebuild_vis(Browser *b)
     if (b->keepAnchor && b->anchorItem[b->tab] >= 0 && b->anchorItem[b->tab] < b->nvis) anchorAbs = b->vis[b->anchorItem[b->tab]];
     b->dirtyVis = false;
     b->lastRefilter = GetTime();
+    collect_colors(b);
     Library *L = tab_lib(b);
     int s = tab_start(b), n = tab_count_of(b, b->tab);
     if (n > b->capVis) { b->capVis = n; b->vis = (int *)realloc(b->vis, sizeof(int) * (size_t)(n + 1)); }
@@ -484,6 +528,7 @@ static void rebuild_vis(Browser *b)
         if (b->selStr[1][0] && strcmp(e->format, b->selStr[1]) != 0) continue;
         if (b->italic && !e->italic) continue;
         if (b->mono && !(e->info.ready && !e->info.failed && e->info.monospaced)) continue;
+        if (b->selStr[2][0] && entry_colors(e) != atoi(b->selStr[2])) continue;
         b->vis[b->nvis++] = i;
     }
     g_sort = b;
@@ -578,7 +623,7 @@ void Browser_Destroy(Browser *b)
     if (!b) return;
     libloader_destroy(b->loader);
     free_cards(b->cl, b->lib.count);
-    for (int k = 0; k < 2; k++) { for (int i = 0; i < b->nvals[k]; i++) free(b->vals[k][i]); free(b->vals[k]); }
+    for (int k = 0; k < 3; k++) { for (int i = 0; i < b->nvals[k]; i++) free(b->vals[k][i]); free(b->vals[k]); }
     library_free(&b->lib);
     if (b->tfHas) pxtf_free(&b->tfCont);
     if (b->scHas) pxtf_free(&b->scCont);
@@ -665,6 +710,7 @@ void Browser_LoadSettings(Browser *b, const char *iniPath)
         else if (!strcmp(key, "italic")) b->italic = iv != 0;
         else if (!strcmp(key, "style")) snprintf(b->selStr[0], sizeof b->selStr[0], "%.159s", v);
         else if (!strcmp(key, "format")) snprintf(b->selStr[1], sizeof b->selStr[1], "%.159s", v);
+        else if (!strcmp(key, "colors")) { if (iv > 0) snprintf(b->selStr[2], sizeof b->selStr[2], "%d", iv); }
         /* "sample" moved to [app] (sample.c migrates it) */
     }
     free(raw);
@@ -705,8 +751,8 @@ void Browser_SaveSettings(const Browser *b, const char *iniPath)
     }
     char sec[1200];
     int m = snprintf(sec, sizeof sec,
-                     "[browser]\ntab=%d\nsidetab=%d\nzoom=%d\ncols=%d\nsort=%d\ndesc=%d\nmono=%d\nitalic=%d\nstyle=%s\nformat=%s\n",
-                     b->tab, b->sideTab, b->zoom, b->cols, b->sortKey, b->sortDesc, b->mono, b->italic, b->selStr[0], b->selStr[1]);
+                     "[browser]\ntab=%d\nsidetab=%d\nzoom=%d\ncols=%d\nsort=%d\ndesc=%d\nmono=%d\nitalic=%d\nstyle=%s\nformat=%s\ncolors=%s\n",
+                     b->tab, b->sideTab, b->zoom, b->cols, b->sortKey, b->sortDesc, b->mono, b->italic, b->selStr[0], b->selStr[1], b->selStr[2]);
     if (m > 0) { memcpy(out + o, sec, (size_t)m); o += (size_t)m; }
     px_write_file(iniPath, out, o);
     free(out);
@@ -821,6 +867,9 @@ int  Browser_CardInkLines(const Browser *b, int vi)
 }
 int  Browser_TypefaceTotal(const Browser *b) { return b->nTf; }
 int  Browser_BoxCount(const Browser *b) { return b->tab == TAB_TYPEFACES ? b->nbox : 0; }
+int  Browser_ColorFilter(const Browser *b) { return atoi(b->selStr[2]); }
+int  Browser_ColorValues(const Browser *b) { return b->nvals[2] > 0 ? b->nvals[2] - 1 : 0; }
+int  Browser_ColorValue(const Browser *b, int i) { return i >= 0 && i + 1 < b->nvals[2] ? atoi(b->vals[2][i + 1]) : -1; }
 int  Browser_BoxVariants(const Browser *b, int box) { return b->tab == TAB_TYPEFACES && box >= 0 && box < b->nbox ? b->box[box].n : -1; }
 bool Browser_SelectedIsHeader(const Browser *b) { return b->tab == TAB_TYPEFACES && b->selVis >= 0 && b->selHdr; }
 int  Browser_LastAction(const Browser *b) { return (int)b->lastAction; }
@@ -872,12 +921,12 @@ static void ui_dropdown(Browser *b, Rectangle r, int which, const char *name)
 
 #define POP_VIS 10
 
-static int pop_count(const Browser *b) { return b->pop.which == 2 ? b->ctxN : b->nvals[b->pop.which]; }
+static int pop_count(const Browser *b) { return b->pop.which == 3 ? b->ctxN : b->nvals[b->pop.which]; }
 
 static void pop_get(void *ud, int i, ThMenuItem *it)
 {
     const Browser *b = ud;
-    if (b->pop.which == 2) {   /* the context menu */
+    if (b->pop.which == 3) {   /* the context menu */
         BrowserAction a = b->ctxAct[i];
         it->label = b->ctxLabel[i];
         it->name = a == BROWSER_DELETE_FONT ? "Ctx_Delete_Font" : a == BROWSER_DELETE_TYPEFACE ? "Ctx_Delete_Typeface" : a == BROWSER_OPEN ? "Ctx_Open" : "Ctx_Lock";
@@ -915,7 +964,7 @@ static void pop_draw(Browser *b)
     int i = Th_Menu(&m, &b->pop.open);
     if (i < 0) return;
     int k = b->pop.which;
-    if (k == 2) { b->ctxPick = true; b->ctxChoice.action = b->ctxAct[i]; return; }
+    if (k == 3) { b->ctxPick = true; b->ctxChoice.action = b->ctxAct[i]; return; }
     b->selStr[k][0] = 0;
     if (i > 0) snprintf(b->selStr[k], sizeof b->selStr[k], "%s", b->vals[k][i]);
     b->dirtyVis = true;
@@ -1168,9 +1217,9 @@ static void panel_ui(Browser *b, Rectangle P, BrowserChoice *choice, bool *chose
     float y = top0;
 
     /* mouse over the pinned block (or outside the panel): the scrolled widgets must not react */
-    bool prevBlocked = Th_InputBlocked(), prevEaten = b->mouseEaten;
+    bool prevBlocked = Th_InputBlocked(), prevMouseB = Th_MouseOnly(), prevEaten = b->mouseEaten;
     bool overScroll = pt_in(SR, GetMousePosition());
-    if (!overScroll) { Th_SetInputBlocked(true); b->mouseEaten = true; }
+    if (!overScroll) { Th_SetMouseBlocked(true); b->mouseEaten = true; }   /* the mouse only: a focused field keeps its keys */
     if (b->pop.open) Th_SetInputBlocked(true);
     BeginScissorMode((int)SR.x + 1, (int)SR.y, (int)SR.width - 1, (int)SR.height);
 
@@ -1194,6 +1243,7 @@ static void panel_ui(Browser *b, Rectangle P, BrowserChoice *choice, bool *chose
     }
     ui_dropdown(b, Th_Row(x, &y, w, "Style", NULL, 0), 0, "Style_Dropdown");
     ui_dropdown(b, Th_Row(x, &y, w, "Format", NULL, 0), 1, "Format_Dropdown");
+    ui_dropdown(b, Th_Row(x, &y, w, "Colours", NULL, 0), 2, "Colours_Dropdown");
     if (Th_Switch(RR(x, y, w, TH_ROW_H), "Monospaced only", &b->mono, 0, "Monospaced_only")) b->dirtyVis = true;
     y += TH_ROW_H;
     if (Th_Switch(RR(x, y, w, TH_ROW_H), "Italic only", &b->italic, 0, "Italic_only")) b->dirtyVis = true;
@@ -1315,6 +1365,7 @@ static void panel_ui(Browser *b, Rectangle P, BrowserChoice *choice, bool *chose
     b->panelContentH = y - top0 + 16;
     EndScissorMode();
     Th_SetInputBlocked(prevBlocked || b->pop.open);
+    Th_SetMouseBlocked(prevMouseB);
     b->mouseEaten = prevEaten;
 
     Th_ScrollBar(SR, &b->panelScroll, b->panelContentH, 56, !b->pop.open);
@@ -1417,7 +1468,7 @@ static void ctx_open(Browser *b, int vi, bool hdr)
     } else ITEM("Delete Font\xE2\x80\xA6", BROWSER_DELETE_FONT);
     #undef ITEM
     Vector2 m = GetMousePosition();
-    b->pop.open = true; b->pop.which = 2; b->pop.scroll = 0;
+    b->pop.open = true; b->pop.which = 3; b->pop.scroll = 0;
     b->pop.anchor = RR(m.x, m.y - 4, 210, 0);
     b->mouseEaten = true;
 }
@@ -1946,14 +1997,14 @@ static void grid_ui(Browser *b, Rectangle G, BrowserChoice *choice, bool *chosen
         const char *h1, *h2;
         if (total == 0) {
             h1 = "This library is empty"; h2 = "The database has no fonts. Import a folder of pxtf, pxfm and pxgl files (File, Import Folder).";
-        } else { h1 = "No fonts match"; h2 = "Nothing fits the current filters. Loosen the name, style or format filter."; }
+        } else { h1 = "No fonts match"; h2 = "Nothing fits the current filters. Loosen the name, style, format or colour filter."; }
         Vector2 m1 = Th_Measure(h1), m2 = Th_MeasureSmall(h2);
         Th_Text(h1, cx - m1.x / 2, cy + 36, TH_TEXT);
         Th_TextSmall(h2, cx - m2.x / 2, cy + 60, TH_TEXT_DIM);
         if (total > 0) {
-            bool anyFilter = b->filter[0] || b->selStr[0][0] || b->selStr[1][0] || b->mono || b->italic;
+            bool anyFilter = b->filter[0] || b->selStr[0][0] || b->selStr[1][0] || b->selStr[2][0] || b->mono || b->italic;
             if (anyFilter && Th_Button(RR(cx - Th_ButtonW("Clear filters") / 2, cy + 86, Th_ButtonW("Clear filters"), TH_ROW_H), "Clear filters", 0, NULL)) {
-                b->filter[0] = 0; b->selStr[0][0] = b->selStr[1][0] = 0; b->mono = b->italic = false;
+                b->filter[0] = 0; b->selStr[0][0] = b->selStr[1][0] = b->selStr[2][0] = 0; b->mono = b->italic = false;
                 b->dirtyVis = true;
             }
         }
@@ -2173,6 +2224,7 @@ bool Browser_UpdateDraw(Browser *b, Rectangle area, BrowserChoice *choice)
 
     if (Sample_Counter() != b->sampleCtr) sample_changed(b);
     poll_results(b);
+    if (b->pop.open && b->pop.which == 2) collect_colors(b);   /* the list follows the info that arrives while it is open */
     if (b->infoPending && GetTime() - b->lastRefilter > 0.25) { b->infoPending = false; b->dirtyVis = true; b->keepAnchor = true; }
     if (b->dirtyVis) rebuild_vis(b);
     pop_input(b);

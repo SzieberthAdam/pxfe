@@ -1,0 +1,216 @@
+# 108. The glyph view's Glyph tab edits the glyph: code point, character, advance, offset x and y (font fa96e358: space, A, H, a default, and two glyphs
+# without a code point; KERNING A #0 -1 and #1 #0 +1).  Locked, the fields are dim and inert.  A code another glyph has, the default glyph's code and a
+# number that is no code point are refused; a new code moves the glyph to its place in the order, keeps the editor on it, and its kerning pairs follow.
+wait 5
+click @cell:U+0041
+key enter
+wait 6
+assert editor 1
+assert gtab 0
+assert eglyph U+0041
+assert w.g.code 1
+assert w.g.char 1
+assert w.g.advance.value 1
+assert w.g.offx.value 1
+assert w.g.offy.value 1
+assert readonly 1
+shot tests/tmp/shots/108_locked.png
+# locked: nothing can be typed or stepped
+click @g.advance+
+wait 3
+assert glyph U+0041 advance 6
+click @g.code
+wait 3
+type U+0042
+key enter
+wait 3
+assert glyph U+0041 exists 1
+assert glyph U+0042 exists 0
+assert undo 0
+assert modified 0
+click @Unlock
+wait 6
+assert readonly 0
+shot tests/tmp/shots/108_unlocked.png
+# advance: a click on + twice is one undo step
+click @g.advance+
+wait 3
+click @g.advance+
+wait 3
+assert glyph U+0041 advance 8
+assert modified 1
+key z ctrl
+wait 3
+assert glyph U+0041 advance 6
+assert modified 0
+key y ctrl
+wait 3
+assert glyph U+0041 advance 8
+key z ctrl
+wait 3
+assert glyph U+0041 advance 6
+# a typed advance
+click @g.advance.value
+type 9
+key enter
+wait 3
+assert glyph U+0041 advance 9
+# offsets, also a negative one
+click @g.offx+
+wait 3
+assert glyph U+0041 x 1
+click @g.offy.value
+type -3
+key enter
+wait 3
+assert glyph U+0041 y -3
+assert glyph U+0041 x 1
+shot tests/tmp/shots/108_offsets.png
+key z ctrl
+wait 3
+assert glyph U+0041 y 0
+assert glyph U+0041 x 1
+key z ctrl
+wait 3
+assert glyph U+0041 x 0
+assert glyph U+0041 advance 9
+# the code point by hex: A becomes U+0042, the editor stays on that glyph, the pair A #0 follows it
+click @g.code
+type 0042
+key enter
+wait 4
+assert glyph U+0042 exists 1
+assert glyph U+0041 exists 0
+assert glyph U+0042 advance 9
+assert glyph U+0042 hash c0fc54c2ec60cb8617b041d991da1622
+assert eglyph U+0042
+assert editor 1
+assert navseg 2 U+0042
+assert kerncount 2
+assert kern U+0042 #0 -1
+assert kern #1 #0 1
+assert modified 1
+# the character: Z gives U+005A
+click @g.char
+type Z
+key enter
+wait 4
+assert glyph U+005A exists 1
+assert glyph U+0042 exists 0
+assert eglyph U+005A
+assert kern U+005A #0 -1
+assert kerncount 2
+# a code another glyph has (the character H, the hex 48): refused with a message, nothing changes
+click @g.char
+type H
+key enter
+wait 3
+assert toast U+0048 belongs to another glyph
+assert eglyph U+005A
+assert glyph U+0048 exists 1
+assert glyph U+005A exists 1
+assert undo 3
+click @g.code
+type 20
+key enter
+wait 3
+assert toast U+0020 belongs to another glyph
+assert eglyph U+005A
+# the default glyph's code, a number that is no code point, and no number
+click @g.code
+type FFFFFF
+key enter
+wait 3
+assert toast FFFFFF is the code of the default glyph
+assert eglyph U+005A
+click @g.code
+type 110000
+key enter
+wait 3
+assert toast is no code point
+assert eglyph U+005A
+click @g.code
+type zz
+key enter
+wait 3
+assert toast Type a code point as hex digits
+assert eglyph U+005A
+click @g.char
+type ab
+key enter
+wait 3
+assert toast Type one character
+assert eglyph U+005A
+assert undo 3
+shot tests/tmp/shots/108_refused.png
+# undo and redo follow the glyph by its code
+key z ctrl
+wait 3
+assert glyph U+0042 exists 1
+assert eglyph U+0042
+key z ctrl
+wait 3
+assert glyph U+0041 exists 1
+assert eglyph U+0041
+assert kern U+0041 #0 -1
+assert glyph U+0041 advance 9
+key y ctrl
+wait 3
+key y ctrl
+wait 3
+assert eglyph U+005A
+assert glyph U+005A exists 1
+assert kern U+005A #0 -1
+# a glyph without a code point gets one: the later uncoded glyph is renumbered, the pairs of both follow
+click @Back
+wait 4
+assert editor 0
+click @cell:#0
+wait 3
+key enter
+wait 6
+assert editor 1
+assert eglyph 0xF00000
+assert uncoded 2
+shot tests/tmp/shots/108_uncoded.png
+click @g.code
+type 44
+key enter
+wait 4
+assert uncoded 1
+assert glyph U+0044 exists 1
+assert glyph #0 exists 1
+assert glyph #1 exists 0
+assert eglyph U+0044
+assert glyphs 5
+assert kern U+005A U+0044 -1
+assert kern #0 U+0044 1
+assert kerncount 2
+assert glyph U+0044 hash f83ad16c225c33bc1d6bfe2178677638
+# the default glyph's code is dim (it cannot be re-coded), its advance is a field
+click @Back
+wait 4
+click @cell:default
+wait 3
+key enter
+wait 6
+assert eglyph 0xFFFFFF
+click @g.advance+
+wait 3
+assert glyph default advance 7
+assert eglyph 0xFFFFFF
+# the font view's selection stays a plain list of facts
+click @Back
+wait 4
+click @ptab_Glyph
+wait 3
+click @cell:U+0048
+wait 3
+assert w.g.code 0
+assert w.g.advance.value 0
+shot tests/tmp/shots/108_selection.png
+# the edits are edits of the font: leaving the view commits them in place
+click @nav.0
+wait 16
+assert nav 1
+assert sql "select count(*) from pxfm_glyph where code = 90" 1

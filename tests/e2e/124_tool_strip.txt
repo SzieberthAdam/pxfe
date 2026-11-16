@@ -1,0 +1,46 @@
+# 124. The tool strip at the left of the glyph view (version 18), font 0820dc69 unlocked, glyph U+0020.
+# One column in a tall window, two in a short one; a click on a button of the strip chooses the tool; the canvas follows the strip.
+wait 5
+click @Unlock
+wait 4
+sleep 600
+dblclick @cell:U+0020
+wait 5
+assert editor_glyph U+0020
+
+resize 1400 900
+wait 8
+assert etoolcols 1
+click @Marquee
+wait 2
+assert etool 5
+click @Curve
+wait 2
+assert etool 9
+click @Pencil
+wait 2
+assert etool 0
+
+resize 1110 520
+wait 8
+assert etoolcols 2
+click @Lasso
+wait 2
+assert etool 6
+click @Curve
+wait 2
+assert etool 9
+click @Line
+wait 2
+assert etool 2
+
+# the canvas still draws under the mouse, in the narrow window too
+click @Pencil
+wait 2
+click @ecell:2,2
+wait 2
+assert glyph U+0020 ink 1
+resize 1400 900
+wait 8
+assert etoolcols 1
+assert editor 1

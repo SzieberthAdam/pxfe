@@ -1,0 +1,49 @@
+# 128. A locked font refuses the rectangle and the ellipse (version 19), font 0820dc69 (locked), glyph U+0020 (empty, advance 4).
+wait 5
+assert locked 1
+assert readonly 1
+dblclick @cell:U+0020
+wait 5
+assert editor 1
+assert editor_glyph U+0020
+
+# the buttons are off and the keys do nothing
+click @Ellipse
+wait 2
+assert etool 0
+key o
+wait 2
+assert etool 0
+key r
+wait 2
+assert etool 0
+click @Rectangle
+wait 2
+assert etool 0
+
+# nothing is drawn
+drag @ecell:0,1 @ecell:5,5
+drag @ecell:0,1 @ecell:5,5 shift
+drag @ecell:2,2 @ecell:4,4 right
+wait 3
+assert glyph U+0020 empty
+assert undo 0
+assert dirty 0
+assert editor 1
+
+# unlocked, they work; locked again, they are refused again
+click @Unlock
+wait 4
+key o
+wait 2
+assert etool 10
+drag @ecell:1,1 @ecell:5,5
+wait 3
+assert glyph U+0020 ink 12
+assert undo 1
+click @Lock
+wait 4
+drag @ecell:0,0 @ecell:6,6
+wait 3
+assert glyph U+0020 ink 12
+assert undo 1

@@ -115,7 +115,8 @@ void Th_RectLines(Rectangle r, Color c);                /* 1 px outline inside r
 #define TH_BTN_ICON(i)  (((i) + 1) << 8)
 #define TH_BTN_OFF(enabled) ((enabled) ? 0 : TH_BTN_DISABLED)
 enum { TH_IC_PENCIL, TH_IC_ERASER, TH_IC_LINE, TH_IC_RECT, TH_IC_FILL, TH_IC_PREV, TH_IC_NEXT, TH_IC_LEFT, TH_IC_RIGHT, TH_IC_UP, TH_IC_DOWN,
-       TH_IC_CLOSE, TH_IC_EYE, TH_IC_EYE_OFF, TH_IC_CHEV_DOWN, TH_IC_CHEV_RIGHT, TH_IC_SEARCH, TH_IC_LOCK, TH_IC_UNLOCK };
+       TH_IC_CLOSE, TH_IC_EYE, TH_IC_EYE_OFF, TH_IC_CHEV_DOWN, TH_IC_CHEV_RIGHT, TH_IC_SEARCH, TH_IC_LOCK, TH_IC_UNLOCK,
+       TH_IC_MARQUEE, TH_IC_LASSO, TH_IC_WAND, TH_IC_MOVE, TH_IC_CURVE, TH_IC_ELLIPSE, TH_IC_PICK, TH_IC_POLY, TH_IC_CONTOUR };
 bool  Th_Button(Rectangle r, const char *label, int flags, const char *hint);
 #define Th_ButtonDanger(r, label) Th_Button(r, label, TH_BTN_DANGER, NULL)   /* every delete command */
 /* The lock of a font or typeface: one padlock icon button (closed = locked, shown as on when unlocked); true when clicked.  Square, bh x bh. */
@@ -202,9 +203,26 @@ bool Th_Check(Rectangle r, const char *label, bool *v, int flags, const char *na
 bool Th_Switch(Rectangle r, const char *label, bool *v, int flags, const char *name);
 bool Th_Dropdown(Rectangle r, const char *name, const char *value, bool dim, bool open);
 
-/* Input gate: while true (a modal dialog is open) Th_Button/Th_Toggle and the editor ignore the mouse and keyboard. */
+/* Two gates (version 15), set by the code that draws a region:
+ *   Th_SetInputBlocked: the mouse AND the keyboard are blocked.  For a modal dialog (New Font, Import, Export, the unsaved prompt), an open
+ *     popover or menu (the Style/Format/Colours lists, the context menu, a file menu, the Add Layer popover), a script job and the frame in which
+ *     a document opened.  A focused text field takes no keys while it is set, and sample.c's SampleEdit drops its focus.
+ *   Th_SetMouseBlocked: only the mouse is blocked (hover, clicks, the wheel).  For a widget that is outside the visible part of a scrolled
+ *     region or under a pinned block: it does not react to the mouse, but a text field that has the keyboard keeps taking keys, so the
+ *     mouse may wander off while one types.  Th_MouseBlocked() is true under either gate.
+ * Every call site of Th_SetInputBlocked says which kind it is: "modal" (dialogs, job, swallowMouse), "popover" (menus and lists open) or
+ * "editing" (main.c: the glyph canvas ignores the mouse and keys while a panel field has the keyboard).  Out-of-area sites use the mouse gate. */
 void Th_SetInputBlocked(bool blocked);
 bool Th_InputBlocked(void);
+void Th_SetMouseBlocked(bool blocked);
+bool Th_MouseBlocked(void);
+bool Th_MouseOnly(void);   /* only the mouse gate (to save and restore it) */
+
+/* A control that fires on the release of the left button calls this with its rectangle, a name (its label or id) and whether the mouse is
+ * over it: it is true only when the press began on this same control (same name and rectangle), so a button that moves under the mouse
+ * between the press and the release is not triggered by a press that began elsewhere.  Th_Button, Th_Toggle, Th_Check, Th_Switch,
+ * Th_Segmented, Th_Dropdown, a foldable Th_Section and the copy of a hash use it; the stepper acts on the press itself. */
+bool Th_Released(Rectangle r, const char *id, bool hover);
 
 /* Widget registry for scripted input (hidden --play flag). Widgets register their rectangle by name each frame;
  * names have no spaces ("Save_Draft"). Lookup is case-insensitive and prefers the most recently registered one. */

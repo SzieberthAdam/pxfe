@@ -95,6 +95,9 @@ int      Browser_CardInkLines(const Browser *b, int visibleIndex);   /* lines of
 int      Browser_TypefaceTotal(const Browser *b);               /* typefaces of the library (the badge of the Typefaces tab), whatever the filters */
 int      Browser_BoxCount(const Browser *b);                    /* boxes of the visible list (0 in the other tabs) */
 int      Browser_BoxVariants(const Browser *b, int box);        /* variants shown in a box, -1 when there is none */
+int      Browser_ColorFilter(const Browser *b);                 /* the chosen number of colours, 0 for Any */
+int      Browser_ColorValues(const Browser *b);                 /* the counts the Colours dropdown lists (without Any) */
+int      Browser_ColorValue(const Browser *b, int i);           /* the i-th of them */
 bool     Browser_SelectedIsHeader(const Browser *b);            /* the box header (the typeface) is selected, not a variant row */
 bool     Browser_TypefaceHeaderCenter(const Browser *b, int box, Vector2 *out);   /* screen centre of the left part of a box header */
 /* The last choice the browser returned (also delete requests): the action (BrowserAction), pxfm and pxtf. */

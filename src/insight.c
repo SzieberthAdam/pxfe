@@ -666,7 +666,7 @@ typedef struct Cx {
 
 static bool cx_hover(const Cx *c, Rectangle r)
 {
-    if (Th_InputBlocked()) return false;
+    if (Th_MouseBlocked()) return false;
     Vector2 m = GetMousePosition();
     return CheckCollisionPointRec(m, c->vis) && CheckCollisionPointRec(m, r);
 }
@@ -831,7 +831,7 @@ static void draw_usage(Cx *c, float *y, bool first)
             Th_Reg(nm, (Rectangle){ rr.x, fmaxf(rr.y, c->vis.y), rr.width, fminf(rr.y + rr.height, c->vis.y + c->vis.height) - fmaxf(rr.y, c->vis.y) });
             bool hv = cx_hover(c, rr);
             Th_ListRow(rr, hv ? TH_LR_HOVER : 0);
-            if (hv && IsMouseButtonReleased(MOUSE_BUTTON_LEFT)) click_target(c, r);
+            if (Th_Released(rr, nm, hv)) click_target(c, r);
             float hw = Th_HashShort("Font", r->pxfm, x1, rr.y + 3, TH_HASH_RIGHT, NULL);
             Th_TextClip(r->label, x0, rr.y + 3, x1 - x0 - hw - 8, TH_TEXT, TH_F_BODY);
             for (int k = 0; k < nl; k++) Th_TextClip(lines[k], x0, rr.y + 26 + 18.0f * (float)k, x1 - x0, TH_TEXT_DIM, TH_F_SMALL | TH_F_RICH);
@@ -844,10 +844,10 @@ static void draw_usage(Cx *c, float *y, bool first)
             char t[48];
             snprintf(t, sizeof t, in->showAll ? "Show fewer" : "Show all %d", u->nRows);
             rr.width = Th_ButtonW(t);
-            bool pb = Th_InputBlocked();
-            Th_SetInputBlocked(pb || !CheckCollisionPointRec(GetMousePosition(), c->vis));   /* a scrolled-out button does not react */
+            bool pb = Th_MouseOnly();
+            Th_SetMouseBlocked(pb || !CheckCollisionPointRec(GetMousePosition(), c->vis));   /* a scrolled-out button does not react */
             if (Th_Button(rr, t, 0, NULL)) in->showAll = !in->showAll;
-            Th_SetInputBlocked(pb);
+            Th_SetMouseBlocked(pb);
         }
         *y += TH_ROW_H + 4;
     }
@@ -888,7 +888,7 @@ static void draw_sim(Cx *c, float *y, bool typefaces, bool first)
                 else if (typefaces) snprintf(tip, sizeof tip, "shape not used for some font pairs \xC2\xB7 shared %.0f \xC2\xB7 metrics %.0f", r->shared, r->metrics);
                 else snprintf(tip, sizeof tip, "shape not used (%d shared code points, 10 needed) \xC2\xB7 shared %.0f \xC2\xB7 metrics %.0f", r->sharedRef, r->shared, r->metrics);
                 cx_tip(c, tip);
-                if (IsMouseButtonReleased(MOUSE_BUTTON_LEFT) && c->clicked && c->target) {
+                if (Th_Released(rr, nm, true) && c->clicked && c->target) {
                     memset(c->target, 0, sizeof *c->target);
                     if (typefaces) { c->target->action = INSIGHT_OPEN_TYPEFACE; memcpy(c->target->pxtf, r->hash, 33); c->target->variant = 0; }
                     else { c->target->action = INSIGHT_OPEN_FONT; memcpy(c->target->pxfm, r->hash, 33); }
