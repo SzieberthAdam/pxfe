@@ -1,4 +1,4 @@
-/* fitdoc.inc - importing a font file, and glyphs that are DRAWN FROM A FONT LAYER (DESIGN.md "Version 10"); included by main.c.
+/* fitdoc.inc - importing a font file, and glyphs that are DRAWN FROM A FONT LAYER (DESIGN.md "Importing a font file"); included by main.c.
  *
  * FOLLOWING.  One font layer of the open font may have `follow` set (an outline file with an absolute size, s.em > 0): the glyphs of
  * the font are then the layer's outlines turned into pixels by fit.h, with the layer's own size, width, offset, mode and threshold and

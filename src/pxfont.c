@@ -959,7 +959,7 @@ bool px_glyph_set_colors(PxFont *f, PxGlyph *g, const uint32_t charColor[PX_NUM_
     return px_glyph_set_palette(f, g, col, nc);
 }
 
-/* ---- canonical palettes in memory (version 23, see CANONICAL IN MEMORY in pxfont.h) */
+/* ---- canonical palettes in memory (see CANONICAL IN MEMORY in pxfont.h) */
 
 static bool cin(const uint32_t *v, int n, uint32_t c) {
     for (int i = 0; i < n; i++) if (v[i] == c) return true;
@@ -1315,7 +1315,7 @@ static uint32_t *glyph_write_palette(const PxFont *f, const PxGlyph *g, int *n, 
         return out;
     }
     /* store.canonical_pixels: the glyph's colours in reading order, then the rest of its palette in memory (the glyph view drops
-     * the unused slots it made before the font is written, see Version 23 in DESIGN.md) */
+     * the unused slots it made before the font is written, see "The unused-slot rule" in DESIGN.md) */
     uint32_t *out = (uint32_t *)malloc(sizeof(uint32_t) * (size_t)(k + gp->n + 1));
     if (!out) return NULL;
     int m = 0;

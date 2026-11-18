@@ -17,7 +17,7 @@
  *   - Progress / cancel (StoreProgress) are plain volatile longs, written by the worker and read by the UI thread.
  *   - Paths are in the ANSI code page of the process, like the rest of the core.  Windows only.
  *
- * LOAD, SAVE, IMPORT, EXPORT (DESIGN.md "Version 5").  The store is a database file loaded into memory (store_open_pxfdb);
+ * LOAD, SAVE, IMPORT, EXPORT (DESIGN.md "Storage: Load, Save, Import, Export").  The store is a database file loaded into memory (store_open_pxfdb);
  * everything is changed in memory; store_save writes it back (to a temporary file beside the file, then an atomic replace).
  * The text folders pxtf/ pxfm/ pxgl/ are reached only by store_import_folder and store_export_folder.  The store keeps a
  * change counter: store_modified says whether memory differs from the file as loaded or last written.

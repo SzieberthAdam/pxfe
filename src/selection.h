@@ -1,4 +1,4 @@
-/* selection.h - the cell mask behind the glyph editor's selection tools (see DESIGN.md, "Version 16: selection and moving").
+/* selection.h - the cell mask behind the glyph editor's selection tools (see DESIGN.md, "Selection and moving").
  *
  * No raylib, no pxfont: plain masks and character bitmaps, so the logic can be unit tested (tests/test_selection.c).
  * Coordinates are the editor's glyph space: x = column from the pen, y = a row counted down from the baseline line.

@@ -1,4 +1,4 @@
-/* colorpick.c - the colour picker of the design system (see colorpick.h and DESIGN.md, "Version 23").  Drawn with the theme's
+/* colorpick.c - the colour picker of the design system (see colorpick.h and DESIGN.md, "The palette bar and the colour picker").  Drawn with the theme's
  * parts: Th_Raised, Th_TextHead, Th_Segmented, Th_TextField, Th_Button; the sliders and planes are its own (no other view has one). */
 #include "colorpick.h"
 

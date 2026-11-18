@@ -1,4 +1,4 @@
-/* layers.h - reference layers of the glyph view (DESIGN.md "Version 4", "Layers").
+/* layers.h - reference layers of the glyph view (DESIGN.md "Font layers").
  *
  * A layer is a glyph drawn under or over the edited glyph in the glyph view, to compare and to trace.  Layers are a
  * session setting: they are never saved into a font, they stay while the user moves to the previous or next glyph and

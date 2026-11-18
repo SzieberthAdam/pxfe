@@ -105,7 +105,7 @@ void Th_VLine(float x, float y0, float y1, Color c);
 void Th_DashedHLine(float x0, float x1, float y, float dash, Color c);
 void Th_DashedVLine(float x, float y0, float y1, float dash, Color c);
 void Th_RectLines(Rectangle r, Color c);                /* 1 px outline inside r */
-/* Buttons (DESIGN.md "Push button"): flags; the icon of an icon button is TH_BTN_ICON(TH_IC_*) and its label only names it (registered, tooltip).
+/* Buttons (DESIGN.md "Buttons"): flags; the icon of an icon button is TH_BTN_ICON(TH_IC_*) and its label only names it (registered, tooltip).
  * `hint` (or the icon's label) is offered to the view by Th_Tip while the mouse is over the button, also when it is disabled.
  * Th_ButtonW: the width of a button holding `label`.  Th_Toggle flips *on and returns true when clicked. */
 #define TH_BTN_DISABLED 1
@@ -152,7 +152,7 @@ int Th_Stepper(Rectangle r, const char *value, const char *prefix, int flags);
 Rectangle Th_StepperValue(Rectangle r);   /* the middle of the stepper r, where the value is */
 int Th_StepperHover(void);
 
-/* Text field and search field (DESIGN.md "Text field"): one field of the whole window has the keyboard; its text is edited in a buffer of the theme.
+/* Text field and search field (DESIGN.md "Text field, checkbox, switch"): one field of the whole window has the keyboard; its text is edited in a buffer of the theme.
  * `text` is what the field shows when it does not have the keyboard; `cap` the most bytes the caller can hold (0: 4095).  A live field (the default) has
  * its model follow every TH_TF_CHANGED by copying Th_TextValue(); a TH_TF_COMMIT field (a number) is applied on TH_TF_ENTER or TH_TF_BLUR.
  * The field loses the keyboard on Enter, Tab, Escape and a click elsewhere, and when it is not drawn for a frame.  Registers `name`
@@ -203,7 +203,7 @@ bool Th_Check(Rectangle r, const char *label, bool *v, int flags, const char *na
 bool Th_Switch(Rectangle r, const char *label, bool *v, int flags, const char *name);
 bool Th_Dropdown(Rectangle r, const char *name, const char *value, bool dim, bool open);
 
-/* Two gates (version 15), set by the code that draws a region:
+/* Two gates, set by the code that draws a region:
  *   Th_SetInputBlocked: the mouse AND the keyboard are blocked.  For a modal dialog (New Font, Import, Export, the unsaved prompt), an open
  *     popover or menu (the Style/Format/Colours lists, the context menu, a file menu, the Add Layer popover), a script job and the frame in which
  *     a document opened.  A focused text field takes no keys while it is set, and sample.c's SampleEdit drops its focus.

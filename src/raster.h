@@ -1,4 +1,4 @@
-/* raster.h - the cell paths behind the glyph editor's line, curve and pencil tools (see DESIGN.md, "Version 17: line, curve and pixel-perfect").
+/* raster.h - the cell paths behind the glyph editor's line, curve and pencil tools (see DESIGN.md, "Tools of the glyph view").
  *
  * No raylib, no pxfont: plain integer cells, so the logic can be unit tested (tests/test_raster.c).
  * Coordinates are the editor's glyph space (x to the right, y down); a path is a list of cells in drawing order. */
@@ -56,7 +56,7 @@ bool ras_rect(RasPath *out, int x0, int y0, int x1, int y1, bool filled);
 bool ras_ellipse(RasPath *out, int x0, int y0, int x1, int y1, bool filled);
 
 
-/* ---- fill and polygon (see DESIGN.md, "Version 20: fill, eyedropper, polygon and contour") */
+/* ---- fill and polygon (see DESIGN.md, "Tools of the glyph view") */
 
 /* The cells a paint bucket would fill: the region is the rw x rh characters `pix` with its top-left cell at (rx, ry); the seed is (sx, sy).
  * Contiguous: the cells joined to the seed that hold the seed's character (4-connected, 8 with `diagonals`); not contiguous: every cell of the region that

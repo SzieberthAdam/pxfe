@@ -1,4 +1,4 @@
-/* finder.h - the glyph finder view (DESIGN.md "The glyph finder"): every distinct bitmap of the library
+/* finder.h - the glyph finder view (DESIGN.md "The Glyphs view"): every distinct bitmap of the library
  * drawn for one code point, with how many fonts use it, and the usage of the selected one. */
 #ifndef FINDER_H
 #define FINDER_H

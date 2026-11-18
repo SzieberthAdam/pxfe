@@ -254,8 +254,8 @@ const PxPalette *px_glyph_palette(const PxFont *f, const PxGlyph *g);
 uint32_t px_glyph_color(const PxFont *f, const PxGlyph *g, char c);
 /* The entry (0..35) of the glyph's palette that has this colour, or -1. */
 int  px_glyph_find_color(const PxFont *f, const PxGlyph *g, uint32_t color);
-/* The entry (0..35) the glyph draws a colour with: its own when it has it, else the colour takes a new entry at the end (version 23:
- * unused entries are kept), or, when the palette has 36 entries, the first one no pixel uses; the glyph is pointed at the palette so
+/* The entry (0..35) the glyph draws a colour with: its own when it has it, else the colour takes a new entry at the end (unused
+ * entries are kept), or, when the palette has 36 entries, the first one no pixel uses; the glyph is pointed at the palette so
  * made (copy on write: found or added in the table).  A glyph of the default palette is given a palette of its own (black too, unless
  * it has no ink: then the new colour alone).  PX_COLOR_FULL when its 36 entries are all in use by its pixels, -1 on out of memory. */
 #define PX_COLOR_FULL (-2)
@@ -271,7 +271,7 @@ bool px_glyph_set_palette(PxFont *f, PxGlyph *g, const uint32_t *colors, int n);
  * are renumbered in reading order, each colour once, and the glyph gets the palette of those colours.  A glyph without ink
  * keeps its palette.  For importers, old drafts and tests. */
 bool px_glyph_set_colors(PxFont *f, PxGlyph *g, const uint32_t charColor[PX_NUM_PIXELS]);
-/* CANONICAL IN MEMORY (version 23).  The glyph view keeps the glyph it edits canonical after every edit: its pixels numbered in
+/* CANONICAL IN MEMORY.  The glyph view keeps the glyph it edits canonical after every edit: its pixels numbered in
  * reading order and its palette in the same order, so entry i is the colour of pixel character i; the entries no pixel uses (the
  * view's "unused slots": a colour added with "+", all its pixels erased, the rest of a longer palette it was read with) follow
  * the used ones in their order.  The glyph view drops the unused entries it made when it leaves the glyph or the font is saved

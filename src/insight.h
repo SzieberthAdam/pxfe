@@ -1,4 +1,4 @@
-/* insight.h - side-panel sections that query the store (DESIGN.md "Version 3"):
+/* insight.h - side-panel sections that query the store (DESIGN.md "Glyph usage" and "Similar fonts and typefaces"):
  * "Glyph usage" (which fonts / typefaces hold the selected glyph bitmaps) and
  * "Similar fonts" / "Similar typefaces". Queries run on a worker thread with its own StoreConn;
  * the draw call never blocks. */

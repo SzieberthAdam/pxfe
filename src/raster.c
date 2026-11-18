@@ -213,7 +213,7 @@ bool ras_ellipse(RasPath *out, int x0, int y0, int x1, int y1, bool filled)
     return ok;
 }
 
-/* ------------------------------------------------------------------ fill and polygon (version 20) */
+/* ------------------------------------------------------------------ fill and polygon */
 
 bool ras_flood(RasPath *out, const char *pix, int rx, int ry, int rw, int rh, int sx, int sy, bool contiguous, bool diagonals, const unsigned char *clip)
 {

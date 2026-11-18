@@ -2931,7 +2931,7 @@ int main(int argc, char **argv)
         DrawNewFontDialog(W, H);
         DrawImportFontDialog(W, H);
         DrawModal(W, H);
-        if (Th_ColorPickIsOpen()) {   /* the colour picker: modal over everything (version 23) */
+        if (Th_ColorPickIsOpen()) {   /* the colour picker: modal over everything */
             int pm = Th_ColorPickMode();
             uiBlocked = false;
             Th_SetInputBlocked(false);

@@ -1,4 +1,4 @@
-/* colormath.h - colour models for the colour picker (see DESIGN.md, "Version 23"): sRGB with its gamma, HSV, HSL and CIE Lab (D65).
+/* colormath.h - colour models for the colour picker (see DESIGN.md, "The palette bar and the colour picker"): sRGB with its gamma, HSV, HSL and CIE Lab (D65).
  * No raylib: pure C99, tested by tests/test_colormath.c.
  *
  * Every component is a double: r, g, b, a in 0..1 (sRGB, gamma encoded); h in degrees 0..360 (0 for a grey); s, v, l in 0..1;

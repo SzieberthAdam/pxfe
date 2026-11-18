@@ -210,7 +210,7 @@ FSettings *fs_open(const char *path, char err[FS_ERR_LEN]) {
         }
     }
     if (pr == PROBE_OK && query_int(fs, prep(fs, "SELECT value FROM meta WHERE key='schema_version'"), 0) < 2) {
-        /* version 1 -> 2: the placement of an imported font (DESIGN.md "Version 10"); the file itself changes at the next save */
+        /* version 1 -> 2: the placement of an imported font (DESIGN.md "Importing a font file"); the file itself changes at the next save */
         if (!exec(fs, "ALTER TABLE layer ADD COLUMN em REAL NOT NULL DEFAULT 0;"
                       "ALTER TABLE layer ADD COLUMN aspect REAL NOT NULL DEFAULT 1;"
                       "ALTER TABLE layer ADD COLUMN follow INTEGER NOT NULL DEFAULT 0;"
@@ -223,7 +223,7 @@ FSettings *fs_open(const char *path, char err[FS_ERR_LEN]) {
         }
     }
     if (pr == PROBE_OK && query_int(fs, prep(fs, "SELECT value FROM meta WHERE key='schema_version'"), 0) < 3) {
-        /* version 2 -> 3: the lock of fonts and typefaces (DESIGN.md "Version 12") */
+        /* version 2 -> 3: the lock of fonts and typefaces (DESIGN.md "Locks") */
         if (!exec(fs, "CREATE TABLE IF NOT EXISTS unlocked (kind INTEGER NOT NULL, hash TEXT NOT NULL, PRIMARY KEY (kind, hash)) WITHOUT ROWID;"
                       "UPDATE meta SET value='3' WHERE key='schema_version';")) {
             if (err) snprintf(err, FS_ERR_LEN, "%.100s: cannot upgrade the settings: %.100s", path, fs->err);

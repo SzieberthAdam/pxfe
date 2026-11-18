@@ -1,4 +1,4 @@
-/* colorpick.h - the colour picker of the design system (DESIGN.md, "Version 23" and "Colour picker" in the component catalogue).
+/* colorpick.h - the colour picker of the design system (DESIGN.md, "The palette bar and the colour picker" and "Colour picker" in the component catalogue).
  *
  * One modal window for every place that chooses a colour: a view opens it with a colour and a tag, main.c draws it last
  * (Th_ColorPickDraw, after the dialogs) and blocks everything under it while it is open, and the view takes the answer with its tag.

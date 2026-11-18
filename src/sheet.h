@@ -1,4 +1,4 @@
-/* sheet.h - finding a font in a picture (DESIGN.md "Version 11: importing a picture of a font").
+/* sheet.h - finding a font in a picture (DESIGN.md "Importing a picture of a font").
  *
  * A picture of a font tells nothing about itself: not where the glyphs are, not which characters they are, not what is background.
  * sheet_analyze works it out, step by step, and every step can be overridden (SheetOpts):

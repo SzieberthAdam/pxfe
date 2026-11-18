@@ -1,12 +1,12 @@
 # pxfe: pixel font editor
 
-pxfe is a desktop browser and editor for the pixel fonts of a pixelglyphlib library: pxtf typefaces, pxfm fonts and pxgl glyph files, as text folders or as one pxfdb SQLite database.
-It is written in C99 with raylib 6, raygui 5.0-dev and SQLite 3.54 (`vendor/sqlite3/`, static).
-The formats are specified in `C:/Users/jnsGEzD3/Documents/GitHub/pixelglyphlib/spec/`: `pxfm.md`, `pxtf.md` (formerly pxfc), `pxgl.md` and `pxfdb.md`.
-The whole UI is in English.
+> This file describes the current design only, by topic, without version history.
+> It must stay under 100,000 characters (`wc -m DESIGN.md`); when adding, shorten something else.
 
-> **Version 3 (2026-11-11).** The pxfc container is now the pxtf typeface, glyphs without a code point have codes from `F00000`, the default glyph's line has the code `FFFFFF`, and the library can be one pxfdb file.
-> The section "Version 3: the store, glyph usage, similarity and the glyph finder" at the end overrides the older sections where they differ.
+pxfe is a desktop browser and editor for the pixel fonts of a pixelglyphlib library: pxtf typefaces, pxfm fonts, pxgl glyph files and hex palettes, kept in one pxfdb SQLite database.
+It is written in C99 with raylib 6 and SQLite 3.54 (`vendor/sqlite3/`, static).
+The formats are specified in `C:/Users/jnsGEzD3/Documents/GitHub/pixelglyphlib/spec/`: `pxfm.md`, `pxtf.md`, `pxgl.md`, `hex.md` and `pxfdb.md`; pxfe follows the spec as of commit 5dd97ca2c4 ("Add hex palettes, canonical colour glyphs, COLORS and SYMBOLIC").
+The whole UI is in English.
 
 ## Build
 
@@ -18,21 +18,34 @@ The toolchain is the w64devkit GCC bundled with raylib in `C:\raylib`.
 - `build.bat e2e` builds the scripted end-to-end test binary; `tests\e2e\run_all.bat` runs the scripts.
 
 All `src/*.c` files are compiled into the app, so a new module is just a new file in `src/`.
-`vendor/raygui.h` is included with `RAYGUI_IMPLEMENTATION` defined in exactly one file, `src/main.c`.
+`vendor/raygui.h` is included with `RAYGUI_IMPLEMENTATION` in exactly one file, `src/main.c`; no raygui widget is used.
+The tests are described in `HANDOFF.md` and `tests/e2e/README.md`.
 
 ## Modules
 
 | File | What it does |
 | --- | --- |
-| `src/pxfont.h/.c` | font model, SHA-256, canonical form, pxfm v2 and pxgl read and write, drafts; no raylib |
-| `src/pxtf.h/.c` | typeface model (formerly pxfc), pxtf read and write; no raylib |
-| `src/store.h/.c`, `src/store_int.h` | the SQLite store in memory: load a pxfdb, import a folder, save (VACUUM INTO a temp file, then replace), export to a folder (Append, Overwrite), change counter, rows and model both ways, lists, deletion with cascade, glyph usage; no raylib |
-| `src/store_sim.c` | similar fonts and typefaces on the store; no raylib |
-| `src/library.h/.c` | the browser index from the store lists (the draft listing is kept in the core, unused), lazy and threaded loading from the store; no raylib |
-| `src/theme.h/.c` | colours, fonts, raygui style, small drawing helpers |
-| `src/browser.h/.c` | the library browser view |
-| `src/main.c` | window, app state, views, toolbar with the File menu and Save, Load / Save / Save As / Import / Export flows with their prompts and dialogs, the commit of edits into the store, the locks, glyph grid, metrics panel, status bar |
-| `src/editor.h/.c` | the glyph editing view |
+| `src/pxfont.h/.c` | font model, SHA-256, canonical form, pxfm v2, pxgl and hex read and write, the per-glyph palette table, drafts; no raylib |
+| `src/pxtf.h/.c` | typeface model, pxtf read and write; no raylib |
+| `src/store.h/.c`, `src/store_int.h` | the SQLite store in memory: load, import, save, export, change counter, rows and model both ways, lists, deletion with cascade, editing in place, glyph usage; no raylib |
+| `src/store_sim.c` | similar fonts and typefaces; no raylib |
+| `src/library.h/.c` | the browser index from the store, lazy threaded loading; no raylib |
+| `src/fsettings.h/.c` | the settings sidecar `<db>-settings`; no raylib |
+| `src/theme.h/.c` | the design system: colours, fonts, components, drawing helpers |
+| `src/colorpick.h/.c`, `src/colormath.h/.c` | the colour picker and its colour models (colormath: no raylib) |
+| `src/browser.h/.c` | the library views (Typefaces, Typeface, Fonts) |
+| `src/finder.h/.c` | the Glyphs view |
+| `src/insight.h/.c` | Glyph usage, Similar fonts and Similar typefaces, on a worker thread |
+| `src/sample.h/.c` | the shared sample text, its renderer and editor, the sample strip |
+| `src/main.c` | window, app state, views, the top bar and Menu, Load / Save / Import / Export flows and dialogs, commits, locks, glyph grid, status bar |
+| `src/panel.inc`, `src/gpanel.inc` | the right panels of the font view and of the glyph view |
+| `src/editor.h/.c` | the glyph view |
+| `src/selection.h/.c`, `src/raster.h/.c` | the selection mask and the cell paths of the tools; no raylib |
+| `src/layers.h/.c`, `src/flayers.h/.c` | session layers with the Layers tab and Add Layer popover; font layers |
+| `src/outline.h/.c`, `src/bmsrc.h/.c` | outline and bitmap font sources |
+| `src/fit.h/.c`, `src/fitdoc.inc` | fitting an outline to pixels, importing a font file, glyphs that follow a layer |
+| `src/sheet.h/.c`, `src/sheetref.h/.c` | finding a font in a picture, and its reference glyphs |
+| `src/winfile.h/.c` | native Windows file and folder dialogs |
 | `src/play.inc` | the scripted input player of the end-to-end tests (`--play`) |
 
 ## Command line
@@ -41,412 +54,22 @@ All `src/*.c` files are compiled into the app, so a new module is just a new fil
 
 - A `.pxfdb` file is loaded.
 - A folder starts the import flow: the target file is asked for (or given with `--import-to`), the folder is imported, the new database is loaded.
-- `--font` and `--typeface` open that font or typeface of the loaded database; `--unlock` then unlocks the font.
+- `--font` and `--typeface` open that font or typeface; `--unlock` then unlocks the font.
 - With no argument, the last database (`lastPxfdb` in `pxfe.ini` beside the exe) is loaded, else an empty state with "Load Database…" and "Import Folder…".
+- After a database is loaded (at start or by Load), pxfe shows the Typefaces view.
 
-## Visual direction
+## Design system
 
-The bar is the polished look of FontLab 8: quiet, flat, precise.
-
-- A light neutral theme: window background `#F3F3F4`, panels `#FFFFFF`, hairline separators `#DCDCE0`, text `#1E1E22`, secondary text `#7A7A85`, accent (selection) `#2F6FED`, accent tint `#2F6FED` at 15% alpha.
-- One UI font family: Noto Sans (regular and semibold) and GNU Unifont for hashes and glyph codes, sizes from the type scale in "Typography"; never scaled bitmap text.
-- Metric line colours, used everywhere they are projected: baseline `#E5484D`, ascent and descent (box edges) `#8E8E99`, cap height `#2F9E6E`, x-height `#D68A00`, advance `#2F6FED` dashed; underline and strike-out `#9B59D0` dotted.
-- Hairlines are 1 px, corners 4 px, no gradients, no heavy borders, no raygui default grey look.
-- Glyph pixels are drawn as exact integer-scaled rectangles (pixel perfect), ink in the font's palette colour on the cell background.
-
-## The font model (pxfm version 2)
-
-- Every position is counted from the baseline and the pen position.
-  A glyph's offsets `x,y` put the bottom-left corner of its bitmap: `x` columns right of the pen, `y` rows above the baseline (negative is below).
-- Advances, offsets and all metrics are integers.
-- Every font-wide metric is optional, because a pxfm holds only what its source states: `ASCENT`, `DESCENT`, `LINEGAP`, `CAPHEIGHT`, `XHEIGHT`, `INTERNALLEADING`, `QUADWIDTH`, `RATIO`, `UNDERLINEPOSITION`, `UNDERLINETHICKNESS`, `STRIKEOUTPOSITION`, `STRIKEOUTTHICKNESS`, `MONOSPACED`, plus `COLOR`, `GLYPH`, `_DEF` and `KERNING`.
-- A font without `ASCENT` or `DESCENT` is drawn in a box taken from the glyphs (the highest and the lowest bitmap rows); that box is pxfe's own and is never written.
-- Changing `ASCENT` or `DESCENT` no longer moves any glyph: it only changes the box.
-- The default glyph is an ordinary glyph with the code `FFFFFF` (version 11): it has its own bitmap, offsets and advance, it is always the last glyph of the font, and nothing else refers to it.
-- Kerning pairs are kept and written; they are not edited yet, but deleting a glyph drops its pairs and cloning does not copy them.
-
-## Locks and change detection
-
-The files of a library are named by their hashes.
-Every font and every typeface has a lock (version 12), and everything is locked until it is unlocked.
-
-- A locked font opens as a viewer: the grid, the glyph view, selection and zoom all work, but every command that would change it refuses ("The font is locked: unlock it first").
-- The padlock button (`Th_Lock`) is the only way to change the lock: in the font view's info bar, in the glyph view's bar, on the library's cards, rows and selection block, in the Typeface view and in the Typeface tab.
-- What is unlocked is edited in place: the font is changed in the store when its view is left (and before Save, Export, Load and quit).
-  Storage is content-addressed, so the hash changes; everything that names the font follows (see version 12).
-- A glyph's pxgl is never changed in place: editing a glyph gives it a new bitmap hash, and the glyph view shows the hash the glyph had when the font was opened and the new one.
-- Change detection is by hash, never by "an edit happened".
-  The font is modified exactly when the canonical hash of its current state differs from the hash the store holds, so an edit that is undone, or a value set to what it was, leaves it unmodified.
-- The reader and the writer must round-trip: every pxfm and pxfc of the library, read and written again unchanged, gives the bytes and the hash of its file name.
-
-## Library browser
-
-The browser is the first view when a library root is open.
-
-- Source toggle: "Containers" lists one entry per pxfc variant (with its metadata: family, style, full name, format, designer…); "Fonts" lists one entry per pxfm file (with the metadata of the first container variant that names it, if any); "Drafts" lists the duplicates in the drafts folder.
-- Each entry is a card with the family and style (or the hash when there is no name), small details (format, size in pixels `ASCENT + DESCENT`, glyph count, monospaced, ratio, short hash) and a sample text rendered in the font, pixel perfect.
-- A side panel has a segmented control at its top, "View" and "Similar", remembered in `pxfe.ini`.
-  "Similar" lists the similar fonts (Fonts tab) or similar typefaces (Typefaces tab) of the selected card, and says "Select a font to see similar ones" when there is none.
-  It is disabled in the Drafts tab.
-- The "View" tab customises the view and is remembered in `pxfe.ini`:
-  - a name filter (substring over family, full name, style, designer, hash);
-  - a style filter, a format filter and a "Monospaced only" switch, built from the values present;
-  - the sample text (editable, with presets: pangram, alphabet, digits and punctuation, "Hamburgefontsiv");
-  - the zoom multiplier (1x to 8x);
-  - the number of grid columns (1 to 8, or Auto);
-  - the sort order (name, size, format, glyph count).
-- Characters a font has no glyph for are drawn as its default glyph, or a hollow box.
-- The list is virtualized, and fonts are loaded lazily on worker threads: only the pxfm and the pxgl files of the sample text's characters, cached and loaded again when the sample text changes.
-  The scan of a 1,200-font library must show its cards within a second; the samples fill in as they load.
-- Clicking a card selects it; double-click or Enter opens the font view on it (read-only); "Duplicate to Edit" opens a duplicate.
-- Back (`Alt+Left`, or the "Library" button) returns from the font view to the browser, keeping its scroll, filters and selection.
-
-## Font view
-
-- Top: a toolbar with Library (back to the browser), Duplicate to Edit or Save Draft and Save to Library, Undo and Redo, a zoom selector (1x to 16x), toggles for metric lines and captions, Select Occurrences, Clone, Delete, and a selection summary.
-- Center: the glyph grid, as in FontLab's font window.
-  Each cell shows the glyph at the chosen integer scale inside its font box, the glyph's advance wide (at least a minimum cell width), with the projected metric lines, and a caption strip: the character (when printable) and `U+XXXX`, `-` for a glyph without a code point, and a "DEF" badge on the default glyph.
-- Right: a panel with a segmented control at its top, so that nothing is far below the fold:
-
-  - "Font": every metric of the model as an optional row (a checkbox for "stated", and a spinner), `RATIO` as two spinners, `MONOSPACED` as a switch.
-    Every change is projected live on all cells.
-  - "Typeface": the text fields of the typeface variant (family, style, full name, weight name, slant, copyright, designer…) and the italic, underlined and struck-out flags, editable in a duplicate.
-    It is disabled when the font has no typeface.
-  - "Glyph": the selection (code point, advance, bitmap, offsets, pxgl hash), a "Find in Library" link for the selected code point, and the glyph usage.
-  - "Similar": the similar fonts and the similar typefaces.
-
-  Selecting a glyph never changes the tab.
-  The tab is remembered in `pxfe.ini` (`panelTab`), and opening the glyph view shows the Glyph tab.
-  Each tab scrolls by itself.
-- Bottom: a status bar with the file, the glyph count, the selection count, the original hash, the current hash when it differs, and the modified marker.
-
-## Selection and commands
-
-- Click selects one glyph, Ctrl+click toggles, Shift+click extends a range, Ctrl+A selects all, Esc clears.
-- "Select Occurrences" (`Ctrl+Shift+A`) adds every glyph whose bitmap is the same shape as one already selected.
-- Delete (`Del`): deletes the selected glyphs after a confirmation.
-- Clone (`Ctrl+D`): clones the selected glyph to a new code point typed in a dialog (`U+XXXX`, hex, or a character).
-- Edit (`Enter`, double-click): opens the glyph view; in an original it is read-only.
-- Undo and redo (`Ctrl+Z`, `Ctrl+Y`): a snapshot holds the font and, for a container font, the container, so edits of the container's text fields and flags are undone like any other.
-
-## Glyph view
-
-- The glyph's font box large (auto-fit, integer zoom, wheel), a 1 px pixel grid, the metric lines with labels, the pen origin and the dashed advance line.
-- Pencil, eraser, line, rectangle and fill; painting outside the bitmap grows it; Shift+arrows move the bitmap (its offsets); the advance is a spinner and a draggable line.
-- The screen mapping (origin and zoom) is frozen from mouse-down to mouse-up, so a stroke that grows the font box never shifts the view under the cursor; the view is fitted again after the stroke.
-- A palette strip of the font's colours.
-- Previous and next glyph (`PgUp`, `PgDn`), `Esc` back to the grid.
-- A preview strip with a sample text at 1x and 2x, with kerning applied.
-
-## Version 3: the store, glyph usage, similarity and the glyph finder
-
-### Format changes
-
-- pxfc is renamed pxtf (`pxtf/xx/<hash>.pxtf`, a typeface: the fonts of one source file); `SAMPLETEXT` is gone, `CODEPAGE` is a text key.
-- A glyph without a code point has a code from `F00000` up, numbered `F00000`, `F00001`, … without gaps, so deleting such a glyph renumbers the later ones and their kerning pairs, and a new uncoded glyph takes the next code.
-- The default glyph's extra line has the code `FFFFFF`; `-` and `_DEF` are gone.
-- The UI shows a code point as `U+XXXX` and an uncoded glyph as `#n` (its code minus `F00000`).
-
-### The store
-
-The whole library lives in memory as one SQLite database with the pxfdb schema, whatever form it was opened from.
-
-- Opening a `.pxfdb` file checks `meta` (`PXFDB`, version 1) and copies the database into memory (`sqlite3_backup`).
-- Opening a text root lists the names under `pxgl/`, `pxfm/` and `pxtf/`.
-  The files are named by their hashes, so two libraries with the same sets of names hold the same files: when `<root>/pxfdb.pxfdb` or pxfe's own cache (`cache\<hash of the root path>.pxfdb` beside `pxfe.exe`) has exactly those sets of hashes, it is loaded; otherwise the database is built in memory from the files on worker threads, with a progress bar, by the strict readers, and then written to pxfe's cache.
-  pxfe never writes `pxfdb.pxfdb` into the library.
-- Every view reads the library through the store: the browser's entries, the fonts it draws, the glyphs, and the queries below.
-- The font being edited is still a `PxFont` working copy; the store holds only what is saved.
-- Save to Library writes the new files where the library came from: new pxgl, pxfm and pxtf files into a text root, or new rows into the `.pxfdb` file (no existing row is changed or deleted).
-  The new rows go into the in-memory store as well, so the new font shows at once everywhere.
-- The writer of the text files and the converter from rows must agree: every pxfm and pxtf made from the store is byte for byte the file of that hash, for the whole library.
-
-### Glyph usage
-
-- When one glyph is selected (in the font view, the glyph view or the glyph finder), the "Glyph" tab of the right panel (the finder's right panel) shows "Glyph usage".
-  It shows the pxgl hash, the size, and "In N fonts · M typeface variants": the fonts that hold the bitmap under any code, and the typeface variants (pxtf rows) that name them, which can be more than the fonts.
-  When the glyph has a code point (the font view knows the selected glyph's, the finder passes its own), a second line "K use it for U+0065" counts the fonts that draw the bitmap for that code.
-  This is the number the finder shows under the bitmap ("K fonts").
-  The list has one row per font and typeface variant (typeface family and style, font hash) with every code point the font uses the bitmap for, wrapped over several lines.
-- With several glyphs selected it shows the fonts that hold all of them.
-- Clicking an entry opens that font (read-only) with that glyph selected.
-
-### Similar fonts and typefaces
-
-- The "Similar" tab of the browser's side panel and of the font view's right panel shows "Similar fonts" for the selected font, and "Similar typefaces" for a typeface.
-  They list the 20 best, each with its score and a sample line, and a click opens it.
-- Font similarity, from 0 to 100:
-  - shape (weight 0.6): over the code points both fonts have from a reference set (U+0021–U+007E and the letters U+00C0–U+017F), per code point 1 for the same pxgl hash at the same offsets, else the intersection over union of the inked pixels, both placed at the pen and the baseline; the mean;
-  - shared glyphs (weight 0.25): the Jaccard index of the two sets of pxgl hashes;
-  - metrics (weight 0.15): the closeness of the font heights and the advance of the space or the mean advance, and the same monospacing;
-  - a pair with fewer than 10 shared reference code points scores by shared glyphs and metrics only, and is marked as such.
-- Typeface similarity: the mean over the fonts of one typeface of the best score against the fonts of the other.
-- One font against the whole library takes under half a second, on a worker thread, with the reference bitmaps of every font cached as bit rows.
-
-### The glyph finder
-
-- A third top-level view beside Library and the font view: "Glyphs" (`Ctrl+G`).
-- A search box takes a character typed from the keyboard, `U+00E9`, `00E9`, `0xE9` or `E9`; it shows the code point, the character large in the UI font, and its Unicode block.
-- The results are every distinct bitmap drawn for that code point in the library, as cells on a common baseline at an integer zoom, each with the number of fonts that use it, sorted by that number (or by height or width).
-- Selecting a cell shows its glyph usage; double-clicking a font of the list opens it with that glyph selected.
-- From the font view, "Find in Library" (`Ctrl+Shift+F`) opens the finder on the selected glyph's code point.
-
-## Version 4: storage tiers, glyph view, layers and samples
-
-This section overrides the older ones where they differ.
-
-### Where the work goes: Memory, PXFDB, PXTF-FM-GL
-
-The user always knows where the work is.
-There are three places, named the same everywhere in the UI:
-
-- **Memory**: the in-memory store of the running pxfe.
-  It is lost when pxfe quits, unless it was saved on.
-- **PXFDB**: the `.pxfdb` file of the library: the file that was opened, or `<root>/pxfdb.pxfdb` for a library opened as a folder (created on the first save when missing).
-- **PXTF-FM-GL**: the text folders `pxgl/`, `pxfm/`, `pxtf/` of the library root: the folder that was opened, or the folder of the opened `.pxfdb` (asked once when that folder holds no library folders).
-
-The duplicate being edited is the working copy; it is not in any of the three until it is saved.
-
-- The toolbar has the save pipeline on its right: three buttons from left to right, with right-pointing arrows between them:
-  `[Save to Memory] → [Save to PXFDB] → [Save to PXTF-FM-GL]`.
-  - Save to Memory (`Ctrl+S`) puts the working copy into Memory as new rows (its pxgl, pxfm and, for a typeface duplicate, a new pxtf); it is enabled while the working copy differs from what Memory holds for it.
-  - Save to PXFDB inserts every row that Memory has and the PXFDB file lacks; it is enabled while there are such rows.
-  - Save to PXTF-FM-GL writes every file that the PXFDB has and the folders lack; it is enabled while there are such files.
-  - Each button shows a badge with what it would save ("2 fonts · 1 typeface · 14 glyphs") and its target path in the tooltip; a disabled button says why ("Nothing new in Memory").
-  - Nothing is ever overwritten; files and rows are deleted only by a deletion the user made (see "Deleting fonts and typefaces").
-- The status bar names the tier state in words: "Working copy: modified · Memory: 2 fonts not in PXFDB · PXFDB: up to date with the PXTF-FM-GL".
-- Quitting or opening another library with work in the working copy or in Memory that is not in the PXFDB asks first.
-- Opening a library folder: when `<root>/pxfdb.pxfdb` exists, it is loaded into Memory; the files of the folders that it lacks are read and added to Memory (so Memory is ahead of the PXFDB by them), and the rows it has that the folders lack count as pending for the PXTF-FM-GL.
-  When there is no `pxfdb.pxfdb`, Memory is built from the folders (with the progress screen) and everything is pending for the PXFDB.
-  pxfe's own cache folder is no longer used.
-- Opening a `.pxfdb` file loads it into Memory; the PXTF-FM-GL is its folder when that folder has library folders.
-- Drafts stay for unfinished working copies across sessions: "Save Draft" (`Ctrl+Shift+D`) writes `drafts\<name>.pxfd` beside `pxfe.exe`, and the toast, the status bar and the Drafts tab show the full path, with an "Open Folder" button.
-
-### Hashes
-
-- A short hash (8 digits) is shown where space is tight: cards, lists, captions, info bars.
-- The full hash is shown in the right panel's info blocks (font, typeface, glyph), selectable for copying (click copies, with a toast).
-- Every label says what the hash belongs to: "Font 0820dc69", "Typeface b925951b", "Glyph c0fc54c2".
-
-### Glyph view
-
-- In the glyph view the font view's second toolbar row (zoom, metrics, captions, selection commands) and the "Original — read-only" bar are hidden; the canvas gets the space.
-- The glyph view has its own compact bar: Back, previous and next glyph, the glyph's name, tools, palette, zoom (fit, minus, value, plus), metric lines on and off, the move and advance controls.
-  An original shows a small "Read-only · Duplicate to Edit" chip in this bar instead of the big band.
-- Its right panel has three tabs: Glyph (code, advance, bitmap size, offsets, full pxgl hash of the original and the current bitmap), Usage (the glyph usage list) and Layers.
-- The way in is shown in the font view: its right panel's Glyph tab has an "Open in Glyph View" button (also `Enter`, or a double click on the glyph) for the selected glyph.
-- The bar has a "Layers" toggle after "Metrics"; it reads "Layers 2" when two reference layers exist, it is lit while the Layers tab shows, and a click selects that tab.
-
-### Layers
-
-- Layers are reference glyphs drawn under or over the edited glyph in the glyph view, for comparing and tracing; they are not saved into the font.
-- With only the current glyph the Layers tab shows an empty state: what layers are for and a prominent blue "+ Add Layer" button (once a layer exists the button is the small one in the tab's header).
-- The Add Layer popover opens below the glyph view's bar, so it never covers the bar's controls.
-- The Layers tab lists the layers from top to bottom; the edited glyph is one of them, marked as "Current glyph" and highlighted.
-- "Add Layer" picks a glyph: from this font or from any font of the library (a searchable font list), by character or code (`A`, `U+0041`), or "same code as the edited glyph" so that it follows previous and next.
-- Each layer has: visibility (eye), colour (swatches and hex), opacity (0–100 %), x and y offset in pixels (spinners, and dragging with Alt in the canvas), order (up and down, or drag in the list), and remove.
-- The current glyph layer can be hidden too; while it is hidden the editing tools are disabled and the canvas says "Current glyph hidden".
-- The layers stay while moving to the previous or next glyph and while switching fonts, for the session.
-
-### Samples
-
-- The sample text is one shared setting (`pxfe.ini`) for the browser, the font view and the glyph view, and it can have several lines (Enter makes a new line in the sample box).
-- The font view has a sample strip at the bottom, as the glyph view has: the sample in the current working copy at an integer zoom (1x to 8x), with kerning, updated as the font is edited; the strip can be resized by dragging its top edge and collapsed.
-- Missing characters show the default glyph or a hollow box, as in the browser.
-
-### Library: typefaces
-
-- In the Typefaces tab one typeface is one box: its family name, the typeface hash (short), format and number of variants in the header, and inside it one row per variant: style, size, glyphs, flags, the font hash (short) and the sample.
-- Filters work on variants; a typeface shows when any variant matches, with the non-matching variants hidden.
-- Clicking a variant row selects that font; the box header selects the typeface (for similar typefaces).
-- The Fonts tab stays one card per font.
-- The badge of the Typefaces tab counts typefaces (boxes), not variants; the panel and the status line say "N of M variants" and, in the status line, "N of M typefaces".
-
-### Deleting fonts and typefaces
-
-- A font (pxfm) or a whole typeface (pxtf) can be deleted: from the browser (a card, a typeface box or one of its variant rows, `Del` or the context menu) and from the font view.
-- The browser's side panel shows the selection pinned at the bottom with red buttons under Open and Duplicate to Edit: "Delete Font" (a card or a variant row) and "Delete Typeface" (a box header or a variant row); `Del` and the context menu do the same.
-  The toasts of the browser keep clear of the side panel, so they do not cover these buttons.
-- Deleting a font removes its pxfm; every typeface that names it loses that variant, which gives that typeface a new pxtf (the old one is deleted), and a typeface left with no variant is deleted.
-- Deleting a typeface deletes its pxtf and every font of it that no other typeface names.
-- The glyphs (pxgl) that the deletion leaves named by no pxfm are deleted too; glyphs that were orphans before are left alone.
-- A confirmation names exactly what goes: "Delete 1 font, 1 typeface (Typeface b925951b loses variant 0002 and is rewritten), 14 glyphs?".
-- A deletion is made in Memory first, like any edit, and travels with the pipeline: Save to PXFDB deletes those rows from the PXFDB, Save to PXTF-FM-GL deletes those files from the folders; the badges count deletions apart ("2 fonts · −1 font").
-  Before a save that deletes, a confirmation lists what will be deleted there.
-
-## Version 5: Load, Save, Import, Export
-
-This section replaces "Where the work goes: Memory, PXFDB, PXTF-FM-GL" of version 4, and the drafts, entirely; it overrides every older section where they differ.
-
-### The model
-
-- pxfe works on one database (a `.pxfdb` file) at a time.
-- **Load** reads the database file into memory; all work happens in memory; **Save** writes memory back to the database file.
-- The text folders (`pxtf/`, `pxfm/`, `pxgl/`) are reached only through **Import** and **Export**.
-- There are no tiers, no save pipeline and no drafts any more; the Drafts tab, the `.pxfd` files and the storage bar are removed.
-
-### Load (`Ctrl+O`)
-
-- The file dialog looks for `*.pxfdb` files.
-- When memory has unsaved changes, pxfe asks first: Save, Discard or Cancel.
-- The command line takes a `.pxfdb` file the same way; `pxfe.ini` remembers the last one and loads it at start.
-
-### Working in memory
-
-- Everything is edited in memory: duplicates, glyph edits, metrics, typeface fields, deletions.
-- A duplicate being edited is committed into memory as a font (and, for a typeface duplicate, a typeface) when the user leaves its font view, before Save, before Export, and before Load or quit.
-  A later commit of the same duplicate replaces its earlier commit in memory (that earlier font, the typeface rewrite and the glyphs only it named go), so editing never leaves a trail of in-between fonts.
-- The originals stay read-only as before; deleting a font or a typeface works as in version 4, in memory.
-- The title bar and the status bar show the database file and whether memory has unsaved changes: "pixelglyphlib.pxfdb — modified".
-
-### Save (`Ctrl+S`) and Save As (`Ctrl+Shift+S`)
-
-- Save writes memory to the loaded database file, safely: to a temporary file next to it first, then it replaces the old file, so a failure never leaves a broken database.
-- Save As writes to a new file and continues on it.
-- After Import the database file is already chosen, so Save writes there.
-
-### Import (`File ▸ Import Folder…`)
-
-- The user picks a folder that holds `pxtf/`, `pxfm/` and `pxgl/`, and then the path of the new database file (default: `<folder>/pxfdb.pxfdb`; an existing file is replaced only after a confirmation).
-- pxfe reads every file with the strict readers (with the progress screen), builds the database, writes it to that path, and loads it at once.
-- A file that fails the strict check stops the import with its name and the reason; nothing is written.
-- Unsaved changes in memory are asked about first.
-
-### Export (`File ▸ Export to Folder…`)
-
-- The user picks a folder.
-- An empty folder, or one with no `pxtf/`, `pxfm/` or `pxgl/` data, gets every file of memory (committed first) at its library path.
-- A folder that already holds typeface, font or glyph data opens a dialog with the counts found there and a choice:
-  - **Append**: writes the files of memory that the folder lacks; files that are there already are left (the same name is the same content); nothing is deleted.
-  - **Overwrite**: deletes the contents of the folder's `pxtf/`, `pxfm/` and `pxgl/` folders (and nothing else of the folder: other files and folders stay), then writes every file of memory.
-    The dialog has the option "Make a backup first", on by default: before anything is deleted, the folder's current `pxtf/`, `pxfm/` and `pxgl/` data is imported into a backup database file, `<folder>-backup-<YYYYMMDD-HHMM>.pxfdb` beside the folder (the path can be changed).
-    If the backup cannot be made (a file there fails the strict check), nothing is deleted, and the user can cancel or overwrite without a backup after a second confirmation.
-  - **Cancel**.
-- At the end a summary says what was written, skipped and deleted.
-
-## Version 6: navigation
-
-This section replaces the top-level navigation "Library | Glyphs | <font>" of the older sections and the Typefaces and Fonts tab row of the browser.
-Everything else (the font and glyph views, the library boxes, the file handling of version 5) stays as it was.
-
-### The bar
-
-- The top bar has a **Menu** button (formerly "File"; the same menu: Load, Save, Save As, Import Folder, Export to Folder, Quit) and, after it, a segmented control of three segments.
-- Exactly one segment is blue: the view the user is in.
-- A segment that is too long is cut with an ellipsis (`HeadFit`); every segment has a hover hint that says where a click goes.
-
-### The six views
-
-| View | Segment 1 | Segment 2 | Segment 3 | Blue |
-| --- | --- | --- | --- | --- |
-| Typefaces | Typefaces | Fonts | Glyphs | 1 |
-| Typeface | the typeface's name | Fonts | Glyphs | 1 |
-| Fonts | Typefaces | Fonts | Glyphs | 2 |
-| Font | the typeface's name, or "Orphaned" | the font's style, e.g. "Regular" | Glyphs | 2 |
-| Glyph | the typeface's name, or "Orphaned" | the font's style | the glyph's caption, e.g. "A U+0041", "#3" | 3 |
-| Glyphs | Typefaces | Fonts | Glyphs | 3 |
-
-- **Typefaces**: the browser's typeface boxes, one per typeface.
-- **Typeface**: the fonts of one typeface in more detail than the box (see below).
-- **Fonts**: the flat list of every font, without grouping.
-- **Font**: the font view with its toolbar (zoom, metrics, captions and so on).
-  The style segment carries the "*" modified marker.
-- **Glyph**: the glyph editor.
-- **Glyphs**: the glyph finder.
-
-### Transitions
-
-- Typefaces, Fonts and Glyphs reach each other by clicking their segments; "Typefaces" from the Typeface, Fonts or Glyphs view shows the list of typefaces.
-- Opening a box header (double click, `Enter`, the panel's Open, the context menu) shows the Typeface view; the browser keeps the box selected so that the list comes back as it was.
-- Clicking the blue typeface-name segment of the Typeface view returns to the Typefaces list.
-- Opening a font from the Typefaces view (a variant row), the Typeface view or the Fonts view shows the Font view.
-- In the Font view, the first segment goes to the Typeface view of the font's typeface; "Glyphs" goes to the Glyphs view.
-- A font that belongs to no typeface reads "Orphaned" in the first segment, and that segment leads to the Typefaces list, since there is no Typeface view for it.
-  The style segment of such a font shows the font's own name.
-- Opening a glyph in the Font view shows the Glyph view; the style segment returns to the Font view, the typeface segment to the Typeface view.
-- Alt+Left (and the Back button of the glyph bar) goes one level up: Glyph, Font, Typeface, Typefaces.
-  In the Glyphs view it returns to the view it was entered from.
-  Alt+Right goes back to the font that was open (in the view it was left in).
-- Leaving a font view commits a duplicate into memory as before (version 5).
-- The library views have no segment for the open font any more; Alt+Right is the way back to it.
-
-### The Typeface view
-
-- One large row per font of the typeface: the style, the details (format, size, glyph count, mono, italic and so on), the font hash (short), the Open, Duplicate to Edit and Delete Font buttons, and a multi-line sample (the shared sample of `src/sample.h`, at least 2x).
-- The side panel shows the typeface: its name, the full typeface hash, and the fields of its pxtf (designer, license, license URL, copyright, version, vendor, trademark, description, URLs, code page, format); the sample box, the zoom and the Similar tab are those of the library; the filters are not shown.
-- The selected font is pinned at the bottom of the panel with its Open, Duplicate to Edit, Delete Font and Delete Typeface buttons; `Enter` and a double click open the font, `Del` deletes it.
-- After a font is deleted the typeface is rewritten under a new hash; the view follows it by family name, and returns to the list when the typeface is gone.
-
-### The browser
-
-- The browser's own Typefaces and Fonts tab row is gone; the bar replaces it.
-- The counts are in the side panel ("N of M variants", "N of M", "N fonts" in the Typeface view) and in the status line.
-- The Rescan button moved to the heading row of the panel's View section.
-- The browser does not return the opening of a typeface to the application: it switches view itself (`BROWSER_OPEN_TYPEFACE` is only recorded as the last action).
-
-## Version 7: views
-
-This section changes the side panels, the zoom and the start view of version 6.
-The rule of the whole round: the component of a role is reused, never drawn again in another look.
-Where a view had its own widget for a role that exists elsewhere, that code is gone.
-
-### The start view
-
-- After a database is loaded at start (or by Load), the program shows the Typefaces view, whatever tab or font the last session ended in.
-
-### One zoom control
-
-- Everywhere a zoom is chosen it is `Th_Stepper` (`src/theme.c`): `[-] 3x [+]`, 96 x 28 px, the control of the font view's toolbar.
-- It is used by the font view's toolbar, the glyph view's bar, the sample strip's header, the View tab of the Typefaces, Typeface and Fonts views, and the View tab of the Glyphs view.
-- The 1 to 8 segment rows of the browser and the sample strip, and the nine toggles of the Glyphs view (with "Auto"), are gone.
-  "Auto" does not fit a stepper, so the Glyphs view starts at 3x.
-- `Th_Section` (small-caps section title with a hairline) is shared by the browser's panel and the Glyphs view's panel.
-
-### The Glyphs view
-
-- The top strip (search box, Previous / Next, the character preview with its code point and block) and the toolbar (zoom, sort) are gone; the grid has the whole height.
-- The side panel has the tabs **View | Usage**, drawn like the library's (`Th_Segmented`).
-- **View**: the heading with the counts, CHARACTER (search box, `<` and `>`, the preview), VIEW (the zoom stepper, "Sort by" as a segmented control: Count, Height, Width).
-- **Usage**: the glyph usage list of the shared Insight, as before.
-- A click on a font of the usage list (and a double click on a bitmap, which opens its most used font) opens that font's Glyph view on that glyph: the bar reads typeface | style | glyph caption.
-  Alt+Left goes to the font, then up to the Typeface view.
-  The Usage list of the font view's Glyph tab keeps opening the font with the glyph selected.
-- Ctrl+G and Ctrl+F switch the panel to View and focus the search box.
-
-### The Typeface tab
-
-- The font view's right panel is **Font | Glyph | Similar**; its Typeface tab is gone.
-- The side panels of the Typefaces and Typeface views are **View | Typeface | Similar**; the Fonts view stays View | Similar.
-- The Typeface tab is the content of the former font view tab (`DrawTypefaceTab` in `src/panel.inc`, which the browser calls through `Browser_SetTypefaceTab`): the variant line, the boxed full hash field of the Font tab (click copies it), the fields and the three switches.
-  It shows the typeface of the selected box or row, and the variant of the selected row.
-- The tab is read-only while the typeface is locked.
-- The typeface's lock (a padlock at the top of the tab, and in the Typeface view's heading) unlocks its fields.
-  The font of the selected variant is opened for it, and the view stays on the typeface.
-- While it is unlocked the fields and the three switches of the variant of the selected row are editable (Enter or a click elsewhere keeps a field, Escape puts its value back), the boxed hash shows the hash in the database.
-- The first nav segment shows the family with the "*" marker while it differs from the database.
-- Leaving the Typeface view (or any other view), opening a font, Save, Export, Load and quit commit the typeface edit in place: the typeface is rewritten under its new pxtf hash.
-- The edit has no undo (the shortcuts are those of the font view).
-- The invented panel of the Typeface view (name, a two-line plain hash, the fields as plain text) is gone: the View tab of that view is the sample and the zoom, like the Typefaces view's.
-- The hash of a font in the rows of the Typeface view is the "Font xxxxxxxx" label of the other library cards; the heading carries "Typeface xxxxxxxx" like a box header.
-
-### Settings
-
-- `[app] fontTab` (0 Font, 1 Glyph, 2 Similar) replaces `panelTab`.
-- `[browser] sidetab`: 0 View, 1 Similar, 2 Typeface.
-
-## Version 8: design system
-
-The user's complaints: the text is too small to read, and views invent their own looks for the same thing.
-The rule of this round: one component, one function.
-Every use site of a role calls the function of its owner in `src/theme.c`; a view never draws a second variant.
-One component per kind of control, reused everywhere (version 23): a new kind of control (such as the colour picker) is added to the catalogue once, as a component of the design system with a clean API, and every view that needs that kind of control uses it.
+The look is that of FontLab 8: quiet, flat, precise.
+One component is one function: every use site of a role calls the function of its owner in `src/theme.c` (declared in `theme.h`), and a view never draws a second variant.
+There is one component per kind of control, reused everywhere: a new kind of control (such as the colour picker) is added to the catalogue once, with a clean API, and every view that needs it uses it.
 The measure of success is that the user interface code shrinks.
 No view code holds a literal font size or colour: both come from `theme.h`.
+A component conversion is done when every use site calls the owner, the bespoke code is deleted, the UI files have not grown, the builds have no warnings, the end-to-end scripts pass, and the screenshots of every view showing it were looked at.
 
 ### Typography
 
-Two faces and one pixel face: Noto Sans Regular, Noto Sans SemiBold, GNU Unifont.
-The user rejected system fonts for a font program: the fonts are in `assets/fonts` and are loaded from there.
+Noto Sans Regular, Noto Sans SemiBold and GNU Unifont, loaded from `assets/fonts` (the user rejected system fonts for a font program).
 Exactly three UI sizes (18, 16, 13) and the pixel face at 16:
 
 | Role | Face | Size | Colour | Function |
@@ -457,1399 +80,974 @@ Exactly three UI sizes (18, 16, 13) and the pixel face at 16:
 | Small: status line, hint, footnote | Noto Sans Regular | 13 | `TH_TEXT_DIM` | `Th_TextSmall` |
 | Hashes, code points, glyph captions | GNU Unifont | 16 (32 for a large preview) | `TH_TEXT` | `Th_TextUni`, `Th_CodeDraw` |
 
-- The sizes are `TH_SIZE_HEAD`, `TH_SIZE_BODY`, `TH_SIZE_CAP`, `TH_SIZE_SMALL` in `theme.h`; the Noto fonts are fields of `theme`.
-- A size in the table is the size of the em, as in CSS: `theme.c` loads Noto Sans at `em * 1.362` (`TH_NOTO_RATIO`, ascender 1069 plus descender 293 over 1000) because raylib's `LoadFontEx` size is the ascent-to-descent height.
-- Fonts are found under `assets/fonts` next to the executable (`GetApplicationDirectory()`), else two folders up (the test executable in `tests\tmp`), else the working directory.
-  A missing file is named in `theme.missing`, `main` raises an error toast, and raylib's default font stands in (Unifont: the small face); nothing crashes.
-- GNU Unifont is a 16 px pixel font and is drawn only at exactly 16 px, or at 32 px (the same pixels at scale 2), with point filtering and whole-pixel positions.
-  raylib 6 (stb_truetype) reads the CFF outlines of the `.otf` files; at 16 px every coverage value is 0 or 255 (checked), so no atlas had to be generated by hand.
-  The 57 000 glyphs of the BMP are never loaded at start: both files stay in memory and a glyph is rasterised with `LoadFontData` when first drawn, into a 1024 x 1024 point-filtered atlas of 32 x 32 slots.
-  A full atlas (1024 glyphs) is flushed and refilled: an evicted glyph is rasterised again when it is needed again.
-  Code points of the planes 1 to 16 come from `unifont_upper`.
-- Glyph captions (`Th_CodeDraw`, `Th_TextRich`): by default the character itself in Unifont, centred; while the mouse is over the caption or its cell, the text "U+XXXX" in Unifont, centred.
-  A glyph without a code point shows "#n".
-  A code point with no visible Unifont image shows "U+XXXX" always: controls, space and the other blanks, marks without an advance, and the code points Unifont lacks.
-  Sites: the font view's cell captions, the glyph segment of the navigation bar, the Glyph view's bar, the layer rows, the rows of the Glyph usage list, the code beside Find in Library, the Add Glyph dialog; the large preview of the Glyphs view is Unifont at 32 px.
-- Rows, buttons and fields are `TH_ROW_H` (28) high, the panel padding is `TH_PAD`, and a button's width is its text measured plus `2 * TH_PAD`.
-- The side panel is 352 px wide and the minimum window is 1110 x 600, so the glyph editor's toolbar keeps its width.
+- The sizes are `TH_SIZE_HEAD`, `TH_SIZE_BODY`, `TH_SIZE_CAP`, `TH_SIZE_SMALL`.
+  A size is the em, as in CSS: Noto Sans is loaded at `em * 1.362` (`TH_NOTO_RATIO`) because raylib's `LoadFontEx` size is the ascent-to-descent height.
+- Fonts are found under `assets/fonts` next to the executable, else two folders up, else the working directory; a missing file raises an error toast and raylib's default font stands in.
+- Unifont is drawn only at 16 px or 32 px, with point filtering and whole-pixel positions.
+  Both `.otf` files stay in memory and a glyph is rasterised with `LoadFontData` when first drawn, into a 1024 x 1024 atlas of 32 x 32 slots that is flushed when full; planes 1 to 16 come from `unifont_upper`.
+- At 16 px every coverage value of the Unifont `.otf` outlines is 0 or 255, so no atlas had to be made by hand.
+- Glyph captions (`Th_CodeDraw`, `Th_TextRich`): the character itself in Unifont, centred; "U+XXXX" while the mouse is over the caption or its cell, and always for a code point with no visible Unifont image (controls, blanks, marks without an advance, code points Unifont lacks); "#n" for a glyph without a code point.
+  Sites: the font view's cell captions, the glyph segment of the navigation bar, the glyph view's bar, the layer rows, the Glyph usage rows, the code beside Find in Library, the Add Glyph dialog.
 - A glyph preview (the large character of the Glyphs view) is Unifont at 32 px, never another size.
 - Roles differ by size, weight and colour, never by a size of their own: a new role takes one of the five rows above.
-- The wide controls of the library View panel (Columns, Sort by) take a line of their own below their label (`wide_row`).
-- Colours by role: text `TH_TEXT`, secondary text `TH_TEXT_DIM`, interactive and selected `TH_ACCENT` with `TH_ACCENT_TINT`, destructive `TH_DANGER`, lines `TH_LINE` and `TH_LINE_SOFT`, surfaces `TH_BG`, `TH_PANEL`, `TH_PANEL_ALT`.
-  Hover is `TH_HOVER`.
-  No other colour is written in a view.
-- Acceptance: at 1400 x 900 and at the minimum window size no text is clipped, overlaps another or is cut off without an ellipsis.
+- The side panel is 352 px wide and the minimum window is 1110 x 600; at that size and at 1400 x 900 no text is clipped or overlaps without an ellipsis.
 
 ### Spacing
 
 - The grid is 4 px: paddings 4, 8, 12; the gap between controls is 8.
-- Control height is 28 (button, toggle, segmented control, text field, stepper); a list row is at least 28.
-- A panel has 12 px padding; a section caption takes 24 px of height.
-- Radius `TH_RADIUS`, borders 1 px, always through `Th_RectLines`.
+- Control height is `TH_ROW_H` (28); a list row is at least 28.
+- A panel has 12 px padding (`TH_PAD`); a section caption takes 24 px.
+- A button's width is its text plus `2 * TH_PAD`.
+- Radius `TH_RADIUS` (4 px), borders 1 px through `Th_RectLines`; no gradients, no heavy borders.
+- Glyph pixels are exact integer-scaled rectangles.
+- The wide controls of the library View panel take a line of their own below their label (`wide_row`).
 
 ### Component catalogue
 
-Each component has one owner function in `src/theme.c` (declared in `theme.h`).
-A use site that draws the look itself, or that calls the function with a look of its own, is a defect.
-States are normal, hover, active (pressed or selected), disabled and focused where the component takes input.
+A use site that draws the look itself, or calls the owner with a look of its own, is a defect.
+States are normal, hover, active, disabled, and focused where the component takes input.
 
 #### Stepper
 
-- Owner: `Th_Stepper(r, value, prefix, flags)`; `Th_StepperValue(r)` is its middle.
-- Look: `[-] 3x [+]`, `TH_ROW_H` high, one line, the value centred in body text; `TH_STEP_W` (96) wide for a zoom.
-- States of each button: normal, hover (`TH_HOVER`), pressed (`TH_PRESSED_FILL`), disabled (dim, `TH_STEP_NO_MINUS` and `TH_STEP_NO_PLUS`, set at the limits).
-- `TH_STEP_EDIT` is the number field that is being typed into: accent border, the caller draws the text in the middle.
-- A pressed button steps once, and a held button repeats after 0.45 s.
-- Used by the zoom of the font toolbar, the glyph bar, the sample strip and the library views, the advance of the glyph bar, the metric number fields and the layer offsets.
+- `Th_Stepper(r, value, prefix, flags)`: `[-] 3x [+]`, `TH_ROW_H` high, `TH_STEP_W` (96) wide for a zoom; `TH_STEP_NO_MINUS` and `TH_STEP_NO_PLUS` at the limits; `TH_STEP_EDIT` is a number field being typed into.
+- It acts on the press; a held button repeats after 0.45 s.
+- It is every zoom, the advance, the metric number fields and the layer offsets; there is no "Auto" zoom.
 - Registers `<prefix>-` and `<prefix>+`.
 
 #### Hash display
 
-Exactly two forms, both in Unifont:
+Exactly two forms, both in Unifont; nothing else prints a hash.
 
-- Owner of the short form: `Th_HashShort(kind, hash, x, y, flags, copyName)`.
-  It draws a kind word in `TH_TEXT_DIM` (body size; `Font`, `Typeface`, `Glyph`, or none) and the first 8 characters of the hash in Unifont, `TH_TEXT` (`TH_HASH_ACCENT`: `TH_ACCENT`, a changed state).
-  `TH_HASH_RIGHT` ends the label at `x`; `TH_HASH_MEASURE` only returns the width.
-  `TH_HASH_SMALL` sets it for a line of small text (the status bar): the kind word at the small size, the hash in Unifont 16 on the baseline of the kind word as the `Th_TextSmall` text beside it.
-  With a `copyName` it is a copy link (hover tint, registered under that name, a click copies the full hash).
-  Used by cards, rows, headings, the selection block, the info bar, the status bar, the glyph bar, the Usage and Similar lists, the Layers list.
-- Owner of the full form: `Th_HashField(x, &y, w, caption, hash, name, what, flags)`: a caption (`Th_Section`) and a box of 28 px height holding the full hash in Unifont, hover tint and `TH_ACCENT` border, a click copies it and raises the toast "`what` hash copied".
-  The field never wraps or truncates the hash.
-  An empty hash reads "no ink", a NULL hash "not known".
-  Used by the Font tab, the Typeface tab, the Glyph tab and the glyph view's Glyph tab.
-- The clipboard, the toast and the hint live in `theme.c` (through the `Th_HoverFn` and `Th_NoticeFn` hooks that `main.c` sets); a view never calls `SetClipboardText` for a hash.
-- A font or typeface without a name shows its short hash in place of the name; a name is never built from a hash.
-- Nothing else prints a hash.
+- `Th_HashShort(kind, hash, x, y, flags, copyName)`: a dim kind word (`Font`, `Typeface`, `Glyph`, or none) and the first 8 characters.
+  `TH_HASH_ACCENT` marks a changed state, `TH_HASH_RIGHT` right-aligns, `TH_HASH_MEASURE` only measures, `TH_HASH_SMALL` fits a line of small text; with `copyName` a click copies the full hash.
+- `Th_HashField(x, &y, w, caption, hash, name, what, flags)`: a caption and a 28 px box with the full hash, never wrapped or cut; a click copies it with the toast "`what` hash copied"; an empty hash reads "no ink", a NULL hash "not known".
+- The clipboard, the toast and the hint live in `theme.c` (hooks `Th_HoverFn`, `Th_NoticeFn` set by `main.c`).
+- A font or typeface without a name shows its short hash; a name is never built from a hash.
+- The short form is used by cards, rows, headings, the selection block, the info bar, the status bar, the glyph bar, and the Usage, Similar and Layers lists; the full form by the Font, Typeface and Glyph tabs and the glyph view's Glyph tab.
 
-#### Push button
+#### Buttons
 
-- Owner: `Th_Button(r, label, flags, hint)`; `Th_ButtonW(label)` is the width of a button holding the label (text measured plus `2 * TH_PAD`); a larger width is the caller's choice.
-- Look: `TH_ROW_H` high, body text centred, `TH_PANEL_ALT` fill, `TH_LINE` border.
-- States: hover `TH_PANEL` fill with `TH_HOVER_BORDER`; pressed `TH_PRESSED_FILL` with `TH_ACCENT` border and text; disabled dim text and no reaction; active `TH_ACCENT_TINT` fill with `TH_ACCENT` border and text.
-- A one-shot command; it keeps no state.
+- `Th_Button(r, label, flags, hint)`; `Th_ButtonW(label)` is its natural width.
+  `TH_PANEL_ALT` fill, `TH_LINE` border; hover `TH_PANEL` with `TH_HOVER_BORDER`; pressed `TH_PRESSED_FILL` with accent border and text; active `TH_ACCENT_TINT` with accent border and text; disabled dim and inert.
 - Flags, the only variations: `TH_BTN_DISABLED`, `TH_BTN_DANGER`, `TH_BTN_PRIMARY`, `TH_BTN_ACTIVE`, `TH_BTN_ICON(TH_IC_x)`.
-- Primary (`TH_BTN_PRIMARY`: accent fill, white text) is the one main action of a surface: the confirming button of a dialog, the Duplicate to Edit of a bar, a card, a row or the selection block.
-  A role that is primary in one place is primary everywhere (see "Duplicate to Edit"); a surface never shows two primary buttons for different commands.
-- Icon button: an icon in place of the text (previous and next, tools, move arrows, eye, close, disclosure chevron).
-  It has no fill and no border at rest, the same states otherwise.
-  Its label is only its name for scripts, its `hint` is the tooltip.
-- `hint` is offered to the view through `Th_Tip` while the mouse is over the button, also when it is disabled: the status line of `main.c`, the tooltip of the glyph view.
-- Registers its label (the text before two spaces).
-- No view draws a button of its own and no view has a button helper that draws.
+- Primary (accent fill, white text) is the one main action of a surface, such as a dialog's confirming button; a surface never shows two primary buttons for different commands.
+- An icon button has no fill or border at rest; its label is only its script name, its `hint` the tooltip.
+- `hint` goes to the view through `Th_Tip` while hovered, also when disabled.
+- Danger (`Th_ButtonDanger`): `TH_DANGER` label and border; with primary a `TH_DANGER` fill; for every delete command and only those.
+- Lock: the macro `Th_Lock(r, locked, hint)` with `TH_IC_LOCK` or `TH_IC_UNLOCK`, script name `@Unlock` while locked and `@Lock` while unlocked; every command that makes something editable is this button.
+- Toggle: `Th_Toggle(r, label, &on, flags, hint)`, active while `on`; true when it changed.
+  Used by Metrics, Captions, Checker, Filled, Pixel-perfect, Contiguous, 8-way and the sample presets.
+- A button registers its label (the text before two spaces); no view draws a button of its own.
 
-#### Danger button
+#### Segmented control
 
-- Owner: `Th_Button` with `TH_BTN_DANGER` (the macro `Th_ButtonDanger(r, label)`); the same geometry and states as the push button with `TH_DANGER` label and border, a `TH_DANGER` tint when hovered or pressed.
-- With `TH_BTN_PRIMARY` too it has a `TH_DANGER` fill: the confirming button of a destructive dialog.
-- Used for every delete command, and only for those.
-
-#### Lock
-
-- Owner: the macro `Th_Lock(r, locked, hint)` in `theme.h`: a `Th_Button` with a padlock icon (`TH_IC_LOCK`, `TH_IC_UNLOCK`).
-- Its script name is `@Unlock` while the thing is locked and `@Lock` while it is unlocked.
-- Every command that makes something editable is this button: the info bar of the font view, the glyph view's bar, the cards, rows and selection block of the library views, the Typeface view's heading and its font rows, the Typeface tab.
-
-#### Toggle button
-
-- Owner: `Th_Toggle(r, label, &on, flags, hint)`, a `Th_Button` that shows `TH_BTN_ACTIVE` while `on` and flips it on a click.
-- Look: the push button when off; on has `TH_ACCENT_TINT` fill, `TH_ACCENT` border and text.
-- It returns true when it changed.
-- Used by Metrics, Captions, Checker, All, the sample presets of the library views.
-
-#### Segmented control and tab bar
-
-- Owner: `Th_Segmented(r, &(ThSeg){ labels, n, sel, disabledMask, prefix, weights, hints })`.
-- One look for the navigation bar, the side-panel tabs, the sort selectors and the value choices (Columns): a `TH_TRACK` track, `TH_ROW_H` high, the selected segment raised (`TH_PANEL`, `TH_LINE` border, `TH_ACCENT` text), body text.
-- States: normal (dim text), hover (a lighter plate and `TH_TEXT`), selected, disabled (bit of the mask, `TH_TEXT_OFF`).
-- `weights` are the relative widths of the segments (the navigation bar by its text, Columns gives Auto more room); no weights means equal widths.
+- `Th_Segmented(r, &(ThSeg){ labels, n, sel, disabledMask, prefix, weights, hints })`: one look for the navigation bar, panel tabs, sort selectors and value choices: a `TH_TRACK` track, the selected segment raised with accent text.
+- `weights` are relative widths (none: equal).
 - Segment i registers `<prefix>_<label>` and `<prefix>.<i>`.
 
-#### Text field and search field
+#### Text field, checkbox, switch
 
-- Owner: `Th_TextField`.
-- Look: 28 px high, `TH_PANEL` fill, `TH_LINE` border; focused has the `TH_ACCENT` border and a caret; the placeholder is dim body text; a search field is the same field with a placeholder and a clear mark.
-- Keyboard: typed text, Backspace, Delete, Home, End, Enter commits, Escape reverts.
-- Disabled shows dim text and takes no input.
-
-#### Checkbox and switch
-
-- Owner: `Th_Check` (a square box with a tick, label on its right) and `Th_Switch` (a pill with a knob) share one geometry helper.
-- Check is for a setting in a form, the switch for an on/off state of a property; both are 28 px high rows with the label in body text.
-- States: normal, hover, on, disabled.
+- `Th_TextField`: 28 px, `TH_PANEL` fill; focused has the accent border and a caret; a search field adds a placeholder and a clear mark.
+  Enter commits, Escape reverts.
+- `Th_Check` is for a setting in a form, `Th_Switch` for an on/off property; both carry their label and share one geometry helper.
 
 #### Section caption
 
-- Owner: `Th_Section(title, x, &y, w, flags, right)`: the caption text (semibold 13, dim, upper case) and a hairline to its right; it takes 24 px of height.
-- `right` is small dim text at the right end (a count: "501 bitmaps, 1051 fonts", "39 fonts"); the hairline stops before it.
-- `TH_SEC_OPEN` / `TH_SEC_CLOSED` make it a fold header: a chevron before the caption, a `TH_HOVER` plate on hover, and the call returns true when it was clicked.
-  A fold header registers `<Title>_Fold` (`@Sample_Fold`).
-- Used by every panel: the browser's side panel (Library, Filter, Sample, View), the Font, Glyph and Usage tabs, the Glyphs view's panel (Results, Character, View), the Layers panel and its Add Layer dialog, the Usage and Similar sections (fold headers), the sample strip header (a fold header), and the full-hash field's caption.
-- A panel never writes its own heading look: no body-text title, no small-caps label of its own.
-  Dialog and view titles are the heading role (`Th_TextHead`), not a caption.
-- The inline group labels of a toolbar (INK, MOVE, ADVANCE) are the same caption face through `Th_TextCap`, the primitive under `Th_Section`.
+- `Th_Section(title, x, &y, w, flags, right)`: semibold 13, dim, upper case, a hairline to the right, 24 px high; `right` is a small dim count at the end.
+- `TH_SEC_OPEN` / `TH_SEC_CLOSED` make a fold header (chevron, hover plate), registered as `<Title>_Fold`.
+- Used by every panel (the library side panel, the Font, Glyph and Usage tabs, the Glyphs view's panel, the Layers panel and its Add Layer popover, the Usage and Similar sections and the sample strip as fold headers) and by the full-hash field.
+- A panel never writes its own heading look (dialog and view titles are `Th_TextHead`); inline toolbar labels (MOVE, ADVANCE) use `Th_TextCap`, the primitive under it.
 
 #### Label/value row
 
-- Owner: `Th_Row(x, &y, w, label, value, flags)`: the label (dim body) at the left, in a label column of `TH_ROW_LABEL_W` (108); the value (body, `TH_TEXT`) right-aligned at the right edge; `TH_ROW_UNI` shows the value in Unifont (code points).
-- A value that is too long for the column ends in an ellipsis (`Th_FitText`).
-- With `value` NULL the row is for a control: the label stays at the left and the function returns the rectangle of the value part, where the caller draws a text field, dropdown, segmented control, stepper or number box.
-  A control row is `TH_ROW_H` high plus half a gap, a value row `TH_ROW_H`.
-- Used by the Font, Typeface and Glyph tabs (`GlyphFacts`, the Typeface fields), the selection block of the font view, the browser's Style, Format, Zoom, Columns and Sort by rows, the Glyphs view's Zoom and Sort by, and the Layers card (Opacity, Offset X, Offset Y).
-- Not rows: switches and checks (`Th_Switch`, `Th_Check` carry their own label), the status line, and the pinned selection block of the browser (a name, a detail line and a hash, as text).
+- `Th_Row(x, &y, w, label, value, flags)`: the dim label in a `TH_ROW_LABEL_W` (108) column, the value right-aligned with an ellipsis; `TH_ROW_UNI` for Unifont.
+- With `value` NULL it returns the rectangle where the caller draws a control (text field, dropdown, segmented control, stepper or number box); a control row is `TH_ROW_H` plus half a gap high.
+- Used by the Font, Typeface and Glyph tabs, the font view's selection block, the browser's Style, Format, Colours, Zoom, Columns and Sort by rows, the Glyphs view's Zoom and Sort by, and the Layers cards (Opacity, Offset X, Offset Y).
+- Not rows: switches and checks, the status line, and the pinned selection block of the browser.
 
 #### List row and card
 
-- Owners: `Th_ListRow(r, flags)` for a row of a list or inside a card, `Th_Card(r, flags)` for a card.
-  Both draw the surface only and return its opaque fill, which the caller gives to what it draws on it (the fade of a sample); the content is drawn by the caller inside `r`.
-- Card: `TH_PANEL` fill, `TH_LINE` hairline border, radius `TH_RADIUS`.
-  Hover has the `TH_HOVER_BORDER`, selected the `TH_ACCENT` border on the `TH_SELECTED_FILL`, `TH_LR_WITHIN` a faint accent border (the card holds the selected row or is the current layer), disabled the `TH_PANEL_ALT` fill with a soft border (an empty state, a layer whose glyph is missing).
-- Row: no border; hover is a `TH_HOVER` plate, selected is `TH_SELECTED_FILL` with a 3 px `TH_ACCENT` bar at the left, disabled reacts to nothing.
-- The caller passes the state in `flags` (`TH_LR_HOVER`, `TH_LR_SELECTED`, `TH_LR_WITHIN`, `TH_LR_DISABLED`) because a scrolled list computes its own hover.
-- Used by: the Typefaces boxes (card, the header and the variants are rows), the Fonts cards, the Typeface view's font cards, the Glyphs view's cells (cards), the glyph grid cells of the font view (cards), the Layers cards and the font list of the Add Layer dialog (rows), the Usage and Similar rows, and the preview box of the Glyphs view.
-- Names that scripts use stay: `@card:N`, `@hdr:N`, `@tv.open.N`, `@lay_row_N`, `@lay_font_N`, `@usage_row_N`, `@similar_row_N`, `@fcell:N`.
+- `Th_ListRow(r, flags)` and `Th_Card(r, flags)` draw the surface only and return its opaque fill; the caller draws the content.
+- Card: `TH_PANEL`, `TH_LINE` border; hover `TH_HOVER_BORDER`; selected accent border on `TH_SELECTED_FILL`; `TH_LR_WITHIN` a faint accent border.
+- Row: no border; hover a `TH_HOVER` plate; selected `TH_SELECTED_FILL` with a 3 px accent bar at the left.
+- The caller passes the state (`TH_LR_HOVER`, `TH_LR_SELECTED`, `TH_LR_WITHIN`, `TH_LR_DISABLED`), because a scrolled list computes its own hover.
+- Used by the Typefaces boxes (a card; the header and variants are rows), the Fonts cards, the Typeface view's font cards, the Glyphs view's cells, the font view's grid cells, the Layers cards, the Add Layer font list, and the Usage and Similar rows.
+- Script names stay: `@card:N`, `@hdr:N`, `@tv.open.N`, `@lay_row_N`, `@lay_font_N`, `@usage_row_N`, `@similar_row_N`, `@fcell:N`.
 
 #### Text that does not fit
 
-- Owner: `Th_FitText(s, face, maxW, out, cap)` copies `s` shortened with an ellipsis to fit `maxW` in the face (`TH_F_BODY`, `TH_F_SMALL`, `TH_F_MONO`, `TH_F_HEAD`); `Th_TextClip(s, x, y, maxW, colour, face)` draws it so.
-- No view has a fitting helper of its own.
+`Th_FitText(s, face, maxW, out, cap)` shortens with an ellipsis; `Th_TextClip` draws so; no view has a fitting helper of its own.
 
 #### Toast
 
-- Owner: `Th_Toast(kind, fmt, ...)` pushes a message, `Th_ToastDraw(area, left)` draws the queue; `Th_ToastCount` and `Th_ToastHas` are for the scripts.
-  Kinds: `TH_TOAST_INFO` (accent bar), `TH_TOAST_OK` (green bar), `TH_TOAST_ERR` (`TH_DANGER` bar, stays 6 s instead of 3.2 s).
-- Look: a raised surface (`Th_Raised`) 36 px high, a 3 px bar at the left, body text, one line; a toast wider than the area ends in an ellipsis.
-  Up to four are stacked upwards from the bottom of `area`, 8 px apart, and each fades in and out.
-- Place: the bottom right of `area`, the bottom left when `left` is set.
-  `main.c` passes the window without the browser's side panel (its Delete buttons stay clear) and, in the Typeface view, the left end (the row buttons are at the right).
-- A view never keeps a toast queue of its own, and a command reports through `Th_Toast`.
+- `Th_Toast(kind, fmt, ...)` pushes, `Th_ToastDraw(area, left)` draws; `Th_ToastCount` and `Th_ToastHas` are for scripts.
+  Kinds: `TH_TOAST_INFO` (accent bar), `TH_TOAST_OK` (green bar), `TH_TOAST_ERR` (`TH_DANGER` bar, 6 s instead of 3.2 s).
+- A command reports through `Th_Toast`; no view keeps a toast queue of its own.
+- A raised surface 36 px high with a 3 px coloured bar, one line; up to four stacked from the bottom right of `area` (bottom left with `left`), fading in and out.
+- `main.c` keeps toasts clear of the browser's side panel and, in the Typeface view, at the left end.
 
 #### Popover and menu
 
-- Owner of the surface: `Th_Raised(r, alpha)` is what everything that floats looks like: a soft shadow, `TH_PANEL` fill, `TH_LINE` hairline border, radius `TH_RADIUS`.
-  It is the frame of the menus, the Add Layer popover, the all-characters popup of the glyph view, the dialogs (confirm, export, progress) and the toast.
-- Owner of the menu: `Th_Menu(&(ThMenu){items, n, .x, .y, .w, ...}, &open)` draws the surface and its items and returns the index picked, else -1.
-  It clears `open` on a pick, on Escape and on a click outside (a click on `.keep`, the button that opened it, does not close it).
-- Look: items are `TH_ROW_H` high with 4 px around them, body text 10 px from the edge; hover is a `TH_HOVER` plate; the shortcut of an item (`.key`) is small dim text at its right end.
-- Item flags: `TH_MI_OFF` (dim text, inert; its `why` text goes to the status bar while it is hovered), `TH_MI_DANGER` (`TH_DANGER` text: a delete command), `TH_MI_SEP` (a hairline after the item), `TH_MI_CUR` (the current choice of a dropdown: `TH_ACCENT_TINT` and `TH_ACCENT` text), `TH_MI_DIM` (a placeholder choice such as "Any").
-- The menu is kept inside the window; `TH_MENU_RIGHT` makes `.x` its right edge (the "..." menu).
-- A long list (the Style and Format dropdowns) passes `.get` and `.ud` instead of `.items`, `.vis` (the rows shown) and `.scroll`; the wheel scrolls it and the scroll bar (see "Scroll bar") shows where it is.
-- An item registers `.name`, or its label when it has none (`@file.save`, `@Edit_Glyph`, `@Ctx_Open`).
-- Used by the top Menu button, the "..." menu of the font view, the context menu of the glyph grid, the context menu of the library views, the Style and Format dropdowns (the closed box is `Th_Dropdown`).
-- Keyboard, for every menu and dropdown, in `Th_Menu` alone: Up and Down move a highlight (no wrap, disabled items are skipped), Home and End jump to the first and last enabled item, Enter picks the highlighted item, Escape closes.
-  The highlight is the hover look (`TH_HOVER`); the mouse moves it when it moves over an item; a menu starts without a highlight, and Up from nothing goes to the last item.
-  A long list keeps the highlighted row in view (it scrolls `.scroll`).
-- While a menu is open Up, Down, Home, End, Enter and Escape are the menu's: `Th_MenuKeys` says so and `IsKeyPressed` / `IsKeyPressedRepeat` are wrapped in `theme.h` to answer false for them, so no shortcut or view reacts to the same key (`Th_Menu` reads the raw functions).
-  `Th_MenuHi` is the highlighted index, for scripts (`assert menuhi N`); `tests\e2e\93_menu_keys.txt` tests it.
-- Not yet: checkmarks, submenus.
+- `Th_Raised(r, alpha)` is everything that floats: soft shadow, `TH_PANEL` fill, hairline, `TH_RADIUS`.
+- `Th_Menu(&(ThMenu){items, n, .x, .y, .w, ...}, &open)` returns the index picked, else -1, and clears `open` on a pick, Escape or a click outside (not on `.keep`).
+- Items are `TH_ROW_H` high, hover a `TH_HOVER` plate, the shortcut (`.key`) small and dim at the right.
+  Flags: `TH_MI_OFF` (inert, its `why` goes to the status bar), `TH_MI_DANGER`, `TH_MI_SEP`, `TH_MI_CUR` (a dropdown's current choice), `TH_MI_DIM` (a placeholder such as "Any").
+- The menu stays in the window; `TH_MENU_RIGHT` makes `.x` its right edge.
+- A long list passes `.get`, `.ud`, `.vis` and `.scroll`, and scrolls by the wheel and the scroll bar.
+- Up and Down move a highlight (no wrap, disabled items skipped), Home and End jump, Enter picks, Escape closes; the mouse moves the highlight too, and a long list keeps it in view.
+  `Th_MenuHi` is the highlighted index.
+- `Th_Dropdown` is the closed box of a dropdown.
+- An item registers `.name`, else its label (`@file.save`, `@Edit_Glyph`, `@Ctx_Open`).
+- Used by the top Menu button, the font view's "..." menu, the context menus of the glyph grid and of the library views, and the Style, Format and Colours dropdowns.
 
 #### Status bar
 
-- Owner: `Th_StatusBar(r, reserve, left, nl, right, nr)`: a `TH_ROW_H` strip, `TH_PANEL_ALT` fill, a hairline above, small text.
-- The left parts run from the left edge (12 px padding, 14 px between parts), the right parts end at the right edge; `reserve` is room at the right end that the caller fills with a control of its own.
-  A part that does not fit is dropped, not clipped.
-- A text part (`ThPart.text`) has a colour (default `TH_TEXT_DIM`) and at most `maxFrac` of the width; with `TH_SP_TAIL` it is cut with an ellipsis at its start (a path keeps its file name), else it is dropped when it does not fit.
-- A hash part (`text` NULL) is `Th_HashShort(kind, hash)` with `TH_HASH_SMALL`, so it lines up with the 13 px text around it; `TH_HASH_ACCENT` for a changed state and a copy link when `copy` is set.
-- Users: the application's bottom bar (`main.c`: the file and whether it is modified or saved, then the library, the font or the glyph finder, and at the right the hint of the hovered control or the glyph under the mouse), and the glyph view's line (`editor.c`: position, tool, ink, zoom and bitmap at the left, the glyph hashes at the right, the Checker toggle in the reserved end).
-- The library views have no bar of their own: the application's bar is theirs.
+- `Th_StatusBar(r, reserve, left, nl, right, nr)`: a `TH_ROW_H` strip in small text, parts from the left and from the right; `reserve` is room for a control of the caller.
+  A part that does not fit is dropped; `TH_SP_TAIL` cuts a path at its start; a hash part is `Th_HashShort` with `TH_HASH_SMALL`.
+- Left parts start 12 px from the edge with 14 px between them; a text part has a colour (default dim) and at most `maxFrac` of the width.
+- Users: the application's bar (the file and whether it is modified, the library, font or finder, and at the right the hover hint or the glyph under the mouse) and the glyph view's line (`editor.c`: position, tool, ink, zoom and bitmap at the left, the glyph hashes at the right, the Checker toggle in the reserved end).
+  The library views have no bar of their own.
 
 #### Scroll bar
 
-- Owner: `Th_ScrollBar(view, &scroll, content, step, live)`; `Th_ScrollRows(view, &first, n, vis, rowH, live)` is the same for a list of rows (the menu, the Add Layer font list).
-- `view` is the scrolled rectangle, `content` the height of what scrolls in it, `scroll` the offset in px (0 at the top).
-  The function clamps `scroll` to `0 .. content - view.height` in whole pixels, so a view keeps no clamp of its own.
-- Look: a track at the right edge of `view`, 8 px wide and inset 4 px (`TH_SB_W`, 12 px, is what the bar takes: content stays clear of it); the thumb is a pill, at least 36 px high.
-  At rest the thumb is 4 px wide in `TH_SCROLL_THUMB`; when hovered or dragged it is the whole 8 px, in `TH_SCROLL_THUMB_HOT`, over a `TH_SCROLL_TRACK` strip.
-  No bar is drawn while the content fits.
-- Input: the wheel over `view` scrolls `step` px a notch (0: the view takes the wheel itself, as the font grid does for Ctrl+wheel zoom); a wheel taken by a number box or an inner bar this frame (`Th_WheelUsed`) is not taken again.
-  Dragging the thumb scrolls; a click on the track beside the thumb centres the thumb there and goes on as a drag.
-  One bar is dragged at a time.
-- `live` false (a popup is open over the view) gives the bar no input; it is still drawn.
-- A menu moves its first row to keep the keyboard highlight in view; the bar follows (`Th_ScrollRows`).
-- The result is true while the mouse is on the bar or drags it: the view must not hover or click what lies under it then.
+- `Th_ScrollBar(view, &scroll, content, step, live)`, and `Th_ScrollRows` for a list of rows; it clamps `scroll` in whole pixels, so a view keeps no clamp of its own.
+- An 8 px track inset 4 px at the right (`TH_SB_W`, 12 px, is kept clear); the thumb a pill at least 36 px high, 4 px wide at rest, 8 px and hot when hovered or dragged; no bar while the content fits.
+- The wheel scrolls `step` px a notch (0: the view takes the wheel, as the font grid does for Ctrl+wheel zoom); a wheel already used this frame (`Th_WheelUsed`) is not taken again.
+  A click on the track centres the thumb there and drags on; one bar is dragged at a time.
+- `live` false gives no input; the result is true while the bar is hovered or dragged, so the view must not react under it.
+- A menu moves its first row to keep the keyboard highlight in view, and the bar follows (`Th_ScrollRows`).
 - A view that needs the scroll before it draws calls the function before its content; the sample editor and the panels call it after the content they draw under the bar.
-- Used by the font grid, the Typefaces, Fonts and Typeface views, the Glyphs view, the side panels (the browser's, the font view's, the glyph view's), the Usage list of the Glyphs view, the sample editor and the sample preview, the font list of the Add Layer popover, and the long menus (the Style and Format dropdowns).
-- No view keeps a drag state, a thumb calculation or a bar drawing of its own.
+- Used by the font grid, the library views, the Glyphs view, the side panels, the Usage list, the sample editor and preview, the Add Layer font list, the long menus and the palette bar.
+- No view keeps a drag state, thumb calculation or bar drawing of its own.
 
 #### Colour picker
 
-- Owner: `src/colorpick.c` (`Th_ColorPickOpen`, `Th_ColorPickTake`, `Th_ColorPickIsOpen`, `Th_ColorPickDraw`), a modal drawn by `main.c` over everything else; see "Version 23: the palette bar and the colour picker".
-- Look: a raised panel with a title, a segmented control of the models (HSV, Wheel, RGB, HSL, Lab), the model's plane or sliders, an alpha slider, the new and old colour, a hex field, Cancel and OK (primary).
-- Every place that lets the user choose a colour opens this picker; no view draws a picker of its own.
+- `src/colorpick.c`: one modal for every place that chooses a colour, drawn with `Th_Raised`, `Th_TextHead`, `Th_Segmented`, `Th_TextField` and `Th_Button`.
+- `Th_ColorPickOpen(rgba, title, tag)` opens it on a colour (0xRRGGBBAA) with a non-zero tag naming the question; `Th_ColorPickTake(tag, &rgba)` answers once: 1 and the colour for OK, -1 for Cancel, 0 while none; `Th_ColorPickIsOpen()`; `Th_ColorPickDraw(W, H)`.
+  `main.c` draws it last and blocks every other input while it is open.
+- Models by a segmented control: HSV (a saturation/value square and a hue bar), Wheel (a hue and saturation disc and a value bar), RGB, HSL and CIE Lab (three gradient sliders each), each with an alpha slider.
+- At the right: the new and the old colour over a checker (a click on the old one takes it back), a hex field (`RRGGBB` or `RRGGBBAA`), the colour as RGB, HSV and Lab in small text, Cancel and OK.
+- Enter confirms, Esc cancels (also in the hex field); Tab in the hex field takes its value.
+- The last model is kept in `[app] pickerMode` (0 HSV, 1 Wheel, 2 RGB, 3 HSL, 4 Lab).
+- `src/colormath.c` (no raylib): sRGB gamma, HSV, HSL, CIE Lab (D65, IEC 61966-2-1 matrices; a Lab colour outside sRGB is clamped and reported), packing, hex, relative luminance.
 
 ### Colours by role
 
-No view code holds a colour literal: every colour is a `TH_*` token in `theme.h`, or computed from one (`Fade`, `th_mix`, a colour that is data such as a glyph pixel or a layer colour).
-A role that two views share is one token; near-duplicate greys were merged.
+Every colour is a `TH_*` token in `theme.h`, computed from one (`Fade`, `th_mix`), or data (a glyph pixel, a layer colour); a role two views share is one token.
+The light neutral theme: window `#F3F3F4`, panels `#FFFFFF`, hairlines `#DCDCE0`, text `#1E1E22`, secondary text `#7A7A85`, accent `#2F6FED`, accent tint the accent at 15 %.
 
 | Role | Token |
 | --- | --- |
 | Window, panel, caption strip | `TH_BG`, `TH_PANEL`, `TH_PANEL_ALT` |
 | Hairline, faint line, checker square | `TH_LINE`, `TH_LINE_SOFT`, `TH_CHECKER` |
-| Segment track, progress track, transparency swatch square | `TH_TRACK` |
-| Slider track, hidden-layer chip, slider knob outline | `TH_LINE`, `TH_TEXT_OFF` |
-| Text, dim, off, hint, warning, note, error, on accent | `TH_TEXT`, `TH_TEXT_DIM`, `TH_TEXT_OFF`, `TH_TEXT_HINT`, `TH_TEXT_WARN`, `TH_TEXT_NOTE`, `TH_TEXT_ERR`, `TH_TEXT_ON` |
+| Segment and progress track, transparency swatch | `TH_TRACK` |
+| Text: normal, dim, off, hint, warning, note, error, on accent | `TH_TEXT`, `TH_TEXT_DIM`, `TH_TEXT_OFF`, `TH_TEXT_HINT`, `TH_TEXT_WARN`, `TH_TEXT_NOTE`, `TH_TEXT_ERR`, `TH_TEXT_ON` |
+| Interactive and selected, hover, destructive | `TH_ACCENT`, `TH_ACCENT_TINT`, `TH_HOVER`, `TH_DANGER` |
 | Content ink (sample text, browser renderings) | `TH_INK` |
-| Modal veil | `TH_SCRIM` |
-| Dark tooltip and its text | `TH_TIP_BG`, `TH_TEXT_TIP` |
-| Read-only notice bar | `TH_NOTICE_BG` |
-| Selected text | `TH_SELECTION` |
-| Hover border (sample field, similarity shape box) | `TH_HOVER_BORDER` |
-| Text on a colour swatch (light / dark swatch) | `TH_ON_LIGHT`, `TH_ON_DARK` |
+| Modal veil, tooltip, read-only notice, selected text | `TH_SCRIM`, `TH_TIP_BG` and `TH_TEXT_TIP`, `TH_NOTICE_BG`, `TH_SELECTION` |
+| Text on a light / dark swatch | `TH_ON_LIGHT`, `TH_ON_DARK` |
 | Layer palette | `TH_DANGER`, `TH_ACCENT`, `TH_M_CAP`, `TH_M_XHEIGHT`, `TH_M_UNDERLINE`, `TH_LAYER_PINK`, `TH_LAYER_TEAL`, `TH_TEXT` |
 
-- The name chip over a glyph box is `TH_PANEL` at 90 % (`Fade`), the baseline in a finder cell is `TH_M_BASELINE` at 31 %, the knob shadow is black at 9 %.
+- Metric lines, the same everywhere: baseline `#E5484D`, ascent and descent `#8E8E99`, cap height `#2F9E6E`, x-height `#D68A00`, advance `#2F6FED` dashed; underline and strike-out `#9B59D0` dotted.
+- The name chip over a glyph box is `TH_PANEL` at 90 %, the baseline in a finder cell `TH_M_BASELINE` at 31 %, the knob shadow black at 9 %.
 - The check: `grep -n "(Color){" src/main.c src/browser.c src/editor.c src/finder.c src/layers.c src/insight.c src/sample.c src/panel.inc src/gpanel.inc` finds only zero-alpha `{0}` and colours computed from data.
+
+### Fonts and licences
+
+- Noto Sans v2.015 (`assets/fonts/noto-sans`, `OFL.txt`): SIL Open Font License 1.1; Regular and SemiBold are used.
+- GNU Unifont 18.0.01 (`assets/fonts/unifont`: `unifont-18.0.01.otf`, `unifont_upper-18.0.01.otf`, `COPYING`, `OFL-1.1.txt`): SIL OFL 1.1, or the GNU GPL 2 or later with the font embedding exception.
 
 ### Markdown rule
 
 This file and `HANDOFF.md` follow the author's Markdown protocol: a heading has one blank line before and after it, paragraphs are separated by one blank line, a list has one blank line before and after it, and every sentence is on a line of its own (also within a list item).
 
-### Owners of the last round
+## The font model
 
-| Component | Owner | File |
-| --- | --- | --- |
-| Lock button | `Th_Lock` (a macro over `Th_Button`) | `theme.h` |
-| Hash at the status bar size | `Th_HashShort` with `TH_HASH_SMALL` | `theme.c` |
-| Menu keyboard | `Th_Menu`, `Th_MenuKeys`, `Th_MenuHi` | `theme.c` |
+- Every position is counted from the baseline and the pen: a glyph's offsets `x,y` put the bottom-left corner of its bitmap `x` columns right of the pen and `y` rows above the baseline.
+- Advances, offsets and metrics are integers.
+- Every font-wide metric is optional, because a pxfm holds only what its source states: `ASCENT`, `DESCENT`, `LINEGAP`, `CAPHEIGHT`, `XHEIGHT`, `INTERNALLEADING`, `QUADWIDTH`, `RATIO`, `UNDERLINEPOSITION`, `UNDERLINETHICKNESS`, `STRIKEOUTPOSITION`, `STRIKEOUTTHICKNESS`, `MONOSPACED`, plus `COLORS`, `SYMBOLIC`, `GLYPH` and `KERNING`.
+- A font without `ASCENT` or `DESCENT` is drawn in a box taken from the glyphs; that box is never written.
+  Changing `ASCENT` or `DESCENT` moves no glyph, only the box.
+- `SYMBOLIC` marks a symbol font, whose codes are not the characters' code points.
+- Kerning pairs are kept and written but not edited; deleting a glyph drops its pairs, cloning does not copy them.
 
-### What changed in this round
+### Codes
 
-- Duplicate to Edit is one primary button everywhere.
-  The font view's info bar already was; the Typeface view and tab (`Duplicate Typeface to Edit`), the glyph view's chip (now a "Read-only" label and the button), and the browser's cards, rows, selection blocks and the Typeface view's font rows were plain or had a look of their own.
-  The sites are `main.c` (info bar), `editor.c` (glyph bar) and `browser.c` (selection block, Typeface tab, Typeface heading, Typeface view rows, cards and list rows; the last two through one helper, `dup_button`).
-- The status bar's hash label is drawn at the small size; the kind word and the 8 characters line up with the text beside them.
-- Menus: arrow keys, Home, End and Enter, with a highlight that the mouse also moves.
-- Colours: no change; the highlight is `TH_HOVER`.
-- Deleted: `Th_Panel` (unused) and the raygui style set-up and include (no raygui widget is used).
-- User interface files: 10947 lines (10960 before this round, 13 fewer).
+- A code point is shown as `U+XXXX`.
+- A glyph without a code point has a code from `F00000` up, without gaps, shown as `#n` (its code minus `F00000`); deleting one renumbers the later ones and their kerning pairs, and a new one takes the next code.
 
-### Acceptance of a conversion
+### The default glyph
 
-A component is done when all of the following hold:
+- The glyph drawn for a missing code is an ordinary glyph with the code `FFFFFF`: its own bitmap, offsets and advance, sorted last, a `GLYPH FFFFFF` line and a `pxfm_glyph` row; nothing else refers to it.
+- The glyph count and the uncoded count skip it.
+- The grid shows it last, captioned "Default"; it can be opened, edited and deleted, but not given another code.
+- "Set Default" copies the selected glyph's bitmap, offsets and advance into it, as an independent copy.
 
-- Every use site of the role calls the owner function and none draws its own variant.
-- The bespoke code is deleted and the line count of the user interface files has not grown.
-- `build.bat test`, `build.bat e2e` and `build.bat` run without warnings.
-- `tests\e2e\run_all.bat` reports 0 failed.
-- The screenshots of every view that shows the component were looked at.
+### Hashes and change detection
 
-### Fonts and licences
+- Files are named by their hashes; storage is content-addressed, so an edit changes the hash of what it touches, and a glyph's pxgl is never changed in place.
+- A font is modified exactly when the canonical hash of its current state differs from the hash the store holds, so an undone edit leaves it unmodified.
+- Reader and writer round-trip: every pxfm, pxtf, pxgl and palette, read and written unchanged, gives the bytes and hash of its name; the text writer and the converter from rows agree byte for byte.
+- A short hash (8 digits) is shown where space is tight, the full hash in the panels' info blocks; every label names its owner: "Font 0820dc69", "Typeface b925951b", "Glyph c0fc54c2".
 
-- Noto Sans v2.015 (`assets/fonts/noto-sans`, all weights and italics, `OFL.txt`): SIL Open Font License 1.1.
-  Used: Regular and SemiBold.
-- GNU Unifont 18.0.01 (`assets/fonts/unifont`: `unifont-18.0.01.otf` for the BMP, `unifont_upper-18.0.01.otf` for the planes 1 to 16, `COPYING`, `OFL-1.1.txt`): dual licensed under the SIL Open Font License 1.1 and the GNU GPL version 2 or later with the GNU font embedding exception.
+### Typefaces
 
-## Version 9: font layers
+- A pxtf (`pxtf/xx/<hash>.pxtf`) is the fonts of one source file, as variants with text fields (family, style, full name, weight name, slant, copyright, designer, licence…) and the italic, underlined and struck-out flags; `CODEPAGE` is a text key.
+- A font that no typeface names is "Orphaned".
 
-A font layer belongs to a FONT: every glyph of the font offers another font's drawing of the same code point as a layer.
-Session layers (version 4) are unchanged and are never saved.
+### Drafts
 
-### Sources
+The core reads and writes the draft format `PXFEDRAFT 3` (`PALETTE <HASH> <RRGGBBAA,...>` lines, a GLYPH line with the read palette hash or `-` and the glyph's own palette, `SYMBOLIC`; font-wide `COLOR` lines give every glyph those colours); the UI has no drafts.
 
-- A font of the database (kind 0), as before: a pixel layer, no size.
-- A file (kind 1), chosen in the Add Layer popover (source "File", the native dialog, filter in `flayers.h`):
-  an outline font (`.ttf .otf .ttc .woff .eot .pfb`, `outline.h`) drawn as a smooth anti-aliased fill, or a bitmap font (`.bdf .pcf .fnt .fon .json`, the bitmap strikes of `.ttf/.otf`, `bmsrc.h`) drawn as pixels.
-  The popover opens the file at once and shows what it holds.
-  A `.ttc` face, a `.fon` font or a strike is chosen with a stepper (`face` of the layer).
-  A `.ttf/.otf` that has outlines and strikes offers "Outlines / Bitmap strikes" (stored as `face >= 0x10000` for the strikes).
-- WOFF2 is not supported.
-
-### Placement and size
-
-- The source glyph's baseline origin sits on the edited glyph's origin.
-- The layer moves it by (x, y) pixels of the edited font (y up), an outline layer in quarter pixels, the others in whole pixels.
-  A correction of the edited glyph (offset, size, hide) adds to that.
-- Outline size: `fontPx * scale * dsize` pixels per em, `fontPx` = ascent + descent of the edited font (a font has no size metric), 100 % is the natural size (the em equals the pixel size).
-- Bitmap size: whole multiples only, k = round(scale * dsize) from 1 to 16; 1 is the strike's own size (a strike cannot be shrunk).
-- Rendering: an outline is rasterised at `size * canvas zoom`, uploaded as a texture when first drawn and cached (64 entries, 8 million pixels, least recently used first); above 1600 px per em it is not drawn.
-
-### The Layers tab
-
-Font layers and session layers share one stack (one list, one order UI).
-A font layer carries the tag FONT, has the same controls as a session layer plus Size (a file layer) and a "THIS GLYPH" block: offset X and Y, size, "Hide for this glyph" and Reset.
-Alt+drag moves a font layer's offset (every glyph).
-A layer whose file is missing or unreadable stays in the list with its settings; its row says "file missing" or "cannot read: ...".
-A file whose size or time changed is reloaded silently and the stored size and time are updated.
-The file is looked at again every two seconds while the layer is used.
-Order: only the order among the font layers is saved.
-When a font is opened its layers are put at the bottom of the stack.
-
-The Add Layer popover has a LAYER choice: "This glyph only" (a session layer, any source) or "Font layer" (saved with the font; the glyph is always the edited glyph's code).
-"This font" as the source is always a session layer.
-A file source defaults to a font layer, the other sources to a session layer.
-
-### Where it is saved
-
-The settings sidecar `<db>-settings` (`fsettings.h`, a SQLite file) holds the font layers by pxfm hash.
-It is read when the database is loaded and written when the database is saved:
-
-- Save writes the sidecar too.
-  When only the settings changed, the document counts as modified (title, status bar, Save button, quit prompts) and Save writes only the sidecar.
-- Save As writes a new sidecar next to the new file; the old one stays.
-- Import starts with empty settings.
-- Export to Folder does not touch them.
-- With no layers at all nothing is written and an old sidecar is deleted.
-
-An original may get layers (they are program settings, the .pxfdb is not changed).
-The open font's layers live in memory (`FlDoc`) and are copied into the settings under the font's current hash whenever they or the hash changed.
-A duplicate starts with the same layers (the same document); the first edit moves them to the new hash, and the earlier hash's settings are dropped unless it is the hash the document was opened with.
-Committing a duplicate writes them under the hash it is committed with; the original's stay.
-Until its first pixel edit a duplicate has the original's hash, so a layer added to it then is written under that hash, and the original shows it too (the same font has one set of layers).
-A change of the layers is copied into the settings on the next frame, a change of the hash (an edit) at the commit and at Save.
-A settings-only change makes the document unsaved (title, status bar, Save button, quit prompts) but does not change the store's own change counter.
-
-### New Font and Add Glyph
-
-Menu, New Font opens a dialog (name, style, pixel size, ascent, descent; the size is ascent + descent).
-It creates an empty font with no glyphs and no typeface, as an editable document that has no original (it counts as modified).
-It is committed like a duplicate.
-The name is only the title of the session: an orphaned font has no name in the database.
-"Add Glyph" in the font view's command bar adds an empty glyph for a code point (or without one).
-Draw it in the glyph view over the layer.
-
-## Version 10: importing a font file
-
-A font file becomes a font of the database: Menu, Import Font File.
-The file stays under the new font as a font layer, and the glyphs are drawn from that layer until they are edited by hand.
-The searches and the drawing are in `src/fit.c` (no raylib), the document logic in `src/fitdoc.inc`.
-
-### What can be imported
-
-- An outline font (`.ttf .otf .ttc .otc .woff .eot .pfb`): its glyphs are drawn as pixels, as a pixel font or as a smooth font.
-- A bitmap font (`.bdf .pcf .fnt .fon .json`, a bitmap strike of a `.ttf`): its pixels are copied as they are, glyphs without a code point are left out.
-  It is always a pixel font, and nothing follows its layer.
-- WOFF2 is not supported.
-
-### The placement
-
-A font layer of an outline file places the outline on the pixels of the font.
-A point (X, Y) of the outline, in font units, lies at the pixel position `x = X * em * aspect / unitsPerEm + dx`, `y = Y * em / unitsPerEm + dy`.
-
-- `em` is the size in pixels per em.
-  It is an absolute size (new in version 10): the layer no longer depends on the font box, so the font box can follow the layer.
-  A layer of version 9 has `em = 0` and keeps its size relative to the font box (`scale`).
-- `aspect` is the width (100 % is square pixels).
-- `dx`, `dy` are the offset in pixels.
-  The buttons of their fields step by a quarter pixel, and any value can be typed (`Th_NumberF`, a comma counts as a point); the same holds for the size.
-- A glyph may have its own correction (offset and size factor), as in version 9.
-
-The same numbers draw the layer in the glyph view and draw the pixels of the glyphs, so what is seen under a glyph is what its pixels were made from.
-
-### Drawing pixels from an outline
-
-Two modes (`mode` of the layer):
-
-- Pixel font: a pixel is inked when its centre is inside the outline.
-  This is exact for a pixel font drawn with outlines, also when its pixels are drawn smaller or larger than a cell, or as dots.
-- Smooth: a pixel is inked when the outline covers at least `threshold` of it (38 % or 50 % from the search, 5 to 95 % by hand).
-  A glyph without an x correction is moved by a quarter pixel step (from half a pixel left to a quarter right) to where its pixels are closest to its coverage, so that stems fall on whole pixels.
-  The layer is drawn moved by as much in the glyph view (`FlLayer_Shift`), so the outline lies where the pixels were made from.
-
-The advance is the advance of the file in pixels, rounded.
-The font box is the ascender and descender of the file in pixels, rounded.
-
-### Finding the grid of a pixel font
-
-`fit_find_grid` is a port of `pixelglyphlib/readers/ttf.py` (`find_grid`), with the same constants.
-It was compared with the Python on the 621 TrueType and OpenType files of the real library: the same grid for all of them, 3 of them with a pitch that differs in the third decimal.
-
-The searches, in order:
-
-- dots: the font is drawn as separate dots of one size, the grid is the lattice of their centres;
-- exact: the common divisor of every coordinate, when it gives at most 256 cells per em;
-- coarser: the coarsest glyph divisor that is close to every coordinate or redraws 95 % of the ink;
-- lattice: evenly spaced cells fitted to where ink starts and ends on each axis, the pixels may be shifted and need not be square;
-- edges: the commonest edge lengths as grids;
-- glyph columns: a lattice whose columns start anew in each glyph (stored as the x correction of each glyph);
-- loose: a lattice for pixels drawn too large or carelessly, only the cores of the cells are compared.
-
-What pxfe adds to the Python:
-
-- When nothing passes, the best lattice that redraws at least 80 % of the ink is offered as a guess; the dialog says so and proposes the smooth mode.
-- The search is fast enough for the dialog: 20 ms for a typical pixel font, 0.8 s for the 57 000 glyphs of GNU Unifont.
-- The comparison found a fault of `outline.c`: a TrueType glyph stands `lsb - xMin` to the right of its own coordinates (the first phantom point), which the reader ignored.
-  It is corrected for simple glyphs; a composite glyph stays where its parts put it, as fontTools draws it, so that the grids agree with pixelglyphlib.
-
-### Finding the size of a font that is no pixel font
-
-`fit_find_size` tries the sizes from 5 to 40 pixels per em in half pixel steps, each with four vertical positions (quarter pixels) and two thresholds.
-The letters and digits are the sample (62 glyphs, or the first 80 glyphs with ink when the font has few of them).
-
-- Each sample glyph has a true shape: its parts and its holes, counted on a large rendering (200 pixels per em).
-- At a size, a glyph is right when its pixels have the same number of parts and of holes: the counter of an A is open, the dot of an i stands apart.
-- The cover of a size is how close the pixels are to the coverage of the outline: `1 - sum |coverage - pixel| / sum max(coverage, pixel)`.
-- The smallest size at which nearly as many glyphs are right as at any size is the base (at most 3.5 % fewer, and with a small sample at most one and a half glyphs fewer).
-- Among the base and the sizes up to two pixels above it, the one with the best score (right glyphs plus half the cover) is taken: there stems and heights tend to fall on whole pixels.
-
-At the size taken, the position is then searched in sixteenths of a pixel with seven thresholds (30 to 55 %); the coarse answer stays unless a finer one scores better.
-
-The search takes about half a second for a font with all letters and digits.
-The size can be set by hand, to any value: in the dialog, and later with "Optimize for This Size" in the Layers tab.
-The position and the threshold are then searched for that size (about 50 ms); the width and the offset X stay as they are.
-
-### The dialog
-
-Menu, Import Font File opens the native file dialog, then the Import Font File dialog:
-
-- Family and Style (from the file, editable) and the face of a collection or the strike of a bitmap font;
-- the switch "This is a pixel font": on when a sure grid was found, off otherwise; it cannot be switched on when no grid was found, and a bitmap font is always one;
-- what the search found (the grid and how it was found, or the size, the font box and how many sample glyphs keep their shape);
-- a preview of a sample drawn as the import will draw it;
-- for a smooth font the size in half pixels and "Best Size";
-- "Make a typeface with these names".
-
-Import makes a new document (no original, like New Font): the font, the typeface (one variant with the names of the file: family, style, full name, version, copyright, designer, licence and so on; HASH is the hash of the file), and the font layer.
-A typeface whose text the strict reader would refuse is first cut down to family and style, and left out when even that fails.
-The document is committed into memory like a duplicate, and Save writes the layer into the settings sidecar under the hash of the committed font.
-
-### Glyphs that follow a layer
-
-One font layer of a font may have `follow` set.
-It must be an outline file with an absolute size.
-
-- When the size, width, offset, mode or threshold of that layer changes, or the correction of a glyph, every glyph that still is what the layer drew before is drawn again (`FitTick` in `fitdoc.inc`, once per frame).
-- A glyph edited by hand is not what the layer drew, so it stays as it is.
-  Nothing is stored for this: the earlier drawing is made again from a copy of the layer's settings at the last redraw and compared (ink, position, advance).
-- The font box follows while ascent and descent are what the layer gave.
-- "Redraw All" draws every glyph from the layer again, also those edited by hand.
-- Undo and redo take the layer's settings along with the font, so the two never disagree.
-- An original is read-only: the placement of the layer its glyphs follow cannot be changed (the fields are off, a change made elsewhere is put back with a notice), or a duplicate could no longer tell which glyphs the layer drew.
-  Colour, opacity and visibility stay program settings; a duplicate follows as before.
-- Switching "Draw the glyphs from this layer" on redraws nothing: the font as it is is the starting point.
-  A layer with a relative size gets its present size as the absolute size.
-
-### Where the settings are
-
-The font view's panel has a fourth tab, Layers.
-It lists the font layers of the open font.
-For the layer the glyphs follow (or the first outline layer) it has Size (px/em), Width (%), Offset X and Y, the follow switch, Smooth or Pixel font, Threshold, "Optimize for This Size" (smooth mode), "Find Best Fit" (the search of the import again, for the mode chosen) and "Redraw All".
-It tells how many glyphs follow, are edited by hand, or are not in the file.
-
-The glyph view's Layers tab edits the same layer: its offset and its size (px/em for an absolute size) for the whole font, and the correction of the edited glyph.
-
-### Storage
-
-The settings sidecar has schema version 2: the `layer` table gets `em`, `aspect`, `follow`, `mode` and `threshold`.
-A version 1 file is upgraded in memory when it is opened and on disk at the next save.
-
-### Not done
-
-- Kerning, cap height and x-height of the file are not imported.
-- A family of several files is not imported as one typeface with several variants: each file gives its own typeface.
-- A negative advance (a glyph left of its origin) is imported as advance 0.
-- When the face of the followed layer is changed, or its file changes on disk, no glyph is what the layer drew before, so all count as edited by hand until Redraw All.
-- The searches run on the UI thread: the window does not answer for their length (under a second, except for very large fonts).
-
-## Version 11: the default glyph
-
-The default glyph (the one drawn for a code the font does not have) is a glyph of its own with the code `FFFFFF`.
-
-- It is a normal `PxGlyph` (bitmap, offsets, advance), sorted last by code, written as a `GLYPH FFFFFF` line of the pxfm and stored as a `pxfm_glyph` row (no schema change).
-  The old `_DEF` pointer to another glyph, and its "dangling" variant, are gone.
-- The grid shows it in the last place with the caption "Default" (its code `FFFFFF` shows on hover).
-  It can be edited in the glyph view, opened from the grid and deleted.
-- "Set Default" copies the bitmap, offsets and advance of the selected glyph into it: an independent copy, so deleting or editing the source does not change it.
-- It never collides with the uncoded glyphs `F00000` to `FFFFFE`, and it is not counted among the glyphs of a font (the font's glyph count and the uncoded count skip it).
-- Load, Save, Import, Export, clone, delete and the cleaning of orphans keep it, because the font's pxfm names its pxgl.
-
-### The bugs of the old model
-
-- The default was only a pointer to a coded glyph, so it was not a glyph of the grid and could not be edited.
-- Deleting the glyph it pointed to dropped the default.
-- An uncoded glyph could not be the default.
-- A dangling default carried no bitmap.
-
-## Version 12: locks
-
-Replaces "duplicate to edit" (a working copy that was saved as a new font next to the original).
-Every font and every typeface has a lock, locked by default; what is unlocked is edited in place.
-The sections of versions 3 to 10 that speak of originals, duplicates, "Duplicate to Edit" and drafts describe the state before this version.
-
-### Where the lock is stored
-
-The settings sidecar (`<db>-settings`) has schema version 3: a table `unlocked(kind, hash)`, kind 0 for a font and 1 for a typeface.
-Only unlocked things have a row.
-A version 1 or 2 file is upgraded in memory when it is opened and on disk at the next save.
-A change of a lock is a change of the settings: it counts as unsaved until Save, like a layer.
-
-### Editing in place
-
-`store_edit_in_place` (in `store.c`) takes the open font (and typeface) and the hashes the store holds for them.
-
-- The edited font is added under its new hash.
-- Every typeface that names the old font is rewritten under its new hash (the variants name the new font), through the machinery of the deleting plans (`plan_orphans`, `store_apply_delete`).
-- The old font is removed, and so are the glyphs that no font names any more.
-  The old font cannot be needed by something else once every typeface naming it is rewritten; when the edit leaves the hash as it was there is nothing to do.
-- The result lists the typeface hashes that moved, and `main.c` carries them to the sidecar (`fs_rename_font`, `fs_rename_typeface`: layers, corrections, the lock) and to the open views and navigation.
-- A typeface field edit rewrites the typeface under its new hash the same way.
-
-### The open font
-
-- The document stays in memory across a commit, so undo and redo keep working.
-- `origHash` and `origContHash` are what the store holds; they move at each commit.
-- A font that is not in the store yet (New Font, Import Font File) is added at its first commit and is unlocked.
-- Save, Load, Import, Export and Save As work as before.
-
-## Version 13: importing a picture of a font
-
-Menu, Import Font File also takes a picture: PNG, GIF (its first frame), JPEG, BMP, TGA.
-A picture tells nothing about itself, so the importer works out the background, the scale, the layout, the characters and the colours, and the dialog lets every one of them be set by hand.
-The analysis is in `src/sheet.c` (no raylib), the reference glyphs in `src/sheetref.c`, the dialog and the making of the font in `src/fitdoc.inc`.
-
-### Background and ink
-
-- A picture with transparent pixels (more than 2 % of it): they are the background, every other pixel is ink.
-- Else the commonest colour is the background, and every pixel of another colour is ink.
-- A picture with more than 300 colours has noise (a JPEG): the background is the commonest colour counted coarsely, and a pixel is ink when it differs from it by more than 60 in a channel.
-
-### Scale
-
-A preview draws every font pixel as a block.
-The scale is the largest s (up to 24) for which nearly every change of colour along the rows and the columns lies on a lattice of pitch s (98.5 %, with noise 86 %).
-The picture is then brought back to one pixel per font pixel, taking the pixel in the middle of each block (with noise: the mean of the block).
-
-### Layout
-
-Three layouts, tried in this order:
-
-- Marker row: a strip whose top (or bottom) row holds single pixels of one colour.
-  Each marker stands over a column that separates two glyphs: a glyph is the columns between two markers, and the marker's own column belongs to no glyph.
-  A pixel of another colour in that row is ink of a glyph.
-  Ink under the next marker that touches the glyph (a shadow that spills over) stays with that glyph.
-  What follows the last glyph (a closing marker at the edge) is dropped.
-- Grid: cells of one size.
-  The width is the smallest pitch for which every stretch of ink between blank columns lies inside one cell; a pitch a little larger that divides the width of the picture, with no margin, is taken instead when there is one.
-  Stretches far longer than most (glyphs that touch) do not count.
-  The height comes from the text rows in the same way.
-  When the glyphs fill their cells and leave no gaps (plates, outlines that touch), the period of the picture tells the cell: the smallest divisor of the size at which the picture repeats, for the height the one closest to the width.
-  A grid whose cells are mostly blank is no grid.
-- Rows: text rows cut where a row of pixels is blank, glyphs cut where a column is blank.
-  A band far lower than the others (dots, accents) joins its closest neighbour.
-  A stretch about twice as wide as most is two glyphs that touch, and is cut where the fewest pixels are inked.
-  A picture with noise is always read as rows.
-
-A sheet that holds the same glyphs several times (one font in several colours) is told by cells that repeat exactly; one copy is imported, the dialog chooses which.
-
-### Characters
-
-Sheets list their characters in runs of ascending codes: ASCII from the space or from `!`, the upper half of code page 437 after `~`, capitals then digits, `1` to `9` then `0`.
-So the characters are not read one by one, but as the best sequence.
-
-- Each glyph is compared with the same character of reference fonts: GNU Unifont and Noto Sans Regular, Bold and Black, about 900 glyphs, made once (two seconds).
-  The shape is compared on a grid of 8 x 10 after stretching the ink box to it, and the place in the line (top, bottom and width in line heights) counts too, which tells `,` from `'` and `o` from `O`.
-- A glyph of several colours (an outline, a shadow, a bevel) is read from all its ink and from single colours of it, alone and left out, and keeps its best reading.
-- The sequence is found by dynamic programming over the cells: a glyph that continues the run of the one before it gets a bonus (0.5, a full match is 1), a higher code a small one.
-  A blank cell holds the place of a missing character, or no place at all (the end of a row).
-- Capitals standing in the places of the small letters are accepted there.
-- A code given twice stays with the glyph that stands in a run; the other takes its best code that is still free, or none.
-- The candidates are ASCII, Latin-1, the upper half of code page 437 and a few more (the euro sign, arrows, the ligatures of French).
-
-A first character can be typed in the dialog; the glyphs are then counted from it, cell by cell, and nothing is recognised.
-
-On the 49 pictures of the test collection the layout is found for all, and 97.4 % of the 3843 characters whose truth is known get the right code.
-
-### Colours and metrics
-
-- The colours of the ink become the palette of the font, at most 36; when there are more (a JPEG), the pair that costs least to merge is merged until 36 are left.
-- A font of one ink colour is imported black on white, without colour lines; a font of several on a transparent background.
-- The baseline is where most glyphs end; ascent and descent are how far the ink reaches above and below it.
-- In a grid and in a marker strip the advance is the width of the cell and the glyph keeps its place in it; a grid makes a monospaced font.
-  In rows the advance is the width of the ink and a gap of a twelfth of the height.
-- A space is added when the sheet has none.
-- A glyph left without a character is kept, without a code point.
-
-### The dialog
-
-The dialog of a picture has Family and Style, the layout (Auto, Grid, Rows, Marker row; what was found is told beside it), the cell of a grid, the scale, the copy of a sheet with several, the first character, "One colour", what was found in words, and a preview of every glyph in its colours over the character it will get (amber when the match is weak).
-Every change runs the analysis again.
-
-### Not done
-
-- The picture is not kept as a layer under the font.
-- A photograph of lettering is cut into glyphs and read, but its glyphs come in at the size of the picture and in up to 36 colours; they are not brought down to a pixel grid.
-- Kerning is not guessed.
-- Sheets whose characters follow no run at all (punctuation in the designer's own order) get wrong codes for those glyphs; the preview shows them, and they can be changed in the font view.
-
-## Version 14: the baseline, and the facts of a glyph
-
-Two edits of an unlocked font that were missing: moving the baseline, and setting a glyph's code point, advance and offsets by hand.
-Both are in-place edits like every other (version 12): one undo step each, the font's hash changes, the commit follows at the usual places.
-
-### The baseline
-
-The Font tab's FONT METRICS section has a Baseline row under Descent: two icon buttons, up and down (`@Baseline_up`, `@Baseline_down`).
-The baseline moves one row and everything else stays where it is on the screen.
-
-- Up by 1: the ascent falls by 1 and the descent grows by 1.
-  Down is the mirror.
-- Every other stated height counted from the baseline moves with it: cap height, x-height, underline position and strike-out position fall by 1 when the baseline goes up.
-  Thicknesses, line gap, internal leading and quad width do not change.
-  A metric that is not stated stays not stated.
-- Every glyph with ink gets its offset y changed by the same amount (y is up from the baseline, so its bitmap stays where it is).
-  A glyph without ink keeps its offset (0, 0).
-- The font layers sit on the baseline's origin, so each moves its offset y by the same amount, and the layer the glyphs are drawn from moves what it drew them with, so none of its glyphs is drawn again.
-- A step that would make a metric go below its smallest value (ascent, descent, cap height and x-height are never negative; the positions may be) is refused: the button is dim and its hint says why.
-  The buttons are dim while the font is locked.
-- One step is one undo step.
-  The font layers are outside the font's undo snapshots, so the undo stack keeps beside each snapshot the net number of rows the baseline had been moved (`baseShift`); an undo or redo moves every font layer by the difference.
-  A layer added after a step is moved by an undo of that step too.
-
-### The facts of a glyph
-
-In the glyph view's Glyph tab the code point, character, advance and offset x and y are fields (Th_TextField, Th_Number), dim and inert while the font is locked.
-The font view's selection section shows the same facts as text.
-
-- Advance: a number, 0 or more.
-  Offset x and y: numbers, any sign; they are dim for a glyph without ink.
-  A change is one undo step; steps on one field within 0.8 s are merged.
-- Code point: hex digits, with or without `U+` or `0x`.
-  Character: one character (UTF-8), or the word `space`; it sets the code point.
-  A field is applied on Enter, Tab or a click elsewhere.
-- Refused with a message (an error toast, nothing changes): a code another glyph of the font has (no silent swap), `FFFFFF` (the default glyph's code), a number above 10FFFF, text that is no code.
-  The default glyph's fields for the code are dim: it cannot be given another code.
-  An uncoded glyph can be given a code point; the later uncoded glyphs are renumbered as when one is deleted.
-- The glyph keeps its bitmap, offsets and advance and moves to its place in the order (`px_font_remove_glyph` and `px_font_add_glyph`).
-  The glyph view stays on it (`Editor_SetGlyphIndex`: the index changes, the view does not), and so does the selection.
-- Kerning pairs that name the old code follow the new code (both sides of a pair; the other side is renumbered too when it is a later uncoded glyph).
-- Undo and redo bring the glyph view back to the glyph by the code it had.
-
-### Not done
-
-- No keyboard shortcut for the baseline.
-- The font layers added after a baseline step are moved by an undo of that step.
-
-## Version 15: filtering by colours, typing while the mouse is away, press-and-release
-
-Three small changes of the shared widgets and of the library views' filter.
-
-### The Colours filter
-
-The FILTER section of the library views' side panel has a third dropdown, Colours, under Style and Format.
-It works in the Typefaces tab and in the Fonts tab, and in the Typeface view's lists the filter is not shown, as for Style and Format.
-
-- The number of colours of a font is the number of ink colours it uses, at least 1.
-  Since version 21 it is `pxfm.colors` (the `COLORS` of the pxfm, NULL for a font of one colour) with the other facts of the font (`StoreEntry.colors`), or `px_font_colors` of the loaded font (`LibInfo.colors`), so it is known once the info of the font is.
-- The values are Any and the counts that occur in the tab, as numbers in numeric order.
-  The list follows the info that arrives while it is open: a font that states no ascent or descent is loaded for its info while the dropdown is open or a count is chosen.
-  A chosen count that no font of the tab has is dropped only when the info of every font is known.
-- A font whose info is not known yet does not match a chosen count.
-- In the Typefaces tab a variant row matches when its font has the chosen count, and a typeface box is shown when any of its variants matches, with the variants that match.
-  This is the rule of the Style and Format filters too.
-- The choice is kept in the `[browser]` section of the settings file (`colors=`) and cleared by Clear filters.
-- Script names: `@Colours_Dropdown`, `assert bcolors` (0 is Any), `assert bcolorvals`, `assert bcolorval<i>`.
-
-### Typing while the mouse is away
-
-A focused text field takes its keys unless a modal dialog or a popover blocks the input.
-Before, the panels blocked the scrolled widgets with the same flag when the mouse left their scroll area, so a field stopped taking keys as soon as the mouse wandered off.
-`theme.h` now has two gates:
-
-- `Th_SetInputBlocked`: mouse and keyboard.
-  Used for modal dialogs (New Font, Import folder and picture, Export, the unsaved prompt), the progress screen, the frame after a document opened (`swallowMouse`), open popovers and menus (the Style, Format and Colours lists, the context menu, the file and "..." menus, the Add Layer popover), and in main.c while a panel field is being edited (the glyph canvas ignores the mouse and keys then).
-  Every `Th_SetInputBlocked` call in `browser.c`, `main.c`, `fitdoc.inc` and `sample.c` is of these kinds.
-- `Th_SetMouseBlocked` (`Th_MouseBlocked` reads both gates, `Th_MouseOnly` the second): the mouse only.
-  Used by the code that draws a scrolled region for the widgets outside its visible part or under a pinned block: the browser panel's scroll area, the Usage and Similar lists (`insight.c`, `panel.inc`, `gpanel.inc`).
-  A text field that has the keyboard keeps taking keys; a click elsewhere still ends the editing.
-- The mouse-only readers (`hov` in browser.c, the editor's `hit`, the layers' `hov`, `cx_hover` of insight.c) read `Th_MouseBlocked`.
-- `SampleEdit` already took only the modal and popover block (its `blocked` argument), so it was not affected.
-- Ctrl+F in the browser focuses the filter as before.
-
-### A press must begin on the control
-
-A release-fired control used to act on any release over it, so a button that moved under the mouse (the first edit of a font adds a box above the metrics) was triggered by a press that began on another.
-`Th_Released(rect, name, hover)` is true only when the press of this click began on the same control (same name and rectangle).
-`Th_Button` (and so `Th_Toggle` and `Th_Lock`), `Th_Check`, `Th_Switch`, `Th_Segmented`, `Th_Dropdown`, a foldable `Th_Section`, the copy of a hash, the palette swatches, the glyph finder's cells, the usage and similar rows and the Add Layer popover's lists use it.
-The stepper acts on the press, and a menu's items on the release of a press that began on the open menu.
-The Baseline buttons lost their local workaround.
-
-### Tests
-
-`109_color_filter` (on `testdata/lib_colors.pxfdb`, then a copy of `lib.pxfdb` with palettes for two fonts; since version 21 made by `tests/make_testdata.exe` from colour fonts), `110_type_mouse_away` and `110b_type_mouse_away_glyph`, and `111_press_release`.
-
-### Not done
-
-- The Colours count is of palette entries, not of distinct RGBA values: two pixel characters with the same colour count twice.
-
-## Version 16: selection and moving
-
-The glyph view gets the selection tools of the common pixel editors: a rectangular marquee, a lasso, a magic wand and a Move tool, with the commands that go with a selection (select all, deselect, invert, delete, cut, copy, paste, move by the arrow keys).
-The behaviour is modelled on common pixel editors; the code is written for pxfe.
-The line, ellipse and fill tools of the same family come later; this version only prepares the table they join.
-
-### The tool table
-
-`editor.c` has one table, `kTool[]`: name, shortcut as shown, raylib key, icon, group and whether it is a selection tool.
-The tool strip (version 18), the shortcuts, the status line and the tooltips all read it, so a new tool is a row in the table, a `Tool` value, an icon in `theme.c` and, when it works with the mouse, a branch in `canvas_input`.
-The drawing tools are as before; the selection tools (group 3 since version 18) follow after a gap.
-
-| Tool | Key | Value of `etool` |
-| --- | --- | --- |
-| Pencil, Eraser, Line, Rectangle, Fill | B, E, L, R, F | 0 to 4 |
-| Marquee | M | 5 |
-| Lasso | Q | 6 |
-| Magic Wand | W | 7 |
-| Move | V | 8 |
-
-Choosing another tool drops floating pixels (see below).
-The tools are off, as the others, while the font is locked or the glyph's layer is hidden.
-
-### The mask
-
-`selection.c` and `selection.h` (no raylib, tested by `tests/test_selection.c`) hold a selection as a cell mask: a bounding box with one byte per cell, in glyph space (x from the pen, y a row counted down from the baseline, as in `editor.c`).
-A non-empty mask is always tight.
-The mask is not limited to rectangles, so add, subtract and intersect work.
-
-- `sel_combine` meets a new shape with the selection in one of four modes: replace, add, subtract, intersect.
-- `sel_invert` turns the cells of a rectangle (the glyph box across the advance, and the bitmap where it reaches out of it) into their opposite; selected cells outside the rectangle are dropped.
-- `sel_polygon` fills a closed path: a cell is inside when its centre is (even-odd rule), and the cells the outline passes through are in too, so a thin loop or a line still selects something.
-- `sel_wand` selects the cells joined to the clicked one that hold the same character, inside the same region (4-connected, or 8-connected).
-- `SelBitmap`, `selbm_clear` and `selbm_stamp` read, clear and write a character bitmap; `SelFloat` is the lifted pixels with their shape.
-
-### How a selection is made
-
-- The mode comes from the bar (the segmented control Set, Add, Sub, And, script names `@selmode.0` to `@selmode.3`) and from the keys at the press: Shift adds, Alt subtracts, Shift and Alt together intersect.
-  The keys win over the bar.
-- Marquee: drag a rectangle of cells.
-  Shift pressed after the press (not already down at it) makes it a square, from the start cell towards the pointer.
-- Lasso: drag a free path; the cells inside it and on it are selected when the button goes up.
-- Magic wand: click.
-  The bar's toggle 8-way (`@8-way`, shown with the wand) also joins diagonal neighbours; the default is 4-connected.
-  The region is the font box across the advance and the bitmap, so empty cells are a group too; a click outside it selects nothing.
-- A click without a drag (the mouse moved less than 3 pixels) with the marquee or the lasso deselects, in Set mode, when it is outside the selection.
-  A drag within one cell selects that cell.
-- While a shape is dragged it is drawn in the accent colour; Esc cancels the drag.
-- The selection is shown with marching ants: a 1 px dashed outline round the selected cells, dark dashes (`TH_TEXT`) and light dashes (`TH_PANEL`) that move, over a faint tint of the accent colour.
-- Ctrl+A selects all (the glyph box across the advance and the bitmap), Ctrl+D deselects, Ctrl+Shift+I inverts.
-- Esc deselects when a selection exists (and cancels a float first); with nothing selected it closes the glyph view as before.
-- The selection is kept while the glyph view stays on the glyph, and goes with a new Editor_Open (another glyph, an undo or redo).
-  Selecting is not an undo step.
-
-### Moving: the float
-
-A move does not change the glyph until it is dropped.
-The selected pixels are copied into a float (`SelFloat`), drawn over the glyph with the cells they came from drawn empty (a copy leaves them), and the selection moves with the float.
-The drop writes the result and is one undo step (`EditorBeforeChange` is called once, at the drop); a cancel leaves the glyph as it was.
-
-- Lift: a drag that starts inside the selection with the marquee or the lasso in Set mode and with no Shift or Alt (in the bar's Add, Sub and And modes a press inside the selection changes the selection instead), a drag anywhere with the Move tool, the arrow keys, the bar's MOVE buttons.
-  The lift happens at the first whole cell of movement, so a click inside the selection lifts nothing.
-- The Move tool with no selection takes the whole bitmap (a rectangle of the bitmap's box); the selection goes away with the drop.
-- Ctrl at the press makes the drag move a copy: the original stays.
-  (Alt is the subtract modifier, so it is not used for this.)
-- Whole cells only: the float is at the cell under the pointer, offset by the cell where the press began.
-- Arrow keys with a selection nudge by 1 cell, Shift+arrow by 8 cells (`NUDGE_BIG`).
-  Without a selection Shift+arrow moves the whole bitmap by 1 cell as before.
-- The bar's four MOVE buttons do the same as the plain arrow keys when there is a selection (their tooltip says so), and move the whole bitmap by 1 cell as before when there is not.
-- Transparency: a cell of the float that holds `.` does not overwrite what it lands on; only pixels other than `.` are written.
-  A move first clears the cells it came from (the whole selection, `.` cells included), then writes the pixels.
-- The drop: Enter, choosing another tool, a press outside the float (with the marquee or the lasso; the press also deselects), leaving the glyph (Back, previous and next glyph, the padlock, Save, Export and every other commit through `Editor_Flush`, the navigation).
-- Cancel: Esc (it cancels the float, the next Esc deselects), Esc during a drag, and Ctrl+Z while pixels float (the pixels are thrown away, no undo step is taken); Ctrl+Y does the same.
-- A drop that would change nothing (a move by 0 cells, a selection without ink) takes no undo step.
-- Growth: the pixels may land outside the bitmap and the font box.
-  The drop grows the bitmap the way the pencil does (`ensure`), writes, and then crops the bitmap to its ink (`px_glyph_crop`; the hash is that of the cropped bitmap anyway).
-  The bitmap is limited to 4096 cells a side, as for the pencil; a drop that would exceed it is refused with a toast and cancelled.
-
-### Delete, cut, copy, paste
-
-- Delete and Backspace clear the selected cells to `.`: one undo step, none when no selected cell holds ink.
-  With a float that is a move, the pixels vanish and the place they came from is cleared; with a float that is a copy or a paste they are thrown away.
-- Ctrl+C copies the selected pixels (or the floating ones) into the clipboard of the program, Ctrl+X copies and deletes.
-  The clipboard keeps the pixel characters and the cells they had, and lives for the session, so it also works into another glyph and another font; it is not the system clipboard.
-- Ctrl+V pastes as a float at the cells the pixels were copied from.
-  When they are not all in view, the pixels' top-left cell goes to the top-left cell of the view.
-  The tool becomes the marquee when it was not a selection tool, so the float can be dragged.
-  The paste is written by the drop (one undo step) and thrown away by Esc.
-- A locked font (and a hidden layer) refuses Delete, Cut and Paste with the toast "The font is locked"; the selection tools are off, so there is nothing to select.
-
-### The layers
-
-The selection acts on the glyph's own pixels only.
-The reference layers are not read or written.
-Alt+drag with a reference layer selected still moves that layer (it was there first); use the bar's Sub mode to subtract then.
-
-### Not done
-
-- Undo of the selection itself (only the pixel edits are undo steps).
-- Bar buttons for select all, deselect and invert (the keys only), and a single-cell selection with the marquee needs a drag of at least 3 pixels (the wand also does it).
-- The selection does not limit the other tools' painting (changed in version 17: the drawing tools are clipped to it).
-- The system clipboard (a paste from another program).
-- Selection by colour range, feathering, rotation and scaling of the floating pixels.
-
-### Tests
-
-- `tests/test_selection.c`: 44 checks of the mask, wand, polygon, combine, invert, bitmap and float functions (in `build.bat test`).
-- `112_select_move` (marquee, move by drag, drop, undo and redo, Esc, nudge, a press outside, Ctrl+drag copy, the Move tool, the tool switch), `113_select_modes` (select all, deselect, invert, square, Shift, Alt, the bar's modes, the lasso, the keys), `114_select_wand`, `115_select_clipboard` (delete, cut, copy, paste, transparency, another glyph, a paste out of view, a paste dropped by Back), `116_select_growth_locked` (a locked font refuses, Shift+arrow out of the box, the bitmap's growth and undo, PageDown, Back and the padlock drop the pixels).
-- Play probes: `assert eselcount`, `efloating`, `eclip`, `assert esel bounds X Y W H` (`*` matches any X or Y), `esel cell X Y [0|1]`, `esel none`; `keydown shift` (and `ctrl`, `alt`) holds a key while the mouse moves.
-
-## Version 17: line, curve and pixel-perfect
-
-The glyph view gets the line and curve tools of the common pixel editors, a pixel-perfect option for freehand strokes, and drawing that is limited to the selection.
-The behaviour is modelled on common pixel editors; the code is written for pxfe from textbook algorithms (Bresenham for the line, the cubic Bezier polynomial sampled at steps under one cell for the curve).
-The rectangle, the ellipse and the fill of the same family come later (the rectangle and the ellipse in version 19); the rectangle and the fill are as before, except for the clip below.
-
-### The raster functions
-
-`src/raster.c` and `.h` (no raylib, no pxfont; `tests/test_raster.c`) hold the cell paths:
-
-- `ras_line` is Bresenham.
-  The line is walked from its smaller end (smaller x, then smaller y) and reversed when needed, so a line from A to B and one from B to A cover the same cells, and the path always runs from the first end to the second.
-- `ras_snap` is the constrained angle, `ras_ends` adds the centre mode (see below).
-- `ras_is_corner` and `ras_pixel_perfect` are the pixel-perfect rule.
-- `ras_bezier` is the cubic curve.
-
-### Line
-
-Drag from the start cell to the end cell: the preview is drawn while the mouse is down, the line is drawn at the release, one undo step.
-Esc during the drag cancels it.
-The right mouse button draws with `.` (it erases), as for the pencil, the rectangle and the fill before.
-
-- Shift constrains the angle.
-  The vector from the start to the pointer is turned to the nearest multiple of 15 degrees and then to the clean pixel slope that stands for it: 0, 15, 30, 45, 60, 75 and 90 degrees become the slopes 0, 1:4 (14 degrees), 1:2 (27 degrees), 1:1, 2:1 (63 degrees), 4:1 (76 degrees) and 1:0, in all four quadrants.
-  The end is cut to a whole number of steps of that slope (the nearest one to the pointer along it), so every constrained line has a regular stair: an exact 2:1 line is made of runs of exactly two cells.
-- Ctrl draws from the centre: the press cell is the middle of the line and the far end is mirrored through it.
-  Ctrl was picked because Alt is the subtract modifier of the selection tools and, with a reference layer selected, moves that layer.
-  Shift and Ctrl together give a constrained line from the centre.
-- The modifiers are read live: the preview and the line follow them until the release.
-- Shift+click with the Pencil draws a line from the last cell the pencil or the line ended on to the clicked cell (one undo step), and the drag goes on as freehand from there.
-  There is no last cell in a glyph view that was just opened, after an undo or a redo, or before the first stroke: Shift+click is then an ordinary click.
-
-### Curve
-
-The Curve is a tool of its own (`etool` 9): Shift+L chooses it, L chooses the line, and since version 18 it has its own button in the tool strip.
-In version 17 it was a hidden row of the table, a variant of the Line button with a Line / Curve control in the bar's second row; version 18 removed both.
-
-The curve is a cubic Bezier with two end points and two control points, made with three drags:
-
-1. The first drag sets the two end points, like a line (Shift and Ctrl work as for the line).
-   The preview is the straight line.
-   A click without a drag sets nothing.
-2. The second drag pulls the first control point to the cell under the pointer (where the drag ends), the third the second one.
-3. The curve is drawn when the third drag is released, or on Enter at any point after the first drag; the control points that are not set yet lie on their end points.
-   Esc cancels (and so does Ctrl+Z); choosing another tool, leaving the glyph, the padlock and every commit of the application draw it as it is.
-
-While the curve is being made the glyph does not change: its cells are drawn as a preview, with the handles (a square for each end point, a circle for each control point, a line from each end point to its control point).
-The right button draws the curve with `.`; the second and third drag must use the same button as the first.
-The path is 8-connected with no gap and no cell twice in a row, and it has no L corner (the pixel-perfect rule is always applied to a curve).
-The drawing is one undo step; it grows the bitmap as the pencil does.
-
-### Pixel-perfect
-
-The bar's Pixel-perfect toggle (second row, shown for the Pencil, the Line and the Curve) is off by default.
-When it is on, a freehand pencil stroke is kept one cell wide: when three consecutive cells of the stroke make an L (two steps along different axes, the first and last cell touching diagonally), the middle cell is taken back.
-The cell goes back to what it held before the stroke painted it, so a cell that was inked before the stroke stays inked, and the right button's erase puts the ink back.
-The rule works while the stroke is drawn, and the bitmap is cropped at the end of the stroke when it left an empty margin.
-Lines are never made of L corners, and the curve always applies the rule, so the toggle changes the pencil only; it is shown for the Line and Curve so that the option is in reach while drawing.
-The choice is kept in `pxfe.ini` (`[app] pixelPerfect`, 0 or 1), as the other editor options.
-
-### Drawing inside the selection
-
-When there is a selection (version 16), the Pencil, the Eraser, the Line, the Curve and the Rectangle draw only inside it: the cells outside are left alone, the preview does not show them, and the stroke is still one undo step.
-The selection is not changed by drawing.
-The Fill was not limited in this version; since version 20 it is clipped too (see "Version 20: fill, eyedropper, polygon and contour").
-Pixels that float from an arrow key land (one undo step) when a drawing tool is pressed on the canvas, and the drawing is then clipped to the selection at its new place.
-The selection may reach beyond the bitmap: painting there grows the bitmap as before.
-
-### Not done
-
-- The ellipse and the rectangle's own options (Shift for a square, from the centre) came with version 19; the fill's options came with version 20.
-- Thick brushes and a brush shape (the pixel-perfect rule is for one-cell strokes).
-- Dragging a handle of a curve again after the third drag, and a curve with more than two control points.
-
-### Tests
-
-- `tests/test_raster.c`: 51 checks (Bresenham end points, order and symmetry for 169 directions, the constrained angles, the L rule, random walks, the Bezier curve's connectivity, no gaps, no doubled cells and no L corners on 300 random curves; in `build.bat test`).
-- `117_line_shift_undo`, `118_pencil_shift_click`, `119_pixel_perfect`, `120_curve` (three drags, Enter, Esc at every stage, Ctrl+Z, a tool change, Shift and Ctrl, the right button, growth), `121_clip_to_selection`, `122_line_curve_locked`.
-- Play probes: `assert epp 0|1` (Pixel-perfect on), `assert ecurve 0|1|2` (the curve's stage); `mousedown` and `mouseup` take the word `right` (and `middle`).
-- `123_shots_v17` (not in `run_all.bat`) takes the screenshots of the bar at 1400 x 900 and at the narrow sizes.
-
-## Version 18: the tool strip
-
-The tool buttons leave the glyph view's bar and stand in a vertical strip at the left edge of the canvas area, as in common pixel editors.
-The top bar keeps Back, the glyph navigation, Fit, the zoom, Metrics and Layers; the second row keeps the options (INK, the padlock, Pixel-perfect or the selection mode, MOVE, ADVANCE).
-
-### The strip
-
-- It lies between the window's left edge and the canvas, from the bottom of the bar to the top of the status line; the canvas is that much narrower (the editor's cell mapping, Fit and the advance handle use the canvas rectangle, so they follow).
-- The buttons are the square icon buttons of the bar (`TH_ROW_H`, 28 px) with 2 px between them and 6 px of padding; the strip is 40 px wide with one column and 72 px with two.
-- The active tool is lit as before; the tooltip is "Name  (Key)", for example "Pencil  (B)"; the script names are the same as in the bar (`@Pencil`, `@Line`, `@Curve`, `tool.N`).
-- `draw_strip` lays the buttons out from `kTool[]`: group by group (a gap of 8 px between groups), inside a group in table order, rows with `hidden` have no button.
-  The groups are 0 draw (Pencil, Eraser), 1 shapes (Line, Rectangle, Curve; since version 19 Line, Curve, Rectangle, Ellipse), 2 fill, 3 selection (Marquee, Lasso, Magic Wand, Move).
-- One column while all the buttons fit the strip's height, otherwise the buttons wrap into a second column (and a third, if need be) as soon as the next one would not fit.
-  With ten tools one column needs about 330 px, so two columns appear only when the strip is shorter (a window under about 560 px high, or a tall preview).
-- A later tool (the ellipse, say) is a row in `kTool[]` with its group: the strip needs no other change.
-
-### The bar after the change
-
-- The narrow-window rules of versions 16 and 17 are gone: the bar no longer drops the glyph's name, tightens its gaps or hides the Line / Curve control when the window is narrow, because the nine tools no longer take room in row 1.
-  At the application's smallest size (1110 x 600) the second row shows Pixel-perfect, or Set, Add, Sub, And with 8-way, and the MOVE and ADVANCE controls.
-- The second row still checks that its controls fit before it draws them, which only a font with a big palette (up to 37 swatches) can now fail; the keys work then.
-- The Line / Curve segmented control is gone (the Curve has its button), so the script names `@linemode.0` and `@linemode.1` are gone; scripts click `@Line` and `@Curve`.
-
-### Tests
-
-- `124_tool_strip`: one column at 1400 x 900, two columns at 1110 x 480, a click on a button of the strip chooses the tool, the canvas still draws after the resize.
-- Play: `assert etoolcols 1|2` (the strip's columns); `resize` can now go below the application's minimum size (it clears the minimum first).
-- `117_line_shift_undo` and `122_line_curve_locked` use the Line and Curve buttons instead of the control.
-
-## Version 19: rectangle and ellipse
-
-The Rectangle gets its modifiers and a Filled option, and the Ellipse is a new tool.
-The behaviour is modelled on common pixel editors; the code is pxfe's own (the textbook midpoint ellipse in a bounding box).
-
-### Dragging
-
-- Both tools take the bounding box: the press cell is one corner, the cell under the mouse at the release is the other.
-- Shift makes the box a square (a circle for the ellipse): both sides become the longer one, in the direction of the drag.
-- Ctrl draws from the centre: the press cell is the middle of the box and the far corner is mirrored through it, as for the Line.
-  Shift and Ctrl together make a square from the centre.
-- The modifiers count while the button is down: the preview follows them from frame to frame and the release uses those that are held at that moment.
-- Esc cancels the drag; nothing is drawn and no undo step is taken.
-- The preview is drawn with the ink (the right button previews with `.`), and the glyph is unchanged until the release.
-- The release is one undo step.
-  The drawing is clipped to the selection like the other drawing tools, grows the bitmap, and is refused when the font is locked.
-- A click is one cell; a box one cell wide or high is a line.
-- The right button draws with `.`.
-
-The Rectangle keeps its key R (some other editors use U).
-The Ellipse is O, because E is the Eraser.
-Shift at the press of the key does not choose a filled variant; Filled is a toggle in the bar (see below), so that one rule covers both tools and the mouse.
-
-### The Filled option
-
-- The second row shows one toggle, `Filled` (script name `@Filled`), for the Rectangle and the Ellipse; the Pixel-perfect toggle is shown for the Pencil, the Line and the Curve as before.
-- Off, a tool draws the outline; on, it draws the outline and the inside with the ink.
-- It is a property of the two tools together, kept in `pxfe.ini` (`[app] filled`) like Pixel-perfect, and `Editor_Filled` and `Editor_SetFilled` are its API.
-- The earlier rule of version 17 that Shift filled the Rectangle is gone: Shift is the square now.
-
-### The raster
-
-`src/raster.c` has three new functions (no raylib; `tests/test_raster.c` tests them):
-
-- `ras_box(sx, sy, hx, hy, square, center, box)`: the normalized box of a drag with the two modifiers.
-- `ras_rect(out, x0, y0, x1, y1, filled)`: the cells of a rectangle, its outline or all of them.
-- `ras_ellipse(out, x0, y0, x1, y1, filled)`: the cells of the ellipse that fills the box.
-
-The ellipse is the midpoint (Bresenham type) ellipse in a bounding box:
-
-- The four mirrored quadrants are stepped from the middle of the sides towards the top and the bottom, with the error terms in integers, so the ring is symmetric in both axes by construction, for even and odd widths and heights alike.
-- The cells are sorted and joined: the mirrors meet on the axes, and no cell is in the list twice.
-- A flat or narrow ellipse stops early, so the loop finishes the tip; the ring then always touches the box on all four sides.
-- The pixel-perfect rule is applied to the set, not to a path: a ring cell with exactly two ring neighbours, each a straight step away along different axes, is the middle of an L and is dropped.
-  The two neighbours touch diagonally, so the ring stays whole and one cell thick.
-- A filled ellipse fills each row of that ring from its first to its last cell, so the filled shape has the outline of the ring and no holes.
-- A box one cell wide or high is a line, and a box two cells wide or high is a solid band (there is no room for a ring).
-- Very narrow ellipses (a short side of 3 or 4 cells with a long side of twice that or more) end in a two-cell cap; from a short side of 5 and a ratio under 3 to 1 every ring cell has exactly two neighbours.
-
-The rectangle outline is the box's border; its filled form is the whole box.
-A drag over 4096 cells in a side is as large as a glyph's bitmap can be; the cells are a list, built for each frame of the preview.
-
-### The strip
-
-- The strip shows the shape group as Line, Curve, Rectangle, Ellipse.
-  The table `kTool[]` keeps its rows and so the numbers of the tools that the scripts use (Curve is 9, Ellipse is 10); a second array, `kStrip[]`, is the order of the buttons, and `draw_strip` lays them out from it.
-- A tool joins the strip by a row in `kTool[]` and a place in `kStrip[]`.
-- Ellipse has its own icon `TH_IC_ELLIPSE` (an oval outline).
-
-### Tests
-
-- `tests/test_raster.c` (78 checks in all): `ras_box`, `ras_rect`, and for every box from 1 x 1 to 12 x 12 the ellipse's symmetry, no cell twice, a single 8-connected piece, the four sides touched, no L corner, a line for 1 cell and a band for 2, the filled shape (it holds the ring and every row is one run); a 21 x 21 circle is within a cell of the ideal radius; 200 random boxes up to 60 x 60.
-- `125_rectangle`: the outline, square, from the centre, both, the modifiers counted at the release, Esc, the click and the line, Filled, the right button, growth.
-- `126_ellipse`: key O and the button (E stays the Eraser), the ring of 5 x 5, 8 x 6 and 5 x 3, circle, from the centre, preview, line and band, Filled (21 and 23 cells), the right button, growth.
-- `127_shape_clip`: the rectangle and the ellipse, outlined and filled, are clipped to the selection.
-- `128_shape_locked`: a locked font refuses both tools, the buttons are off.
-- `129_strip_order`: the strip's order (`assert etoolslot<N> T`, the tool number of the N-th button) and the buttons by name, in a tall and a short window.
-- `06_editor` and `121_clip_to_selection` use the Filled toggle instead of Shift.
-- Play: `assert efilled 0|1`, `assert etoolslot<N> T`.
-
-## Version 20: fill, eyedropper, polygon and contour
-
-The last tool family of the glyph view: the paint bucket gets its options and the clip, the eyedropper and two shape tools (polygon and contour) are new.
-The behaviour is modelled on common pixel editors; the code is pxfe's own (a textbook flood fill on a character grid, a textbook even-odd scanline fill).
-
-### The paint bucket (Fill)
-
-- Key F, the strip's Fill button (as before; the tool number stays 4).
-- The region is the glyph box as the wand sees it: the advance across the font box (ascent plus descent), widened to the bitmap where that reaches out of the box.
-  Empty space can be filled, and the bitmap grows to hold what is filled; a cell outside the region is not part of it.
-- The second row shows two toggles for the Fill:
-  - `Contiguous` (script name `@Contiguous`, on by default; `assert econtig 0|1`): on, the fill takes the cells joined to the clicked one that hold the same pixel character; off, it takes every cell of the region that holds that character.
-  - `8-way` (`@8-way`): the wand's own switch, shared with it, so one setting serves both tools; off, cells join by their sides, on also by their corners.
-- The selection is a wall and a limit (since version 20; version 17 left the Fill unclipped): only selected cells are filled, the fill does not pass through unselected cells, and a click outside the selection fills nothing.
-  Without a selection nothing limits it.
-- A click on a cell that already holds the ink changes nothing and takes no undo step; otherwise the fill is one undo step.
-- The left button fills with the ink, the right button with `.` (it clears the character that was clicked, contiguous or global).
-- A locked font refuses it.
-
-### The eyedropper
-
-- Key I, the strip's Eyedropper button (tool number 11, in the fill group beside the Fill).
-- A click makes the pixel character under the cursor the ink.
-  A cell outside the bitmap is empty space, `.`.
-  `.` is an ink of every font (the last swatch of the INK palette is the eraser ink), so picking empty space sets the ink to `.`, and the Pencil then erases; a character that the font's palette does not hold is not taken.
-- pxfe has one ink and no second one for the eraser, so the right button picks exactly as the left one does.
-- Alt held at the press turns the Pencil, Line, Curve, Rectangle, Ellipse, Polygon, Contour or Fill into the eyedropper for that click: the ink is picked, nothing is drawn, and the tool stays what it was (so there is nothing to switch back; the temporary pick lasts the click).
-  The Eraser and the selection tools are not included (Alt subtracts in the selection tools).
-  Where a reference layer other than the glyph itself is selected, Alt+drag still moves that layer, as before: the layer wins.
-- Picking changes neither the glyph nor the undo stack.
-- A locked font refuses the tool like the others.
-
-### The polygon
-
-- Key D (free: Ctrl+D is Deselect and is read only with Ctrl), the strip's Polygon button (tool number 12, in the shape group after the Ellipse).
-- A click adds a vertex, and a line follows the mouse from the last vertex (the preview, drawn with the ink; the right button previews and draws `.`).
-  Nothing changes in the glyph until the polygon is closed.
-- It is closed by Enter, by a click on the last vertex again (a double click) or by a click on the first vertex; Esc throws it away and Backspace takes the last vertex back (Backspace is Delete elsewhere, but with a polygon being made it belongs to the polygon).
-  Choosing another tool, leaving the glyph, the padlock and `Editor_Flush` close it; Ctrl+Z throws it away (as for the Curve).
-- Shift makes each new edge a clean angle from the last vertex, as for the Line (the slopes 0, 1:4, 1:2, 1:1, 2:1, 4:1, 1:0).
-- The outline is the line raster between the vertices and from the last back to the first (sharp corners: the vertices stay).
-  With the bar's Filled the inside is added by the even-odd rule: a cell is inside when its centre is, so a self-crossing polygon has holes where it crosses itself, and a pentagram's middle stays empty.
-  A single vertex is one cell, two are a line, collinear vertices are a line.
-- One undo step; the drawing is clipped to the selection, grows the bitmap, and is refused when the font is locked.
-
-### The contour
-
-- Key C (Ctrl+C is Copy and needs Ctrl), the strip's Contour button (tool number 13).
-- A freehand drag: the path of the mouse is the contour (the cells between two mouse positions are joined by the line raster), and on the release the path is closed, from where it ended to where it began, and drawn.
-  It is a lasso that paints.
-- The outline is pixel-perfect: the corner cell of every L of the path is dropped, as for the Pencil with Pixel-perfect on.
-  With Filled the inside is added by the even-odd rule, so a path that crosses itself is filled like the polygon's.
-- The preview is drawn while the button is down (closed and filled as it will be); Esc cancels the drag.
-  A click is one cell and a straight drag is a line.
-- The right button draws `.`.
-- One undo step; clipped to the selection, grows the bitmap, refused when the font is locked.
-
-### The Filled toggle
-
-The second row shows `Filled` for the Rectangle, the Ellipse, the Polygon and the Contour: the one option covers the four, is kept in `pxfe.ini` (`[app] filled`) and its API is `Editor_Filled` and `Editor_SetFilled` as in version 19.
-The Pixel-perfect toggle stays with the Pencil, the Line and the Curve; the contour is always pixel-perfect.
-
-### The raster
-
-`src/raster.c` has two new functions (no raylib; `tests/test_raster.c` tests them):
-
-- `ras_flood(out, pix, rx, ry, rw, rh, sx, sy, contiguous, diagonals, clip)`: the cells of a paint-bucket fill in the region of `rw * rh` characters whose top-left cell is `(rx, ry)`.
-  Contiguous is an explicit stack (each cell is pushed once) in four or eight directions; not contiguous marks every cell with the seed's character.
-  The optional `clip` mask is a wall (a cell with 0 is neither filled nor passed through), and a seed on such a cell or outside the region fills nothing.
-  The cells come in row order.
-- `ras_polygon(out, v, n, closed, filled)`: the outline is `ras_line` between consecutive vertices (and from the last to the first when closed and `n >= 3`); a filled closed polygon adds the cells whose centres the even-odd rule finds inside, row by row from the sorted edge crossings, and returns the union in row order without duplicates.
-
-In the editor, `region_pix` builds the character grid of the glyph region once for the wand (`sel_wand_at`) and the Fill (`fill_at`), so both see the same region.
-`fill_at` replaces the older `flood_fill`.
-
-### The strip
-
-- The strip reads Pencil, Eraser; Line, Curve, Rectangle, Ellipse, Polygon, Contour; Fill, Eyedropper; Marquee, Lasso, Magic Wand, Move: fourteen buttons in four groups.
-  `kTool[]` keeps the tool numbers (Eyedropper 11, Polygon 12, Contour 13) and `kStrip[]` is the order.
-- A column holds buttons while they fit the strip's height.
-  A group that does not fit the rest of a column starts the next one, so a group is not split while it fits one; a group taller than a column still wraps button by button.
-- At the smallest window (1110 x 600) the strip is about 364 px high and fourteen buttons need about 454 px, so there are two columns: the drawing, shape and fill groups in the first (ten buttons) and the selection group in the second.
-  At 1110 x 520 it is two columns as well; at 1110 x 480 three.
-  In a window 900 px high it is one column.
-- Icons `TH_IC_PICK` (a dropper), `TH_IC_POLY` (a polygon with its corners marked) and `TH_IC_CONTOUR` (a wobbly loop).
-
-### The shortcuts of the glyph view
-
-Since version 23 the tools are Shift+letter and the plain keys pick a slot of the palette bar (the table shows the keys of version 23).
-
-| Key | What it does |
-| --- | --- |
-| Shift+B | Pencil |
-| Shift+E | Eraser |
-| Shift+L | Line |
-| Shift+U | Curve (also its button; Shift+L before version 23) |
-| Shift+R | Rectangle |
-| Shift+O | Ellipse |
-| Shift+D | Polygon |
-| Shift+C | Contour |
-| Shift+F | Paint bucket (Fill) |
-| Shift+I | Eyedropper |
-| Shift+M, Shift+Q, Shift+W, Shift+V | Marquee, Lasso, Magic Wand, Move |
-| `.`, `0`-`9`, `A`-`Z` | pick that slot of the open glyph's palette as the ink (`.` is transparent) |
-| Alt at the click | with the Pencil, Line, Curve, Rectangle, Ellipse, Polygon, Contour or Fill: pick the ink under the cursor |
-| Right button | draws with `.` (the fill, the shapes, the polygon and the contour too) |
-| Shift | the Line and the Curve's end points, the Polygon's edges: clean angles; the Rectangle and Ellipse: a square or circle; the Pencil: a line from the last cell |
-| Ctrl | the Line, Curve, Rectangle and Ellipse: draw from the centre |
-| Enter | draws the curve or polygon being made; drops floating pixels |
-| Esc | cancels a drag, the polygon or the curve being made, the float, the selection, then closes the glyph view |
-| Backspace | the polygon being made: its last vertex goes; otherwise clears the selection |
-| Delete | clears the selection |
-| Ctrl+A, Ctrl+D, Ctrl+Shift+I | select all, deselect, invert |
-| Ctrl+C, Ctrl+X, Ctrl+V | copy, cut, paste |
-| Ctrl+Z, Ctrl+Y | undo, redo (a float, a curve or a polygon being made is thrown away first) |
-| Arrow keys | move the selection by 1 cell, Shift+arrow by 8; with no selection Shift+arrow moves the bitmap |
-| PgUp, PgDn | the previous and the next glyph |
-
-### Tests
-
-- `tests/test_raster.c` (110 checks in all): the flood fill (contiguous and global, 4 and 8 directions, a diagonal wall, the clip as a wall and a limit, a seed outside the region or the clip, an empty region such as the growth region) and the polygon (a triangle, a rectangle, a concave U, a bow tie and a pentagram by the even-odd rule against a naive ray count, a point, two points, collinear and repeated vertices, a sliver, negative coordinates).
-- `130_fill`: the options, empty space, contiguous and global, 4- and 8-way, the right button, a click that changes nothing, growth, undo.
-- `131_fill_clip`: the selection is a wall and a limit, a click outside fills nothing, the right button and the global fill are clipped, two rooms.
-- `132_eyedropper` (font 03696f65, two colours): the key and the button, left and right, `.`, Alt with every drawing tool, the tool stays, no undo step.
-- `133_polygon`: closing by Enter, by the first vertex and by a double click, Backspace, Esc, Ctrl+Z, another tool, Shift, Filled, a bow tie, the right button, the clip, growth.
-- `134_contour`: the outline and Filled, the right button, Esc, a click and a straight drag, a path that crosses itself, the clip, growth.
-- `135_tools_locked`: a locked font refuses the four tools; the padlock draws a half-made polygon.
-- `136_strip_v20`: the strip at 1110 x 600 (two columns), 1110 x 520 (two), 1110 x 480 (three) and 1400 x 900 (one), every button by name.
-- Changed: `129_strip_order` (the new order), `124_tool_strip` and `129_strip_order` use 1110 x 520 for their short window, `121_clip_to_selection` (the Fill is clipped).
-- Play: `assert epoly N` (vertices of the polygon being made), `assert econtig 0|1`.
-
-## Version 21: hex palettes, canonical colour glyphs, COLORS and SYMBOLIC
-
-pxfe follows pixelglyphlib's spec commit 5dd97ca2c4, "Add hex palettes, canonical colour glyphs, COLORS and SYMBOLIC".
-A colour no longer belongs to the font: each glyph line of a colour font names a palette file of its own, and the glyph file numbers its colours in reading order.
+## Palettes and colours
 
 ### The formats
 
-- A hex palette (`palette/xx/<hash>.hex`, spec `hex.md`) is one colour per line, `RRGGBB`, or `RRGGBBAA` when the alpha is not `FF`, in upper case.
-  It has at least one line, no colour twice and no empty line.
-  Its hash is the hash of its canonical text, as for the other files.
-- A pxgl file of more than one colour is canonical: its first inked pixel in reading order is `0`, the next new colour `1`, and so on.
-  A reader refuses any other numbering ("the colours are not numbered in reading order from 0").
-- A pxfm file of a colour font has `COLORS n` (n ≥ 2), and a fifth field, the palette's hash, on every glyph line with a glyph file.
-  A font of one colour has neither.
-  `COLORS` is the number of distinct colours over the first k lines of each glyph's palette, k being the number of colours the glyph uses.
-- The key `SYMBOLIC` (no field) marks a symbol font: its codes are not the characters' code points.
-- A `COLOR` line, the colours of a pxfm before hex palettes, is refused: "a COLOR line: the colours of a pxfm file before hex palettes (the file was made by an older pixelglyphlib)".
-- The pxfdb (format_version stays 1) has the table `palette` (`hash`, `colors` and `colorset`: the RGBA bytes in order and sorted) with the index `palette_by_colorset`, the columns `pxfm.symbolic`, `pxfm.colors` (NULL for one colour) and `pxfm_glyph.palette`; `pxfm_color` is gone.
-  The schema in `src/store.c` is copied verbatim from `pxfdb.md`.
+- A hex palette (`palette/xx/<hash>.hex`, spec `hex.md`): one colour per line, `RRGGBB`, or `RRGGBBAA` when the alpha is not `FF`, upper case; at least one line, no colour twice, no empty line.
+- A pxgl of more than one colour is canonical: its first inked pixel in reading order is `0`, the next new colour `1`, and so on; a reader refuses any other numbering.
+- A colour font's pxfm has `COLORS n` (n ≥ 2) and the palette's hash as a fifth field on every glyph line with a glyph file; a font of one colour has neither.
+  `COLORS` is the number of distinct colours over the first k lines of each glyph's palette, k being the colours the glyph uses.
+- A `COLOR` line is refused: "a COLOR line: the colours of a pxfm file before hex palettes (the file was made by an older pixelglyphlib)".
+- The pxfdb (format_version 1) has the table `palette` (`hash`, `colors`, `colorset`) with the index `palette_by_colorset`, and the columns `pxfm.symbolic`, `pxfm.colors` (NULL for one colour) and `pxfm_glyph.palette`; the schema in `src/store.c` is copied verbatim from `pxfdb.md`.
 
-### In memory: one palette for the font
+### In memory: shared palettes
 
-The editor keeps what it had: one font-wide palette of up to 36 ink characters (`PxFont.color[1..36]`, `colorUsed`, `hasPalette`), and glyph bitmaps that use those characters.
-`.` has no colour.
-`hasPalette` now means a colour font.
-The conversion happens at the edge, when a font is read and when it is written.
+Each glyph has its own palette, so a font may have any number of colours; a glyph has at most 36 (`PX_GLYPH_MAX_COLORS`, the characters `0`…`Z`), and `.` is transparent.
 
-Reading (`px_load_glyphs` for files, `load_font_nolock` for the store):
+- `PxFont.pals` is an interned table: no two entries have the same colours and an entry never changes; entry 0 is black alone (`000000`, hash `2f1ab4cf…`).
+- A glyph points at an entry (`PxGlyph.pi`) and its pixel characters index it; glyphs of the same colours share an entry, so a font of one colour holds only entry 0 and stays lazy.
+- `PxGlyph.pal` keeps the hash of the palette the glyph was read with.
+- Each entry carries `draw[37][4]`, laid out as raylib's `Color` and indexed like the pixel characters; `px_glyph_palette(f, g)->draw` is all a renderer needs.
+- A palette is changed by copy on write: the new colours are interned and the glyph points at the result.
+- `px_font_compact_palettes` drops entries no glyph uses or names and renumbers; it runs when an undo snapshot is taken; `PxFont.palGen` is bumped by every compaction and copy, for caches keyed on indices.
 
-1. The palettes the glyph lines name are read once each (from `palette/` or the `palette` table) into `PxFont.pals`, checked strictly (the file's hash must be its name).
-2. `px_font_adopt_palettes` makes the font-wide palette: the colours of the whole palettes, in the order of the glyph lines and then of the lines of each palette, become the characters `0`, `1`, ….
-   When that union has more than 36 colours, the font-wide palette waits (`palDeferred`) until every bitmap is read, and is then made from only the first k lines of each glyph's palette.
-3. Each glyph read (`px_glyph_from_canonical`) is checked to be canonical and to have a palette of at least k lines, and its pixels are mapped from the palette's numbering onto the font-wide characters.
-   Each glyph remembers the hash of the palette it was read with (`PxGlyph.pal`).
-4. `px_font_finish_palette` checks `COLORS` against the colours in use.
-   A font of more than 36 colours is refused: "the font uses N colours; pxfe can edit a font of at most 36 colours".
-   Version 22 lifts this: each glyph has a palette of its own in memory.
+### Canonical order
 
-Lazy loading stays for fonts of one colour: only the glyphs that are drawn are read.
-A colour font is read whole when its first glyph is needed, so its palette and its `COLORS` are exact.
-A font that is only parsed (all glyphs lazy) writes its `COLORS` back from the line it read (`colorsRead`).
-
-Writing (`px_pxfm_text`, `px_save_final`, `store_save_to_memory`):
-
-- The glyph text is renumbered canonically (`px_font_glyph_pxgl`); in a font of one colour every ink pixel is `0`.
-- The palette of a glyph (`glyph_write_palette`) is, in this order:
-  1. the palette it was read with, when its first k lines are still the glyph's colours in reading order (so an unchanged font is written back byte for byte, shared palettes included);
-  2. otherwise the glyph's colours in reading order, then the rest of its old palette when that palette holds all of them, else the rest of the font-wide palette, without repeats (the `canonical_pixels` rule of the reference).
-- `COLORS` is `px_font_colors`: the distinct colours of the ink characters the glyphs use, written when there are at least two.
-- The palettes are written as `palette/xx/<hash>.hex` (an existing file is left) and inserted into the `palette` table with `OR IGNORE`.
-
-The font hash is the hash of that text, so the hash of a font does not depend on the characters the editor gave its colours.
-The grey font of the tests is the colour example of `pxfm.md`: `408c4d7d…`, its A `3ad25ae0…`, its palette `ebbba949…`.
-
-Drafts (`PXFEDRAFT 3`) carry the font-wide palette as `COLOR` lines of the ink characters, the remembered palettes as `PALETTE <HASH> <RRGGBBAA,...>` lines, a seventh GLYPH field with the glyph's palette hash, and `SYMBOLIC`; all are optional, so older drafts still load.
-
-### The store
-
-- A database is built from four folders: `pxgl/`, `pxfm/`, `pxtf/` and `palette/` (`.hex`).
-  The build checks that every palette a glyph line names exists, has a line for each colour of its glyph, that a glyph of more than one colour has a palette, and that `COLORS` is the count of distinct colours.
-- Export writes `palette/` too, and Overwrite clears it; the counts of the scan and of the export have `palettes` (shown only when not 0).
-- Deleting a font deletes the palettes no other glyph line names, as it does with glyphs ("1 font, 14 glyphs, 2 palettes").
-- `store_palette_text` makes the `.hex` text from a row.
-- A pxfdb made before hex palettes (a `pxfm_color` table, no `palette` table, no `pxfm.symbolic` or `pxfm_glyph.palette`) is refused when it is opened: "made by an older pixelglyphlib (before hex palettes: colour lines, no palette table): rebuild it from its files with the current pixelglyphlib".
-  pxfe never migrates such a file.
-
-### The Colours filter, SYMBOLIC
-
-- The Colours filter (version 15) counts `pxfm.colors`, NULL counting as 1 (`StoreEntry.colors`); for a loaded font it is `px_font_colors`, at least 1 (`LibInfo.colors`).
-- `PxFont.symbolic` is read and written with the pxfm, stored in `pxfm.symbolic`, and shown in the Font tab of the font view as a Symbolic switch under Monospaced, editable only while the font is unlocked (one undo step).
-  The library cards show "Symbolic" after "Mono".
-- The importers set it:
-  - TTF and OTF (outline or sbit): the cmap has a (3,0) subtable (`outline_symbolic`, `sfnt_symbolic` in `bmsrc.c`).
-  - FON and FNT: `dfCharSet` 2.
-  - BDF and PCF: `CHARSET_REGISTRY-CHARSET_ENCODING` ends in `fontspecific`, in any case.
-  - PFB: an `Encoding` that is not `StandardEncoding`.
-- A picture of a font no longer gives `.` a colour; a font of one ink colour from a picture is a font of one colour.
-- Pasting pixels from another font: a pixel of a colour this font has not takes the current ink (or the font's first colour); in a font of one colour it becomes `0`.
-
-### Not done
-
-- A font of more than 36 colours cannot be opened (the spec allows any number); done in version 22.
-- The palette of a glyph is not shown or edited on its own: the editor still edits the font-wide palette; done in version 22.
-
-### Tests
-
-- `tests/test_pxfont.c`: the hex example of `hex.md` (`808080`, `FFFFFF`, `00000080` hash to `dd6506ef…`) and the strict reader of hex, canonical numbering, the colour example of `pxfm.md` (font, glyph and palette hashes and its text), a shared palette, the reuse of a remembered palette and a palette of its own after a new colour, a glyph file that is not canonical, 37 colours refused, `COLORS` and `SYMBOLIC` in the strict reader, `COLOR` refused, the draft with `SYMBOLIC`.
-- `tests/test_store.c`: the palette table, `pxfm.colors`, a 3-colour SYMBOLIC font saved into memory, loaded, exported and imported again, deleting it deletes its palettes, a wrong `COLORS` stops a build, an old pxfdb is refused, `lib_colors.pxfdb` has fonts of 1, 2, 2 and 3 colours.
-- `tests/test_bmsrc.c` and `tests/test_outline.c`: SYMBOLIC of a BDF (`testdata/bitmap/symbol.bdf`, Adobe-FontSpecific), a FNT, an sbit TTF and a PFB.
-- `tests/make_testdata.c` writes `testdata/lib` (now with `palette/`), `testdata/lib.pxfdb` and `testdata/lib_colors.pxfdb` (its files in `tests/tmp/lib_colors`).
-- End to end: `137_colour_font` and `137b_colour_font_reload` (a picture of three colours imported, saved and reopened), `138_symbolic` (a symbol BDF, the Symbolic switch, undo, the saved row); the scripts that named the old grey font `03696f65` now name `408c4d7d`, `06b_palette` checks COLORS and the palette field, `27_export_overwrite` and `30_delete_save` check that the palette goes with its font.
-- Play: `assert colors N` (COLORS of the open font, 0 for one colour), `assert symbolic 0|1`.
-
-## Version 22: per-glyph palettes
-
-Version 21 kept one font-wide palette of at most 36 ink characters in memory and converted at the edges.
-Version 22 gives each glyph its own palette in memory, so a font may have any number of colours; only a glyph is limited, to 36 (`PX_GLYPH_MAX_COLORS`, the ink characters `0`…`Z`).
-The files, the store and the write rules of version 21 are unchanged.
-
-### In memory: a table of shared palettes
-
-- `PxFont.pals` is a table of palettes, interned: no two entries have the same colours, and an entry never changes once it is in the table.
-  Entry 0 is the default palette, black alone (`000000`, hash `2f1ab4cf…`).
-- Each glyph refers to an entry by index (`PxGlyph.pi`, 0 the default palette); its pixel characters index that entry (`0` is its first colour).
-  Glyphs of the same colours share one entry: in a font of one colour every glyph has entry 0 and the table holds nothing else, so such a font costs nothing more than before and stays lazy.
-- `PxGlyph.pal` keeps the hash of the palette the glyph was read with; the writer reuses that palette when its first k lines are still the glyph's colours, so an unchanged font is written back byte for byte.
-- Each entry carries a ready-to-draw array `draw[37][4]` laid out as raylib's `Color` and indexed like the pixel characters (`.` transparent), so drawing a glyph does no conversion per pixel; `px_glyph_palette(f, g)->draw` is all a renderer needs (the grid's cells, the glyph view, the sample text, the float).
-- A palette is changed by copy on write: `px_glyph_add_color` (and `px_glyph_add_colors` for many) makes the new colour array, interns it (finding an equal entry or appending one) and points the glyph at it; the glyph's other pixels keep their characters.
-  A new colour takes an unused slot of the glyph's palette first (a colour no pixel uses), else it is appended; a 37th colour returns `PX_COLOR_FULL` and nothing changes.
-  `px_glyph_set_colors` and `px_glyph_set_palette` set a glyph's colours outright (picture import, drafts, tests).
-- Unused entries are dropped lazily: `px_font_compact_palettes` keeps the entries a glyph points at or names by its read hash, and renumbers the indices.
-  It runs when an undo snapshot is taken (`px_font_copy`, and on the live font in `PushUndo`); between compactions a font may hold stale entries, which nothing reads.
-  `PxFont.palGen` is bumped by every compaction and copy, so caches keyed on indices (the sample text's) see the change.
-- Undo snapshots copy the table and the indices (`px_font_copy`); entries are small, and compaction keeps a snapshot from carrying entries no glyph uses.
+- `px_glyph_canonicalize(f, g)` renumbers the pixels in reading order and reorders the palette to match: the used colours in reading order, then the unused entries in their old order; a canonical glyph is left alone.
+  So slot i is always pixel character i.
+- The glyph view canonicalizes the open glyph at the end of every frame without a drag, and compacts the table when it changed something.
+- A new colour is appended while the palette has fewer than 36 entries; a palette of 36 gives an unused entry to it; when all 36 are used the colour is refused with the toast "This glyph has 36 colours: drop the colour onto a slot of the palette bar to replace one".
+  An inkless glyph on the default palette starts a palette with the new colour alone.
+- `px_glyph_add_color(s)` (a 37th colour returns `PX_COLOR_FULL`), `px_glyph_set_colors`, `px_glyph_set_palette`, `px_glyph_used_colors`, `px_glyph_add_slot` (an unused slot), `px_glyph_replace_color` (a slot gets another colour; a colour the glyph has already merges the two slots), `px_glyph_trim_palette` (cut to the used colours).
 
 ### The font's colour list
 
-`px_font_color_list` gives the font's distinct colours in order of first appearance: glyph order, then the order of each glyph's palette (its first 36 lines), with no length limit; a font whose glyphs all have the default palette has the list of black alone.
-It is cached in `PxFont.clist` and rebuilt only when its key changes (a hash over `palGen`, the number of entries, the number of glyphs and each glyph's index), so the ink chooser asks for it every frame for free.
-`px_font_is_colour` (two colours or more, one colour that is not black, or a lazy glyph that names a palette) decides whether the sample text draws the font's colours or the theme's ink.
-`px_font_colors` (the `COLORS` written and `pxfm.colors`) counts the distinct colours the glyphs use, with a small hash set and no limit; the Colours filter counts the same.
-
-The order of the list follows the glyphs, so it can change while drawing: a colour first used by an earlier glyph moves forward.
-The editor's ink is a colour, not a place in the list, so the ink stays the same when the list reorders.
+- `px_font_color_list`: the font's distinct colours in order of first appearance (glyph order, then palette order), no length limit; cached in `PxFont.clist` under a key over `palGen` and the glyphs' indices.
+- `px_font_is_colour` decides whether the sample text draws the font's colours or the theme's ink.
+- `px_font_colors` counts the distinct colours the glyphs use: it is the `COLORS` written, `pxfm.colors` and the Colours filter's count.
 
 ### Reading and writing
 
-- `px_font_adopt_palettes` points each glyph at the entry of the palette its line names (by hash); `px_glyph_from_canonical` checks the glyph and that its palette has a line for each of its colours, and keeps the canonical characters as they are: the glyph's palette is its read palette, so there is no remapping.
-- `px_font_finish_palette` only checks `COLORS` against the colours in use; a font of any number of colours opens.
-- Writing (`glyph_write_palette`): the read palette when its first k lines are the glyph's colours in reading order, else the colours used in reading order and then the rest of the glyph's palette without repeats; `COLORS` from the colours used, none for a font of one colour.
-- Drafts (`PXFEDRAFT 3`) write `PALETTE` lines only for the palettes a glyph names by hash; a GLYPH line has an optional sixth field (the read hash, or `-`) and a seventh, the glyph's palette as `RRGGBBAA,...`, when it has one of its own.
-  A draft of pxfe 21 (font-wide `COLOR` lines, no palette per glyph) still loads: every glyph gets the colours of those lines.
-- A picture of a font gives each glyph the colours of its sheet as its own palette (`px_glyph_set_colors`), so the glyphs of a sheet share one entry.
+- Reading (`px_load_glyphs` for files, `load_font_nolock` for the store) reads each named palette once, strictly; `px_font_adopt_palettes` points each glyph at its entry; `px_glyph_from_canonical` checks the glyph is canonical and its palette long enough, with no remapping; `px_font_finish_palette` checks `COLORS`.
+- Fonts of one colour load lazily; a colour font is read whole when its first glyph is needed; a font only parsed writes back the `COLORS` it read (`colorsRead`).
+- Writing renumbers the glyph text canonically (`px_font_glyph_pxgl`; one colour: every ink pixel `0`).
+- A glyph's palette (`glyph_write_palette`): the palette it was read with when its first k lines are still its colours in reading order, so an unchanged font is written back byte for byte; otherwise the used colours in reading order, then the rest of its palette without repeats.
+- `COLORS` is written when there are at least two; palettes go to `palette/xx/<hash>.hex` (an existing file is left) and into the table with `OR IGNORE`.
+- The colour example of `pxfm.md` is font `408c4d7d…`, its A `3ad25ae0…`, its palette `ebbba949…`.
 
-### The editor's ink
+### SYMBOLIC
 
-- The ink is an RGBA colour (`Editor.inkColor`), or the eraser `.` (`inkErase`).
-  Drawing with a colour the glyph does not have adds it to the glyph's palette (an unused slot first); when the glyph has 36 colours in use, nothing is drawn and a toast says "A glyph has at most 36 colours: this one has no room for another" (at most once a second).
-  The right button draws `.`.
-- The eyedropper (key I, and Alt+click with every drawing tool) sets the ink to the colour under the cursor, or the eraser for `.`.
-- When a glyph is opened and the ink is not a colour of the font, the ink becomes the font's first colour.
-- The strip of swatches in the bar shows the font's colour list, as many as fit in about 55% of the bar (at most 36), then the eraser, then a toggle "All" ("All N" when the strip does not show them all; it is there for a colour font or when the list overflows).
-  A swatch has a small corner mark when the open glyph has that colour; the first ten show their digit; the tooltip gives the hex value, the key and whether the glyph has the colour.
-- The All popup shows the whole list in rows of 13, up to 8 rows at a time, scrolled by the wheel, with a header of the counts (the font's colours and the glyph's); a click picks the ink and closes it, Esc closes it.
-- Keys `0`…`9` pick the first ten colours of the list.
-- The status line shows the ink as `ink #RRGGBB` (`#RRGGBBAA` when not opaque) or `ink .`.
-- Clipboard and float carry their colours (the palette of the glyph they came from): a paste or a dropped float maps them into the target glyph's palette (`px_glyph_add_colors`), reusing slots, before its pixels are stamped.
-  When they would bring the target over 36 colours the drop is refused with a toast and the float is cancelled.
+- The Font tab has a Symbolic switch under Monospaced (unlocked fonts, one undo step); library cards show "Symbolic" after "Mono".
+- The importers set it: TTF and OTF when the cmap has a (3,0) subtable; FON and FNT for `dfCharSet` 2; BDF and PCF when `CHARSET_REGISTRY-CHARSET_ENCODING` ends in `fontspecific`; PFB for an `Encoding` other than `StandardEncoding`.
 
-### Not done
+## Storage: Load, Save, Import, Export
 
-- There is no colour picker for a colour the font does not have yet: a new colour comes from another font (paste) or from an import.
-- The order of the colour list follows the glyphs, so a swatch's place and its digit key can change while drawing.
+pxfe works on one database (a `.pxfdb` file) at a time: Load reads it into memory, all work happens in memory, Save writes memory back.
+The text folders (`pxtf/`, `pxfm/`, `pxgl/`, `palette/`) are reached only through Import and Export.
 
-### Tests
+### The store
 
-- `tests/test_pxfont.c` (223 checks): the glyph palettes (`test_glyph_palettes`): a font of one colour and the default palette, a colour added and interned, an empty glyph taking the free slot, 36 colours and the 37th refused, `px_glyph_colors_fit`, a freed slot reused, the mapping of a paste, compaction, a font of 40 colours saved, read and written back byte for byte (with a glyph sharing another's palette), a draft round trip and a draft of pxfe 21 converted; the old test of 37 colours refused now reads a font of 37 colours and writes it back.
-- `tests/test_store.c` (203 checks): a font of 40 colours saved into memory, loaded, the same hash, `COLORS 40`, `pxfm.colors` 40, deleted with its 20 palettes; `testdata/lib_many.pxfdb`.
-- `tests/make_testdata.c` writes `testdata/lib_many.pxfdb` (files in `tests/tmp/lib_many`): font `cd17ae6d…` of COLORS 40: A to T of two colours each, U and V sharing A's palette, W of 36 colours.
-  The other test data is unchanged byte for byte.
-- End to end: `139_many_colours` on `lib_many.pxfdb` (59 checks); `06b_palette` and `132_eyedropper` now check colours rather than pixel characters and list places, since white drawn into the empty space becomes its `0` and the first colour of the list.
-- Play: `assert palettes N` (entries of the table), `assert epal N` and `assert ecolors N` (the edited glyph's palette length and the colours its pixels use), `assert einkrgb 0xRRGGBB` (the ink colour), `assert glyph U+0041 color x y RRGGBB|RRGGBBAA|none` (the colour of a pixel); `assert palette N` is the length of the font's colour list for a colour font (0 for one colour); `assert eink 'c` is the ink's place in the list as a pixel character.
+- The library lives in memory as one SQLite database with the pxfdb schema; every view reads it through the store.
+- The open font is a `PxFont` document; the store holds what is committed.
+- A pxfdb made before hex palettes is refused: "made by an older pixelglyphlib (before hex palettes: colour lines, no palette table): rebuild it from its files with the current pixelglyphlib"; pxfe never migrates it.
 
-## Version 23: the palette bar and the colour picker
+### Load, Save, Save As
 
-The ink strip of the glyph view's toolbar and its "All" popup are gone.
-Their place is a palette bar under the canvas and the tool strip, above the status line and the 1x/2x preview, as wide as the editor area.
-A colour picker joins the design system, and the colours a glyph has are kept in canonical order in memory, so slot i is always pixel character i.
+- Load (`Ctrl+O`) asks for a `*.pxfdb`, checks `meta` (`PXFDB`, version 1) and copies it into memory (`sqlite3_backup`); with unsaved changes it asks first: Save, Discard or Cancel.
+- Edits of the open font are committed into the store in place (see "Locks") when its view is left, before Save, Export and Load, and at quit.
+- The title bar and status bar show the file and whether memory has unsaved changes: "pixelglyphlib.pxfdb — modified".
+- Save (`Ctrl+S`) does `VACUUM INTO` a temporary file next to the database, which then replaces it, so a failure never leaves a broken file; it also writes the settings sidecar.
+- Save As (`Ctrl+Shift+S`) writes a new file and continues on it.
 
-### Canonical palettes in memory
+### Import (`Menu ▸ Import Folder…`)
 
-- `px_glyph_canonicalize(f, g)` (pxfont.c) renumbers the pixels in reading order (the first inked pixel is `0`, the next new colour `1`, ...) and reorders the glyph's palette to match: the used colours in reading order, then the unused entries in their old order.
-  It does nothing for a glyph that is canonical already, so the palette entry is not renamed needlessly.
-- The glyph view calls it for the open glyph at the end of every frame without a drag (never in the middle of a stroke), and compacts the palette table when it changed something, so the palette the stroke made does not linger in the table.
-- A new colour is appended to the glyph's palette while it has fewer than 36 entries; only a palette of 36 entries gives an unused entry to the new colour; when all 36 are used the colour is refused with a toast ("This glyph has 36 colours: drop the colour onto a slot of the palette bar to replace one").
-  An inkless glyph on the default palette starts a palette of its own with the new colour alone (the default black is not kept as an unused slot).
-- `px_glyph_used_colors(g)` is the number of colours the pixels use (the first k slots); `px_glyph_add_slot(f, g, c)` appends an unused slot; `px_glyph_replace_color(f, g, slot, c)` gives a slot another colour (when the glyph has that colour already, the two slots become one and the glyph is canonicalized); `px_glyph_trim_palette(f, g)` cuts the palette to the used colours.
-- The writer is unchanged: the rules of versions 21 and 22 (reuse the palette read when its first k lines are the glyph's colours, otherwise the used colours in reading order and then the rest of the palette in memory) still give a byte-identical round trip of an unchanged font.
+- The user picks a folder with `pxtf/`, `pxfm/`, `pxgl/` and `palette/`, then the new database's path (default `<folder>/pxfdb.pxfdb`; an existing file is replaced only after a confirmation).
+- Every file is read by the strict readers (with a progress screen); the database is built, written and loaded.
+- The build checks that every named palette exists and has a line for each colour of its glyph, that a glyph of several colours has a palette, and `COLORS`.
+- A file that fails stops the import with its name and reason; nothing is written.
+- Unsaved changes are asked about first; the new database starts with empty settings.
 
-### The palette bar
+### Export (`Menu ▸ Export to Folder…`)
 
-- Row 1: the transparent tile `.` (key `.`), then the open glyph's slots in canonical order, each with its key `0`-`9`, `A`-`Z` drawn small in its corner (dark or light by the swatch's luminance, `cm_luminance`), then `+` while the glyph has fewer than 36 colours.
-- A slot no pixel uses is drawn with a dashed frame; it keeps its key and can be picked as ink, and the canonical order puts it after the used slots.
-- The ink has an accent frame; the tooltip gives the hex value, the key and what a double-click does.
-- Further rows show the font's other colours (the font's colour list without the glyph's), without keys, up to three rows at a time with a scroll bar beyond.
-  A click makes such a colour the ink; drawing with it adds it to the glyph (or shows the toast of a full glyph).
-- Dragging a colour of the other rows onto a slot replaces that slot's colour in this glyph (also in a glyph of 36 colours); dropping it onto `+` adds it as an unused slot.
-  The tile follows the mouse while it is dragged, the target is highlighted and the tooltip says what the drop does.
-- A double-click on a slot opens the colour picker on that slot's colour; OK changes the slot's colour (a colour the glyph has already merges the two slots).
-  `+` opens the picker on the ink and adds the colour chosen as an unused slot.
-- Every add, replace and change is one undo step.
-- Size: the tile pitch is `(width - 22) / 38` clamped to 18..28 px, with a gap of 3 or 4 px, so `.`, 36 slots and `+` fit one row at 1110x600 and at large sizes.
-- A one-colour font shows `.`, black `0` and `+`.
-- The tool strip and the canvas end above the bar, so the strip is shorter: at 1110 x 520 it now has three columns (two before), at 1110 x 600 still two; `124_tool_strip`, `129_strip_order` and `136_strip_v20` expect that.
-- A locked font shows its colours and lets the ink be picked (keys and clicks), but has no `+`, no drop, no double-click and no new colour.
-- The status line shows the ink as `ink . (transparent)`, `ink #RRGGBB (key 3)` or `ink #RRGGBB (not in this glyph)`.
-- Widget names for scripts: `pal:.`, `pal:0` to `pal:Z`, `pal:+`, `pal:#RRGGBB` (a slot or a colour of the other rows), `palx:N` (the Nth colour of the other rows).
+- A folder without library data gets every file of memory (committed first).
+- A folder with library data opens a dialog with the counts found and a choice: Append (write what the folder lacks and leave the files already there, since the same name is the same content; delete nothing), Overwrite (empty its `pxtf/`, `pxfm/`, `pxgl/` and `palette/`, nothing else, then write everything) or Cancel.
+- Overwrite offers "Make a backup first", on by default: the folder's data is imported into `<folder>-backup-<YYYYMMDD-HHMM>.pxfdb` beside it first; if that fails, nothing is deleted, and overwriting without a backup needs a second confirmation.
+- A summary says what was written, skipped and deleted; the sidecar is not touched.
 
-### The reorder animation
+### Deleting fonts and typefaces
 
-- When the slots reorder (a colour drawn first in reading order becomes slot 0), the swatches slide from where they were drawn to their new places in 200 ms with a cubic ease-out.
-- The slots are tracked by colour, so the ink (an RGBA colour, not a slot number) stays the same colour and its frame moves with it.
-- A colour that is new to row 1 gets a short accent glow that fades over the same 200 ms.
+- A font or a whole typeface can be deleted from the library views (`Del`, the context menu, the red buttons of the pinned selection) and from the font view.
+- A deleted font's typefaces lose that variant and are rewritten under new hashes; a typeface left with no variant goes.
+- Deleting a typeface deletes its pxtf and every font of it that no other typeface names.
+- Glyphs and palettes that the deletion leaves unnamed go too; earlier orphans are left alone.
+- The confirmation names exactly what goes: "Delete 1 font, 1 typeface (Typeface b925951b loses variant 0002 and is rewritten), 14 glyphs, 2 palettes?".
+- A deletion is made in memory; Save writes it.
 
-### Keys
+### New Font
 
-- Plain `.`, `0`-`9` and `A`-`Z` (either case) pick that slot as the ink when no text field has focus and no dialog or picker is open; a key without a slot does nothing.
-  The keys are read as typed characters (`GetCharPressed`), so the keyboard layout's character counts.
-- Every tool shortcut moves to Shift+letter, since the plain letters are now slots.
-- Clash: Shift+L was the Curve and is now the Line, so the Curve moves to Shift+U.
-  The Pencil's Shift+click line and Shift as a drawing modifier are mouse gestures and are unchanged; Shift+arrow keys are unchanged; every Ctrl shortcut is unchanged.
-- A letter typed with Shift held never picks a slot.
+Menu, New Font asks for name, style, pixel size, ascent and descent (size = ascent + descent) and creates an empty font with no typeface, not yet in the store and counting as modified; its first commit adds it, unlocked.
+The name is only the session's title: an orphaned font has no name in the database.
+
+### The settings sidecar
+
+`<db>-settings` (`fsettings.h`, SQLite) holds program settings by hash beside the database: the font layers, their per-glyph corrections, and the locks.
+
+- Schema version 3: the `layer` table (with `em`, `aspect`, `follow`, `mode`, `threshold`) and `unlocked(kind, hash)` (0 font, 1 typeface; only unlocked things have a row); older files are upgraded in memory and on disk at the next save.
+- It is read at Load and written at Save; a settings-only change makes the document unsaved without changing the store's change counter, and Save then writes only the sidecar.
+- Save As writes a new sidecar; with no settings at all nothing is written and an old sidecar is deleted.
+- When a commit changes a hash, `fs_rename_font` and `fs_rename_typeface` move the layers, corrections and lock.
+
+### pxfe.ini
+
+Beside the exe: `lastPxfdb`, the sample text, `[app] fontTab` (0 Font, 1 Glyph, 2 Similar, 3 Layers), `pixelPerfect`, `filled`, `pickerMode`, `[browser] sidetab` (0 View, 1 Similar, 2 Typeface), the browser's view settings and filters (`colors=`).
+
+## Locks
+
+Every font and every typeface has a lock, locked by default; what is unlocked is edited in place.
+
+- A locked font is a viewer: grid, glyph view, selection, zoom and picking an ink work, but every change refuses ("The font is locked: unlock it first") and the editing controls are dim.
+- The padlock (`Th_Lock`) is the only way to change a lock: in the font view's info bar, the glyph view's bar, the library's cards, rows and selection block, the Typeface view's heading and font rows, and the Typeface tab.
+- A lock change is a settings change: unsaved until Save.
+- A locked font may still get layers: they are program settings, and the database is not changed.
+
+### Editing in place
+
+`store_edit_in_place` (in `store.c`) takes the open font (and typeface) and the hashes the store holds:
+
+- The edited font is added under its new hash.
+- Every typeface naming the old font is rewritten under its new hash, through the deleting plans (`plan_orphans`, `store_apply_delete`).
+- The old font goes, with the glyphs and palettes no font names any more; an unchanged hash needs nothing.
+- The result lists the typeface hashes that moved; `main.c` carries them to the sidecar, the open views and the navigation.
+- A typeface field edit rewrites the typeface the same way.
+
+### The open font
+
+- The document stays in memory across a commit, so undo and redo keep working; `origHash` and `origContHash` follow each commit.
+- A font not in the store yet (New Font, Import Font File) is added at its first commit, unlocked.
+- Undo and redo (`Ctrl+Z`, `Ctrl+Y`): a snapshot holds the font with its palette table, the settings of the layer its glyphs follow, and the baseline shift.
+
+## Navigation and views
+
+### The bar
+
+- The top bar has a **Menu** button (New Font, Load, Save, Save As, Import Folder, Import Font File, Export to Folder, Quit) and a segmented control of three segments.
+- Exactly one segment is blue: the view the user is in.
+- A long segment ends in an ellipsis (`HeadFit`); every segment's hint says where it goes.
+
+| View | Segment 1 | Segment 2 | Segment 3 | Blue |
+| --- | --- | --- | --- | --- |
+| Typefaces | Typefaces | Fonts | Glyphs | 1 |
+| Typeface | the typeface's name | Fonts | Glyphs | 1 |
+| Fonts | Typefaces | Fonts | Glyphs | 2 |
+| Font | the typeface's name, or "Orphaned" | the font's style, e.g. "Regular" | Glyphs | 2 |
+| Glyph | the typeface's name, or "Orphaned" | the font's style | the glyph's caption, e.g. "A U+0041", "#3" | 3 |
+| Glyphs | Typefaces | Fonts | Glyphs | 3 |
+
+The style segment carries the "*" modified marker.
+
+### Transitions
+
+- Typefaces, Fonts and Glyphs reach each other by their segments.
+- Opening a box header (double click, `Enter`, Open, the context menu) shows the Typeface view; the box stays selected for the way back; the browser switches view itself.
+- The blue typeface-name segment of the Typeface view returns to the list.
+- Opening a variant row, a Typeface view row or a Fonts card shows the Font view.
+- In the Font and Glyph views the first segment goes to the Typeface view; for an orphaned font it leads to the Typefaces list, and the style segment shows the font's own name.
+- In the Glyph view the style segment returns to the Font view.
+- Alt+Left (and the glyph bar's Back) goes one level up: Glyph, Font, Typeface, Typefaces; from the Glyphs view it returns where it came from.
+  Alt+Right goes back to the font that was open, in the view it was left in.
+- Leaving a font view commits its edits.
+
+### The Glyphs view
+
+The glyph finder (`src/finder.c`): every distinct bitmap drawn for one code point in the library.
+
+- The grid takes the whole height: the bitmaps on a common baseline at an integer zoom, each with the number of fonts that use it, sorted by that number, height or width.
+- Panel tabs **View | Usage**.
+  View: the counts; CHARACTER: the search box (a character, `U+00E9`, `00E9`, `0xE9` or `E9`), `<` and `>`, and the preview (Unifont 32, the code point and Unicode block); VIEW: the zoom stepper (starting at 3x) and Sort by (Count, Height, Width).
+  Usage: the glyph usage of the selected cell.
+- `Ctrl+G` and `Ctrl+F` show View and focus the search box; Find in Library (`Ctrl+Shift+F`) in the font view opens it on the selected glyph's code point.
+- A click on a font of the Usage list, or a double click on a bitmap (its most used font), opens that font's Glyph view on that glyph: the bar reads typeface | style | glyph caption, and Alt+Left goes to the font, then up to the Typeface view.
+  The Usage list of the font view's Glyph tab opens the font with the glyph selected instead.
+
+### Samples
+
+- One sample text (`src/sample.h`, kept in `pxfe.ini`) is shared by the library views, the font view and the glyph view; it can have several lines; presets: pangram, alphabet, digits and punctuation, "Hamburgefontsiv".
+- A missing character is drawn as the font's default glyph, or a hollow box; kerning is applied.
+
+## Library browser
+
+The library views are Typefaces, Typeface and Fonts (`src/browser.c`).
+
+### Lists
+
+- Typefaces: one box per typeface: family, typeface hash, format and variant count in the header, and one row per variant: style, size, glyphs, flags, font hash and sample.
+  Filters work on variants: a box shows when any variant matches, with only the matching variants.
+  A variant row selects that font, the header the typeface.
+- Fonts: one card per font: family and style (or the hash), details (format, size `ASCENT + DESCENT`, glyph count, Mono, Symbolic, ratio, hash) and the sample, pixel perfect.
+- The lists are virtualized; fonts load lazily on worker threads (the pxfm and the glyphs of the sample's characters, cached, reloaded when the sample changes); a 1,200-font library shows its cards within a second.
+- Click selects; double-click or Enter opens.
+- Coming back from a font (Alt+Left or a segment) finds the list with its scroll, filters and selection as they were.
+- Counts are in the side panel ("N of M variants", "N of M", "N fonts") and the status line ("N of M typefaces").
+
+### The side panel
+
+- Tabs **View | Typeface | Similar** in the Typefaces and Typeface views, **View | Similar** in the Fonts view.
+- View: Rescan in the heading row; FILTER: the name filter (substring over family, full name, style, designer, hash; `Ctrl+F` focuses it), the Style, Format and Colours dropdowns built from the values present, Clear filters; SAMPLE: the sample and its presets; VIEW: the zoom, the columns (1 to 8, or Auto) and the sort (name, size, format, glyph count).
+  In the Typeface view only the sample and the zoom.
+- Similar: the similar fonts or typefaces of the selection, else "Select a font to see similar ones".
+- The selection is pinned at the bottom: name, detail line, hash, Open, the padlock, and the red "Delete Font" and "Delete Typeface".
+
+### The Colours filter
+
+- A font's count is its number of ink colours, at least 1: `pxfm.colors` (`StoreEntry.colors`) or `px_font_colors` of a loaded font (`LibInfo.colors`).
+- The values are Any and the counts present, in numeric order; the list follows the info as it arrives (a font with no ascent or descent is loaded for it while the dropdown is open or a count is chosen), and a chosen count is dropped only when every font's info is known.
+- A font whose info is not known does not match.
+- Typefaces: as for Style and Format, a variant matches by its font and a box shows with its matching variants.
+- Kept in `[browser] colors=`, cleared by Clear filters.
+
+### The Typeface view
+
+- One large card per font: style, details (format, size, glyph count, mono, italic and so on), "Font xxxxxxxx", Open, the padlock, Delete Font, and the shared multi-line sample at 2x or more.
+- The heading carries the family, "Typeface xxxxxxxx" and the typeface's padlock.
+- `Enter` and a double click open the selected font, `Del` deletes it.
+- After a deletion the view follows the rewritten typeface by family name, and returns to the list when it is gone.
+
+### The Typeface tab
+
+- `DrawTypefaceTab` (`src/panel.inc`, through `Browser_SetTypefaceTab`): the variant line, the boxed full hash, the pxtf's text fields and the italic, underlined and struck-out switches, for the selected box or row.
+- Read-only while locked; its padlock opens the font of the selected variant for it and the view stays.
+- Unlocked, the fields of the selected variant are editable (Enter or a click elsewhere keeps, Escape reverts); the first segment shows "*" while it differs from the database.
+- Leaving the view, opening a font, Save, Export, Load and quit commit the edit in place; it has no undo.
+
+### Similar fonts and typefaces
+
+- The 20 best, each with its score and a sample line; a click opens it.
+- Font similarity, 0 to 100: shape (0.6), over the shared code points of a reference set (U+0021–U+007E, U+00C0–U+017F): 1 for the same pxgl hash at the same offsets, else the intersection over union of the ink placed at the pen and baseline, averaged; shared glyphs (0.25), the Jaccard index of the pxgl hash sets; metrics (0.15), the closeness of the heights and of the space's (or mean) advance, and the same monospacing.
+- Under 10 shared reference code points a pair scores by shared glyphs and metrics only, and is marked so.
+- Typeface similarity: the mean over one typeface's fonts of the best score against the other's.
+- One font against the library takes under half a second on a worker thread, with the reference bitmaps cached as bit rows.
+
+## Font view
+
+- Top: the toolbar (Undo, Redo, the zoom stepper 1x to 16x, Metrics and Captions toggles, Select Occurrences, Clone, Delete, Add Glyph, a "..." menu, a selection summary) and an info bar with the font's name, hash and padlock.
+- Center: the glyph grid, as in FontLab's font window: each cell shows the glyph at the zoom inside its font box, the advance wide (at least a minimum cell width), with the projected metric lines and a caption strip; Ctrl+wheel zooms.
+- Right: the panel.
+- Bottom: the sample strip: the shared sample in the current state of the font at 1x to 8x, with kerning, updated as the font is edited, resized by dragging its top edge and folded by its header; then the status bar (file, glyph count, selection count, the stored hash, the current hash when it differs, the modified marker).
+
+### The right panel
+
+Tabs **Font | Glyph | Similar | Layers**, remembered; selecting a glyph never changes the tab, and each tab scrolls by itself.
+
+- Font: the boxed hash; FONT METRICS: every metric as an optional row (a check for "stated" and a number field), `RATIO` as two fields, `MONOSPACED` and `SYMBOLIC` as switches, and the Baseline row; changes show live on all cells.
+- Glyph: the selection's facts as text, "Open in Glyph View", "Find in Library", and the glyph usage.
+- Similar: the similar fonts and typefaces.
+- Layers: the font layers.
+
+### Selection and commands
+
+- Click selects, Ctrl+click toggles, Shift+click extends, Ctrl+A selects all, Esc clears.
+- Select Occurrences (`Ctrl+Shift+A`) adds every glyph of the same bitmap shape as a selected one.
+- Delete (`Del`) after a confirmation; Clone (`Ctrl+D`) to a code typed in a dialog (`U+XXXX`, hex, or a character); Add Glyph adds an empty glyph with or without a code; Set Default.
+- `Enter` or a double click opens the glyph view.
+- Every editing command refuses on a locked font.
+
+### The baseline
+
+The Baseline row (under Descent) has up and down buttons (`@Baseline_up`, `@Baseline_down`); the baseline moves one row and everything else stays put on screen.
+
+- Up: the ascent falls by 1 and the descent grows by 1; down is the mirror.
+- Every other stated height from the baseline moves with it (cap height, x-height, underline and strike-out positions); thicknesses, line gap, internal leading and quad width stay; unstated stays unstated.
+- Every glyph with ink changes its offset y to stay in place; a glyph without ink keeps (0, 0).
+- The font layers move their offset y too, and the followed layer moves what it drew with, so nothing is redrawn.
+- A step that would make ascent, descent, cap height or x-height negative is refused (dim button, hint says why).
+- One step is one undo step; the undo stack keeps the net shift (`baseShift`) beside each snapshot and moves every font layer by the difference on undo and redo.
+
+### Glyph usage
+
+- With one glyph selected (font view, glyph view, Glyphs view): the pxgl hash, the size, and "In N fonts · M typeface variants": the fonts that hold the bitmap under any code, and the typeface variants that name them, which can be more than the fonts.
+- With a code point a second line, "K use it for U+0065", counts the fonts that draw the bitmap for that code; it is the number the Glyphs view shows under the bitmap.
+- One row per font and variant (family and style, font hash) with every code the font uses the bitmap for.
+- With several glyphs: the fonts that hold all of them.
+- A click opens that font with that glyph selected.
+
+## Glyph view
+
+- The canvas: the font box large (Fit, integer zoom, wheel), a 1 px pixel grid, the metric lines with labels, the pen origin and the dashed advance line, which can be dragged.
+- The screen mapping is frozen from mouse-down to mouse-up, so a stroke that grows the font box never shifts the view; it is fitted again after the stroke.
+- Painting outside the bitmap grows it, up to 4096 cells a side.
+- Around the canvas: the tool strip at the left, the palette bar below, then the preview strip (the sample at 1x and 2x) and the status line (position, tool, ink, zoom, bitmap; the glyph hashes; the Checker toggle).
+
+### The bar
+
+- Row 1: Back, previous and next glyph (`PgUp`, `PgDn`), the glyph's caption, Fit, the zoom, Metrics, and Layers ("Layers 2" with two reference layers; a click shows the Layers tab).
+- Row 2: the padlock, the current tool's options (Pixel-perfect; Filled; Set, Add, Sub, And with 8-way; Contiguous with 8-way), MOVE (four arrows: the selection, or without one the bitmap, by 1 cell) and ADVANCE.
+
+### The right panel
+
+Tabs **Glyph | Usage | Layers** (`src/gpanel.inc`); opening the glyph view shows the Glyph tab.
+They hold the glyph's fields and the full pxgl hashes of the glyph as opened and as it is now; the glyph usage; session and font layers in one stack.
+
+### The facts of a glyph
+
+- Code point, character, advance and offsets are fields, dim while the font is locked.
+- Advance: 0 or more; offsets: any sign, dim for a glyph without ink; one undo step, steps on one field within 0.8 s merged.
+- Code point: hex, with or without `U+` or `0x`; Character: one character or the word `space`; applied on Enter, Tab or a click elsewhere.
+- Refused with an error toast: a code another glyph has, `FFFFFF`, above 10FFFF, no code; the default glyph's code fields are dim; an uncoded glyph can get a code, and the later uncoded glyphs are renumbered.
+- The glyph moves to its place in the order (`px_font_remove_glyph`, `px_font_add_glyph`); the view and selection stay on it (`Editor_SetGlyphIndex`); kerning pairs follow the new code; undo and redo find it by code.
+
+### The ink
+
+- The ink is an RGBA colour (`Editor.inkColor`) or `.` (`inkErase`), not a place in a list, so it keeps its colour when slots reorder.
+- Drawing with a colour the glyph lacks adds it to the glyph's palette; with no room, nothing is drawn and a toast says so (at most once a second).
+- When a glyph opens and the ink is not a colour of the font, the ink becomes the font's first colour.
+- The status line shows `ink . (transparent)`, `ink #RRGGBB (key 3)` or `ink #RRGGBB (not in this glyph)`.
+
+## Tools of the glyph view
+
+### The tool strip
+
+- A vertical strip left of the canvas, from the bar to the palette bar; the canvas, its mapping, Fit and the advance handle use the narrower rectangle.
+- Square icon buttons (`TH_ROW_H`), 2 px apart, 6 px padding; 40 px wide with one column, 72 px with two.
+- Fourteen buttons in four groups: Pencil, Eraser; Line, Curve, Rectangle, Ellipse, Polygon, Contour; Fill, Eyedropper; Marquee, Lasso, Magic Wand, Move.
+- `kTool[]` in `editor.c` (name, shortcut, key, icon, group, selection tool) is read by the strip, the shortcuts, the status line and the tooltips; its rows are the tool numbers (Pencil 0, Eraser 1, Line 2, Rectangle 3, Fill 4, Marquee 5, Lasso 6, Magic Wand 7, Move 8, Curve 9, Ellipse 10, Eyedropper 11, Polygon 12, Contour 13).
+  `kStrip[]` is the button order, laid out by `draw_strip`; a new tool is a row in `kTool[]`, a place in `kStrip[]`, a `Tool` value, an icon in `theme.c` and a branch in `canvas_input`.
+- Buttons fill a column while they fit; a group that does not fit the rest of a column starts the next (a group taller than a column wraps button by button); 8 px between groups.
+  At 1110 x 600 there are two columns, at 1110 x 520 and 480 three, at 900 px high one.
+- The active tool is lit; the tooltip is "Name  (Key)"; script names `@Pencil`… and `tool.N`.
+- The tools are off while the font is locked or the glyph's own layer is hidden; choosing another tool drops floating pixels and finishes a curve or polygon.
+- Every shape tool (Line, Curve, Rectangle, Ellipse, Polygon, Contour) and the Fill is clipped to the selection, grows the bitmap, and is refused on a locked font.
+
+### Common rules of the drawing tools
+
+- One stroke or shape is one undo step; the preview shows while the button is down and the glyph is unchanged until the release.
+- The right button draws `.`.
+- Alt at the press turns the Pencil, Line, Curve, Rectangle, Ellipse, Polygon, Contour or Fill into the eyedropper for that click; with a reference layer selected, Alt+drag moves that layer instead.
+- With a selection, drawing is clipped to it (the preview too) and does not change it; pixels floating from an arrow key land first (one undo step).
+- Shift constrains, Ctrl draws from the centre (Alt subtracts in the selection tools); modifiers are read live, and the release uses those held then.
+- Esc during a drag cancels it, with no undo step.
+
+### Pencil and Eraser
+
+- Freehand; the Eraser draws `.`.
+- Shift+click with the Pencil draws a line from the last cell the pencil or line ended on, then continues freehand; with no last cell (a fresh view, after undo or redo) it is a plain click.
+- Pixel-perfect (`[app] pixelPerfect`, off by default): when three consecutive cells of a stroke make an L, the middle one goes back to what it held before; the bitmap is cropped after the stroke if it left a margin.
+  Shown for the Pencil, Line and Curve, but only the pencil changes: lines have no L corners, and the curve and contour always apply the rule.
+
+### Line
+
+- Drag from the start cell to the end cell.
+- Shift snaps to the nearest 15 degrees and then to a clean slope: 0, 15, 30, 45, 60, 75, 90 degrees become 0, 1:4, 1:2, 1:1, 2:1, 4:1, 1:0; the end is cut to whole steps, so a 2:1 line is runs of exactly two cells.
+- Ctrl makes the press cell the middle and mirrors the far end through it; Shift and Ctrl combine.
+  Ctrl was chosen because Alt subtracts in the selection tools and moves a selected reference layer.
+
+### Curve
+
+A cubic Bezier made with three drags:
+
+1. The first drag sets the end points like a line (Shift and Ctrl work); a click sets nothing.
+2. The second drag pulls the first control point to where it ends, the third the second.
+3. The curve is drawn at the third release, or on Enter after the first drag (unset control points lie on their ends).
+
+- Esc and Ctrl+Z cancel; another tool, leaving the glyph, the padlock and every commit draw it as it is.
+- Until then it is a preview with handles (a square per end, a circle per control point, a line from each end to its control).
+- All three drags use the same button; the path is 8-connected, with no gap, no repeated cell and no L corner.
+
+### Rectangle and Ellipse
+
+- The press cell and the release cell are corners of the box.
+- Shift makes a square or circle (the longer side, in the drag's direction); Ctrl draws from the centre; both combine.
+- A click is one cell; a box one cell wide or high is a line.
+
+### Polygon
+
+- Each click adds a vertex; a preview line follows the mouse from the last vertex, and nothing changes in the glyph until the polygon is closed.
+- Enter, a click on the last vertex again (a double click) or on the first vertex closes and draws it; Esc and Ctrl+Z throw it away; Backspace removes the last vertex (while a polygon is being made, Backspace belongs to it); another tool, leaving the glyph, the padlock and `Editor_Flush` close it.
+- Shift makes each new edge a clean angle as for the Line.
+- The outline is the line raster through the vertices and back; one vertex is a cell, two a line.
+
+### Contour
+
+A freehand drag that is closed back to its start and drawn at the release (a lasso that paints); the outline is pixel-perfect; a click is one cell and a straight drag a line.
+
+### Filled
+
+- `Filled` (`@Filled`, `[app] filled`, `Editor_Filled` and `Editor_SetFilled`) applies to the Rectangle, Ellipse, Polygon and Contour: off the outline, on the outline and the inside.
+- A filled polygon or contour uses the even-odd rule, so a self-crossing shape has holes (a pentagram's middle stays empty).
+
+### Fill
+
+- The region is the glyph box as the wand sees it: the advance across the font box (ascent plus descent), widened to the bitmap where that reaches out; empty space can be filled and the bitmap grows to hold it, but a cell outside the region is not part of it.
+- `Contiguous` (`@Contiguous`, on by default): the cells joined to the clicked one holding the same character; off, every such cell of the region.
+- `8-way` is shared with the wand: off joins by sides, on also by corners.
+- The selection is a wall and a limit; a click outside it fills nothing.
+- A click on a cell that already holds the ink changes nothing.
+
+### Eyedropper
+
+A click makes the colour under the cursor the ink (`.` outside the bitmap or on `.`, so the Pencil then erases).
+pxfe has one ink and no second one for the eraser, so the right button picks as the left one does.
+Picking changes neither the glyph nor the undo stack, and a locked font refuses the tool like the others.
+
+### The raster
+
+`src/raster.c` (no raylib, no pxfont):
+
+- `ras_line` is Bresenham, walked from its smaller end and reversed when needed, so A to B and B to A cover the same cells and the path runs from the first end.
+- `ras_snap` is the constrained angle, `ras_ends` the centre mode, `ras_is_corner` and `ras_pixel_perfect` the L rule, `ras_bezier` the curve sampled at steps under one cell.
+- `ras_box(sx, sy, hx, hy, square, center, box)` normalizes a drag with its modifiers; `ras_rect(out, x0, y0, x1, y1, filled)` is the border or the whole box.
+- `ras_ellipse(out, x0, y0, x1, y1, filled)` is the midpoint ellipse in a box: four mirrored quadrants stepped from the middles of the sides with integer error terms, so it is symmetric for even and odd sizes; sorted and joined without duplicates; a narrow ellipse stops early so the ring touches all four sides.
+  The L rule is applied to the set (a cell with exactly two neighbours, a straight step each along different axes, is dropped), so the ring stays whole and one cell thick.
+  Filled fills each row from its first to its last ring cell, so it has the ring's outline and no holes; a box one cell thick is a line, two cells a solid band.
+  Very narrow ellipses (a short side of 3 or 4 with a long side of twice that or more) end in a two-cell cap; from a short side of 5 and a ratio under 3 to 1 every ring cell has exactly two neighbours.
+- `ras_flood(out, pix, rx, ry, rw, rh, sx, sy, contiguous, diagonals, clip)`: an explicit stack in 4 or 8 directions, or every cell of the seed's character; the `clip` mask is a wall; cells in row order.
+- `ras_polygon(out, v, n, closed, filled)`: `ras_line` between vertices; filled adds cells whose centres are inside by even-odd, from sorted edge crossings, without duplicates.
+- In the editor `region_pix` builds the region's character grid once for the wand (`sel_wand_at`) and the Fill (`fill_at`).
+
+### The shortcuts of the glyph view
+
+Tools are Shift+letter; the plain keys pick a slot of the palette bar.
 
 | Key | What it does |
 | --- | --- |
-| `.`, `0`-`9`, `A`-`Z` | pick that slot of the palette bar as the ink |
-| Shift+B | Pencil |
-| Shift+E | Eraser |
-| Shift+L | Line |
-| Shift+U | Curve (was Shift+L) |
-| Shift+R | Rectangle |
-| Shift+O | Ellipse |
-| Shift+D | Polygon |
-| Shift+C | Contour |
-| Shift+F | Paint bucket (Fill) |
-| Shift+I | Eyedropper |
+| `.`, `0`-`9`, `A`-`Z` | pick that slot of the palette bar as the ink (`.` is transparent) |
+| Shift+B, Shift+E | Pencil, Eraser |
+| Shift+L, Shift+U | Line, Curve |
+| Shift+R, Shift+O | Rectangle, Ellipse |
+| Shift+D, Shift+C | Polygon, Contour |
+| Shift+F, Shift+I | Fill, Eyedropper |
 | Shift+M, Shift+Q, Shift+W, Shift+V | Marquee, Lasso, Magic Wand, Move |
+| Alt at the click | drawing tools and Fill: pick the ink under the cursor |
+| Right button | draws with `.` |
+| Shift (mouse) | Line, Curve ends and Polygon edges: clean angles; Rectangle and Ellipse: square or circle; Pencil: a line from the last cell; selection tools: add |
+| Ctrl (mouse) | Line, Curve, Rectangle, Ellipse: from the centre; a selection drag: move a copy |
+| Enter | draws the curve or polygon being made; drops floating pixels |
+| Esc | cancels a drag, the polygon or curve, the float, the selection, then closes the glyph view |
+| Backspace | the polygon's last vertex; otherwise clears the selection |
+| Delete | clears the selection |
+| Ctrl+A, Ctrl+D, Ctrl+Shift+I | select all, deselect, invert |
+| Ctrl+C, Ctrl+X, Ctrl+V | copy, cut, paste |
+| Ctrl+Z, Ctrl+Y | undo, redo (a float, curve or polygon being made is thrown away first) |
+| Arrow keys | move the selection by 1 cell, Shift+arrow by 8; with no selection Shift+arrow moves the bitmap |
+| PgUp, PgDn | previous and next glyph |
 
-The other keys of the table in "Version 20: The shortcuts of the glyph view" are unchanged.
+## Selection and moving
+
+### The mask
+
+`selection.c` (no raylib) holds a selection as a cell mask: a bounding box with a byte per cell in glyph space (x from the pen, y a row counted down from the baseline); a non-empty mask is tight and any shape.
+
+- `sel_combine`: replace, add, subtract, intersect.
+- `sel_invert` inverts within the glyph box across the advance and the bitmap.
+- `sel_polygon` fills a closed path by cell centres (even-odd), plus the cells the outline passes through.
+- `sel_wand` takes the cells joined to the clicked one with the same character, 4- or 8-connected.
+- `SelBitmap`, `selbm_clear`, `selbm_stamp` read, clear and write a character bitmap; `SelFloat` is the lifted pixels with their shape and colours.
+
+### Making a selection
+
+- The mode comes from the bar (Set, Add, Sub, And: `@selmode.0` to `.3`) and, winning over it, the keys at the press: Shift adds, Alt subtracts, both intersect.
+- Marquee: drag a rectangle of cells; Shift pressed after the press (not already down at it) makes a square from the start cell towards the pointer.
+- Lasso: drag a path; the cells inside and on it are selected.
+- Magic Wand: click; `8-way` (shown with the wand) joins diagonals, the default is 4-connected; the region is the font box across the advance and the bitmap, so empty cells form groups too, and a click outside it selects nothing.
+- A click without a drag (under 3 pixels) outside the selection deselects in Set mode; a drag within one cell selects that cell.
+- The shape being dragged is drawn in the accent; Esc cancels it.
+- Marching ants: a moving dashed outline of `TH_TEXT` and `TH_PANEL` dashes over a faint accent tint.
+- Ctrl+A selects the glyph box and the bitmap, Ctrl+D deselects, Ctrl+Shift+I inverts.
+- The selection stays while the view stays on the glyph and goes with a new `Editor_Open`; it is not an undo step.
+- It acts on the glyph's own pixels only, never on reference layers.
+
+### Moving: the float
+
+A move lifts the selected pixels into a float drawn over the glyph, their origin drawn empty (a copy leaves it), and the selection moves with it; the drop is one undo step (`EditorBeforeChange` once), a cancel leaves the glyph as it was.
+
+- Lift: a drag from inside the selection with the marquee or lasso in Set mode without Shift or Alt, any drag with the Move tool, the arrow keys, the MOVE buttons; it happens at the first whole cell of movement, so a click inside lifts nothing.
+  In the bar's Add, Sub and And modes a press inside the selection changes the selection instead.
+- The Move tool with no selection takes the whole bitmap.
+- Ctrl at the press moves a copy (Alt is the subtract modifier, so it is not used for this).
+- Whole cells only, relative to the cell where the press began.
+- Arrows nudge 1 cell, Shift+arrow 8 (`NUDGE_BIG`); without a selection Shift+arrow moves the bitmap by 1.
+- A `.` cell of the float does not overwrite; a move first clears all the cells it came from.
+- Drop: Enter, another tool, a press outside the float with the marquee or lasso (it also deselects), leaving the glyph (Back, previous and next, the padlock, Save, Export, any commit through `Editor_Flush`, navigation).
+- Cancel: Esc (the next Esc deselects), Ctrl+Z or Ctrl+Y while pixels float, with no undo step; a drop that changes nothing takes none either.
+- A drop may land outside the bitmap and the box: the bitmap grows (`ensure`) and is cropped to its ink (`px_glyph_crop`); beyond 4096 cells it is refused with a toast and cancelled.
+- The float and the clipboard carry their colours, mapped into the target palette (`px_glyph_add_colors`, reusing slots); a drop that would pass 36 colours is refused with a toast and cancelled.
+
+### Delete, cut, copy, paste
+
+- Delete and Backspace clear the selected cells to `.` (no undo step when none held ink); a moving float vanishes with its origin cleared, a copied or pasted float is thrown away.
+- Ctrl+C copies the selected or floating pixels to the program's clipboard (pixels, cells and colours, for the session, into any glyph and font; not the system clipboard); Ctrl+X copies and deletes.
+- Ctrl+V pastes as a float at the original cells, or at the view's top-left when they are not all in view; the tool becomes the marquee if it was not a selection tool.
+- A locked font or hidden glyph layer refuses Delete, Cut and Paste with "The font is locked".
+
+## The palette bar and the colour picker
+
+### The palette bar
+
+It lies under the canvas and the tool strip, as wide as the editor area.
+
+- Row 1: the transparent tile `.`, then the glyph's slots in canonical order with their keys `0`-`9`, `A`-`Z` small in the corner (dark or light by luminance, `cm_luminance`), then `+` while the glyph has fewer than 36 colours.
+- An unused slot has a dashed frame; it keeps its key, can be picked, and sorts after the used ones.
+- The ink has an accent frame; the tooltip gives the hex value, the key and what a double-click does.
+- Further rows hold the font's other colours, without keys, up to three rows with a scroll bar; a click makes one the ink, and drawing adds it to the glyph.
+- Dragging such a colour onto a slot replaces that slot's colour in this glyph (also in a full glyph), onto `+` adds an unused slot; the tile follows the mouse, the target lights, the tooltip says what the drop does.
+- A double-click on a slot opens the colour picker (tag "edit"); OK changes the slot (a colour the glyph has merges the slots).
+  `+` opens it (tag "add") on the ink and adds the result as an unused slot.
+- Every add, replace and change is one undo step.
+- The tile pitch is `(width - 22) / 38` clamped to 18..28 px with a 3 or 4 px gap, so `.`, 36 slots and `+` fit one row from 1110 x 600 up.
+- A one-colour font shows `.`, black `0` and `+`.
+- A locked font lets the ink be picked but has no `+`, drop, double-click or new colour.
+- Script names: `pal:.`, `pal:0` to `pal:Z`, `pal:+`, `pal:#RRGGBB`, `palx:N`.
+
+### The reorder animation
+
+When the slots reorder, the swatches slide to their places in 200 ms with a cubic ease-out, tracked by colour so the ink's frame moves with it; a colour new to row 1 glows briefly in the accent.
+
+### Slot keys
+
+- Plain `.`, `0`-`9` and `A`-`Z` (either case) pick that slot when no text field has focus and no dialog or picker is open; a key without a slot does nothing.
+- They are read as typed characters (`GetCharPressed`), so the layout's character counts; a letter typed with Shift never picks a slot.
 
 ### The unused-slot rule
 
-- When the glyph view opens a glyph it remembers the glyph's palette P0 (not again when it is reopened on the same glyph of the same font, as after an undo or a redo).
-- When the view leaves the glyph (Back, the previous or next glyph, the padlock) and when the font is saved, committed or the view closed (`Editor_Flush`), the glyph is canonicalized first.
-  If its palette is still P0, nothing changes.
-  Otherwise, if P0's first k entries are the k colours the pixels use, the glyph goes back to P0 (a palette that was read or is shared keeps being written and reused).
-  Otherwise the palette is cut to the used colours.
-- So unused slots live while the glyph is being edited, and go when it is left unless they were part of the palette it was opened with.
+- Opening a glyph remembers its palette P0 (not again when the same glyph of the same font reopens, as after undo or redo).
+- Leaving the glyph (Back, previous or next, the padlock) and saving, committing or closing (`Editor_Flush`) first canonicalize it; if its palette is P0 nothing changes; else if P0's first k entries are the colours in use it goes back to P0 (a read or shared palette stays reused); else the palette is cut to the used colours.
+- So unused slots live while the glyph is edited, and go when it is left unless they were in the palette it was opened with.
 
 ### The colour picker
 
-- `src/colorpick.c` / `colorpick.h`: one modal for every place that chooses a colour, drawn by raylib in the theme's look (`Th_Raised`, `Th_TextHead`, `Th_Segmented`, `Th_TextField`, `Th_Button`).
-- API: `Th_ColorPickOpen(rgba, title, tag)` opens it on a colour (0xRRGGBBAA) with a non-zero tag naming the caller's question; `Th_ColorPickTake(tag, &rgba)` gives the answer once: 1 and the colour for OK, -1 for Cancel, 0 while there is none; `Th_ColorPickIsOpen()`; `Th_ColorPickDraw(W, H)` draws it.
-  `main.c` draws it last (after the dialogs) and blocks every other input while it is open; the glyph view asks with the tags "add" (`+`) and "edit" (a double-click on a slot).
-- Models, chosen by a segmented control: HSV (a saturation/value square and a hue bar), Wheel (a hue and saturation disc and a value bar), RGB, HSL and CIE Lab (three gradient sliders each); an alpha slider under each.
-- The right side: the new and the old colour side by side over a checker (a click on the old one takes it back), a hex field (`RRGGBB` or `RRGGBBAA`), the colour as RGB, HSV and Lab in small text, Cancel and OK.
-- Enter confirms and Esc cancels (also in the hex field); Tab in the hex field takes its value and leaves the field.
-- The last model is kept in `pxfe.ini` `[app]` `pickerMode` (0 HSV, 1 Wheel, 2 RGB, 3 HSL, 4 Lab).
-- The maths is `src/colormath.c` / `colormath.h`, which does not use raylib: sRGB gamma, HSV, HSL, CIE Lab (D65 white, IEC 61966-2-1 matrices; a Lab colour outside sRGB is clamped and reported), packing, hex parsing and formatting, and relative luminance.
+The glyph view uses the design system's colour picker (see "Design system") for `+` and for a double-click on a slot.
 
-### Tests
+## Font layers
 
-- `tests/test_colormath.c` (33 checks): gamma, HSV and HSL known values and round trips over 4096 colours, Lab known values (white, black, red, blue, grey) and round trips, out-of-gamut colours, hex parsing and formatting, packing.
-- `tests/test_pxfont.c` (243 checks): `test_canonical_palettes` (canonical order after edits, unused slots after the used ones, add a slot, replace a slot's colour including a merge, trim, the append rule); the checks of version 22 follow the append rule.
-- End to end: `140_palette_keys` (slot keys, every Shift+letter tool, typing into a text field keeps the ink, `+` with Esc and with a hex colour, the unused slot, the canonical reorder, undo and redo, a double-click on a slot, every picker model and the ini, hex with alpha, the old colour, the unused-slot rule), `141_palette_drag` (on `lib_many`: a drop onto a slot of the full W, undo and redo, a merge through the picker, a drop onto `+`, drawing with a colour of the other rows, the unused-slot rule, a locked font), and the screenshot scripts `142_shots_bar_many` (W and A at 1110x600, W at 1600x1000) and `143_shots_picker` (a one-colour font's bar and the picker in each model).
-- `06_editor`, `06b_palette`, `132_eyedropper`, `139_many_colours` and every script of versions 17 to 20 that presses a tool key were updated (Shift+letter, `type 3` for a slot, `@pal:` names).
-- Play: `assert ebarrows N` (rows of the bar), `ebarextras N` (colours in the other rows), `eunused N` (unused slots), `eslotof:RRGGBB N` (the slot of a colour, -1 when the glyph has not got it; 8 digits for a colour with alpha), `eslotused:N 0|1`, `epicker`, `epickermode`, `epickerrgb 0xRRGGBB`, `epickera N`; `assert eink 'c` is now the ink's slot in the glyph as a pixel character (`?` when the glyph has not got the colour).
+Layers are reference glyphs drawn under or over the edited glyph, for comparing and tracing.
+A session layer lives for the session; a font layer belongs to a font, is saved in the sidecar, and offers another font's drawing of the same code point for every glyph.
 
-### Not done
+### Session layers
 
-- The palette bar has no keyboard way to reorder or delete a slot; a slot goes by the unused-slot rule.
-- The picker is used by the glyph view only; the layer colour of the Layers panel keeps its hex field.
+- The glyph view's Layers tab lists the layers top to bottom; the edited glyph is one, marked "Current glyph".
+- With no other layer the tab explains layers and shows a primary "+ Add Layer"; afterwards it is a small button in the header.
+- The Add Layer popover opens below the bar, so it never covers the bar's controls; it picks a glyph from this font or any font of the library (a searchable list), by character or code, or "same code as the edited glyph" (it follows previous and next), or a file.
+- Each layer has visibility (eye), colour (swatches and hex), opacity (0–100 %), x and y offset in pixels (steppers, and Alt+drag in the canvas), order (up and down, or drag in the list) and remove.
+- Hiding the current glyph turns the tools off ("Current glyph hidden").
+- Session layers stay across glyphs and fonts.
+
+### Sources
+
+- A font of the database (kind 0): pixels.
+- A file (kind 1, the native dialog, filter in `flayers.h`): an outline font (`.ttf .otf .ttc .woff .eot .pfb`, `outline.h`), drawn as a smooth fill, or a bitmap font (`.bdf .pcf .fnt .fon .json`, `.ttf/.otf` strikes, `bmsrc.h`), drawn as pixels.
+  The popover shows what the file holds; a face, `.fon` font or strike is chosen with a stepper (`face`); a file with outlines and strikes offers "Outlines / Bitmap strikes" (strikes: `face >= 0x10000`).
+
+### Font layers in the stack
+
+- Font and session layers share one stack; a font layer is tagged FONT and adds Size (a file layer) and a "THIS GLYPH" block (offset X and Y, size, "Hide for this glyph", Reset): the glyph's correction.
+- Alt+drag moves a font layer for every glyph; an outline layer moves in quarter pixels, the others in whole pixels.
+- The popover's LAYER choice: "This glyph only" (session) or "Font layer" (the glyph is always the edited glyph's code); "This font" as source is always a session layer; a file defaults to a font layer.
+- Only the order among font layers is saved; a font's layers go to the bottom of the stack when it opens.
+- A missing or unreadable file keeps its layer, which says "file missing" or "cannot read: ..."; a changed file is reloaded silently (checked every two seconds while used).
+- The open font's layers (`FlDoc`) are copied into the settings under its current hash on the frame after they change, and at the commit and Save when the hash changes.
+
+### Placement and size
+
+- The source glyph's baseline origin sits on the edited glyph's origin, moved by the layer's offset (pixels of the edited font, y up) plus the glyph's correction.
+- An outline layer has an absolute size `em` in pixels per em: a point (X, Y) in font units lies at `x = X * em * aspect / unitsPerEm + dx`, `y = Y * em / unitsPerEm + dy` (`aspect` is the width, 100 % square).
+  Size and offset step by a quarter pixel and take any typed value (`Th_NumberF`, a comma counts as a point).
+- With `em = 0` the size is relative: `fontPx * scale * dsize` pixels per em, `fontPx` being the edited font's ascent + descent.
+- A bitmap layer scales by whole multiples, k = round(scale * dsize) from 1 to 16.
+- An outline is rasterised at `size * canvas zoom` into a cached texture (64 entries, 8 million pixels, least recently used first); above 1600 px per em it is not drawn.
+- The same numbers draw the layer and the pixels of glyphs that follow it.
+
+### Glyphs that follow a layer
+
+One font layer may have `follow`; it must be an outline file with an absolute size.
+
+- When its size, width, offset, mode or threshold, or a glyph's correction, changes, every glyph that is still what the layer drew is drawn again (`FitTick` in `fitdoc.inc`, once per frame).
+- A glyph edited by hand is not what the layer drew, so it stays; nothing is stored: the earlier drawing is remade from a copy of the settings at the last redraw and compared.
+- The font box follows while ascent and descent are what the layer gave.
+- "Redraw All" redraws every glyph, hand edits included.
+- On a locked font the followed layer's placement cannot change (the fields are off; a change from elsewhere is put back with a notice); colour, opacity and visibility stay settings.
+- Switching follow on redraws nothing; a relative size becomes absolute at its present value.
+
+### The font view's Layers tab
+
+- It lists the open font's font layers.
+- For the followed layer (or the first outline layer): Size (px/em), Width (%), Offset X and Y, the follow switch, Smooth or Pixel font, Threshold, "Optimize for This Size" (smooth), "Find Best Fit" (the import's search again) and "Redraw All".
+- It counts the glyphs that follow, are edited by hand, or are not in the file.
+- The glyph view's Layers tab edits the same layer's offset and size, and the glyph's correction.
+
+## Importing a font file
+
+Menu, Import Font File makes a font of the database from a font file; the file stays under it as a font layer, and its glyphs follow that layer until edited by hand.
+The searches and drawing are in `src/fit.c` (no raylib), the document logic in `src/fitdoc.inc`; the same command takes a picture.
+
+- An outline font (`.ttf .otf .ttc .otc .woff .eot .pfb`) is drawn as pixels, as a pixel font or a smooth font.
+- A bitmap font (`.bdf .pcf .fnt .fon .json`, a `.ttf` strike) is copied as it is, without the uncoded glyphs; it is always a pixel font and nothing follows its layer.
+
+### Drawing pixels from an outline
+
+- Pixel font: a pixel is inked when its centre is inside the outline; exact also for pixels drawn smaller, larger, or as dots.
+- Smooth: a pixel is inked when the outline covers at least `threshold` of it (38 % or 50 % from the search, 5 to 95 % by hand); a glyph without an x correction moves by a quarter-pixel step (half left to a quarter right) to where its pixels best match its coverage, and the layer is drawn moved as much (`FlLayer_Shift`).
+- The advance and the font box are the file's advance, ascender and descender in pixels, rounded.
+
+### Finding the grid of a pixel font
+
+`fit_find_grid` ports `pixelglyphlib/readers/ttf.py` (`find_grid`) with its constants, and agrees with it on the 621 TrueType and OpenType files of the real library.
+The searches, in order: dots (the lattice of the centres of same-size dots); exact (the common divisor of all coordinates, at most 256 cells per em); coarser (the coarsest divisor close to every coordinate or redrawing 95 % of the ink); lattice (evenly spaced cells fitted to where ink starts and ends); edges (the commonest edge lengths); glyph columns (columns starting anew in each glyph, stored as x corrections); loose (only the cores of the cells compared).
+When nothing passes, the best lattice redrawing at least 80 % of the ink is offered as a guess, and the dialog proposes the smooth mode.
+It takes about 20 ms for a typical pixel font, 0.8 s for GNU Unifont.
+`outline.c` places a TrueType simple glyph `lsb - xMin` to the right of its coordinates (the first phantom point); a composite glyph stays where its parts put it, as fontTools draws it.
+
+### Finding the size of a smooth font
+
+`fit_find_size` tries 5 to 40 pixels per em in half pixels, each with four vertical quarter-pixel positions and two thresholds, on the letters and digits (or the first 80 inked glyphs).
+
+- A glyph is right at a size when its pixels have the parts and holes of its true shape (counted at 200 pixels per em).
+- The cover is `1 - sum |coverage - pixel| / sum max(coverage, pixel)`.
+- The base is the smallest size with nearly as many right glyphs as any (at most 3.5 % fewer, or one and a half glyphs for a small sample); among it and up to two pixels above, the best score (right glyphs plus half the cover) wins.
+- The position is then refined in sixteenths with seven thresholds (30 to 55 %).
+
+It takes about half a second.
+A size set by hand (in the dialog, or "Optimize for This Size") gets its position and threshold searched in about 50 ms.
+
+### The dialog
+
+- Family and Style (editable), the face of a collection or the strike of a bitmap font.
+- "This is a pixel font": on when a sure grid was found; it cannot be switched on without a grid; always on for a bitmap font.
+- What the search found, and a preview drawn as the import will draw.
+- For a smooth font, the size in half pixels and "Best Size".
+- "Make a typeface with these names".
+
+Import makes a new document not yet in the store: the font, the typeface (one variant with the file's family, style, full name, version, copyright, designer, licence…; HASH is the hash of the file) and the font layer.
+A typeface the strict reader would refuse is cut to family and style, or left out.
+It is committed like any document, and Save writes the layer under the committed font's hash.
+
+## Importing a picture of a font
+
+Menu, Import Font File also takes PNG, GIF (first frame), JPEG, BMP and TGA.
+The importer works out the background, scale, layout, characters and colours, and the dialog lets each be set by hand; the analysis is `src/sheet.c` (no raylib), the reference glyphs `src/sheetref.c`, the rest `src/fitdoc.inc`.
+
+### Background, ink and scale
+
+- Transparent pixels (over 2 % of the picture) are the background; else the commonest colour is; every other pixel is ink.
+- Over 300 colours means noise (a JPEG): the background is the commonest colour counted coarsely, and ink differs from it by more than 60 in a channel.
+- A preview draws every font pixel as a block of s x s picture pixels: the scale is the largest s (up to 24) for which nearly every colour change along rows and columns lies on a lattice of pitch s (98.5 %, with noise 86 %); each block becomes one pixel (its middle pixel, or with noise its mean).
+
+### Layout
+
+Tried in this order:
+
+- Marker row: a top or bottom row of single pixels of one colour, each over a column that separates two glyphs (the marker's column belongs to none); ink under the next marker that touches a glyph stays with it; what follows the last glyph is dropped.
+- Grid: the width is the smallest pitch for which every stretch of ink between blank columns fits one cell, or a slightly larger one that divides the picture's width exactly; stretches far longer than most do not count; the height likewise from the rows.
+  When glyphs fill their cells, the picture's period gives the cell (the smallest divisor at which it repeats; for the height the one closest to the width).
+  A grid of mostly blank cells is no grid.
+- Rows: rows cut at blank pixel rows, glyphs at blank columns; a much lower band (dots, accents) joins its closest neighbour; a stretch about twice as wide as most is cut where the fewest pixels are inked.
+  A noisy picture is always rows.
+
+A sheet holding the same glyphs several times (one font in several colours) is told by exactly repeating cells; one copy is imported, chosen in the dialog.
+
+### Characters
+
+Sheets list characters in runs of ascending codes (ASCII from space or `!`, code page 437's upper half after `~`, capitals then digits, `1` to `9` then `0`), so the codes are read as the best sequence.
+
+- Each glyph is compared with the same character of reference fonts (GNU Unifont and Noto Sans Regular, Bold and Black, about 900 glyphs, made in two seconds): the shape on an 8 x 10 grid after stretching the ink box, and the place in the line (top, bottom, width in line heights), which tells `,` from `'` and `o` from `O`.
+- A glyph of several colours is read from all its ink and from single colours, and keeps its best reading.
+- Dynamic programming over the cells: continuing the previous glyph's run earns 0.5 (a full match is 1), a higher code a little; a blank cell holds a missing character's place, or none.
+- Capitals in the places of small letters are accepted; a code given twice stays with the glyph in a run, the other takes its best free code or none.
+- Candidates: ASCII, Latin-1, code page 437's upper half and a few more (euro sign, arrows, French ligatures).
+
+A first character typed in the dialog numbers the glyphs from it, cell by cell, with no recognition.
+On the 49 test pictures the layout is found for all, and 97.4 % of the 3843 known characters get the right code.
+
+### Colours and metrics
+
+- The ink colours become each glyph's own palette (`px_glyph_set_colors`), shared by the sheet's glyphs; over 36 colours (a JPEG), the cheapest pair is merged until 36 are left.
+- `.` gets no colour; one ink colour gives a font of one colour.
+- The baseline is where most glyphs end; ascent and descent are how far the ink reaches.
+- In a grid or marker strip the advance is the cell width and the glyph keeps its place; a grid makes a monospaced font.
+  In rows the advance is the ink width plus a twelfth of the height.
+- A space is added when missing; a glyph without a character is kept uncoded.
+
+### The dialog
+
+Family and Style, the layout (Auto, Grid, Rows, Marker row, with what was found), the grid's cell, the scale, the copy of a multi-copy sheet, the first character, "One colour", the findings in words, and a preview of every glyph in its colours over its character (amber when the match is weak); every change runs the analysis again.
+
+## Input rules
+
+### Two gates
+
+A focused text field takes its keys unless a modal dialog or popover blocks the input.
+
+- `Th_SetInputBlocked` (mouse and keyboard): modal dialogs, the progress screen, the frame after a document opened (`swallowMouse`), open popovers and menus, the colour picker, and in `main.c` while a panel field is edited (the canvas then ignores mouse and keys).
+  Every call in `browser.c`, `main.c`, `fitdoc.inc` and `sample.c` is of these kinds.
+- `Th_SetMouseBlocked` (the mouse only; `Th_MouseBlocked` reads both gates, `Th_MouseOnly` this one): for widgets outside the visible part of a scrolled region or under a pinned block (the browser panel, the Usage and Similar lists).
+- The mouse-only readers (`hov` in `browser.c`, the editor's `hit`, the layers' `hov`, `cx_hover`) read `Th_MouseBlocked`.
+
+### Typing while the mouse is away
+
+A text field with the keyboard keeps taking keys when the mouse leaves its scroll area; a click elsewhere ends the editing; `SampleEdit` takes only the modal and popover block.
+
+### Press and release
+
+`Th_Released(rect, name, hover)` is true only when the press began on the same control (name and rectangle), so a control that moved under the mouse is not fired by a press that began elsewhere.
+Buttons, toggles, locks, checks, switches, segmented controls, dropdowns, fold headers, hash copies, palette swatches, the Glyphs view's cells, Usage and Similar rows and the Add Layer lists use it; the stepper acts on the press, a menu item on the release of a press that began on the open menu.
+
+### Menu keys
+
+While a menu is open, Up, Down, Home, End, Enter and Escape are the menu's: `Th_MenuKeys` says so, and `IsKeyPressed` / `IsKeyPressedRepeat` are wrapped in `theme.h` to answer false for them; `Th_Menu` reads the raw functions.
+
+### Application keys
+
+`Ctrl+O` Load, `Ctrl+S` Save, `Ctrl+Shift+S` Save As, `Alt+Left` up, `Alt+Right` back to the open font; the font view's and glyph view's keys are in their sections.
+
+## Not done
+
+### Font model and storage
+
+- Kerning pairs are not edited.
+- WOFF2 is not supported, as a layer or as an import.
+
+### Design system
+
+- Menus have no checkmarks and no submenus.
+
+### Font view
+
+- No keyboard shortcut for the baseline.
+- A font layer added after a baseline step is moved by an undo of that step too.
+
+### Glyph view tools
+
+- No undo of the selection itself.
+- No bar buttons for select all, deselect and invert; a single-cell marquee selection needs a drag of at least 3 pixels.
+- No system clipboard.
+- No selection by colour range, feathering, rotation or scaling of floating pixels.
+- No thick brushes or brush shapes.
+- A curve's handles cannot be dragged after the third drag, and a curve has two control points at most.
+
+### Palette bar and colour picker
+
+- No keyboard way to reorder or delete a slot; a slot goes by the unused-slot rule.
+- The picker is used by the glyph view only; the Layers panel's layer colour keeps its hex field.
+
+### Importing a font file
+
+- Kerning, cap height and x-height are not imported.
+- A family of several files becomes several typefaces, not one with several variants.
+- A negative advance is imported as 0.
+- Changing the followed layer's face, or its file changing on disk, makes every glyph count as edited by hand until Redraw All.
+- The searches run on the UI thread, so the window does not answer while they run (under a second, except for very large fonts).
+
+### Importing a picture of a font
+
+- The picture is not kept as a layer under the font.
+- A photograph of lettering comes in at the picture's size and in up to 36 colours, not brought down to a pixel grid.
+- Kerning is not guessed.
+- Characters in no run (punctuation in the designer's own order) get wrong codes; the preview shows them, and they can be changed in the glyph view.

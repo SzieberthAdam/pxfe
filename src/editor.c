@@ -26,7 +26,7 @@
 #define MAX_BITMAP 4096
 
 /* The tool table: a new tool is a row here (name, shortcut, icon, bar group), a Tool value and, when it works with the mouse, a branch in canvas_input.
- * Version 23: a tool's shortcut is Shift and its letter (the plain letters, digits and '.' pick the slots of the palette bar).
+ * A tool's shortcut is Shift and its letter (the plain letters, digits and '.' pick the slots of the palette bar).
  * The selection tools (`select`) share the selection state of the editor (see "selection" below); the drawing tools paint with the ink. */
 typedef enum { T_PENCIL = 0, T_ERASER, T_LINE, T_RECT, T_FILL, T_MARQUEE, T_LASSO, T_WAND, T_MOVE, T_CURVE, T_ELLIPSE, T_PICK, T_POLY, T_CONTOUR, T_COUNT } Tool;
 typedef enum { M_NONE = 0, M_PAINT, M_SHAPE, M_PAN, M_ADVANCE, M_LAYER, M_SELBOX, M_SELLASSO, M_SELMOVE, M_CURVE, M_CONTOUR } DragMode;
@@ -96,7 +96,7 @@ struct Editor {
     Vector2 panLast;
     int dragGrab;       /* advance drag: cell offset */
 
-    /* line, curve and pencil (see DESIGN.md, "Version 17: line, curve and pixel-perfect") */
+    /* line, curve and pencil (see DESIGN.md, "Tools of the glyph view") */
     bool filled;        /* the bar's Filled: the rectangle, ellipse, polygon and contour are drawn solid (kept in pxfe.ini by main.c) */
     bool pixPerfect;    /* the bar's Pixel-perfect: a pencil stroke loses the corner cells of its Ls (kept in pxfe.ini by main.c) */
     RasPt *stk;         /* the cells of the stroke being drawn with the pencil, and what each held before it was painted */
@@ -109,7 +109,7 @@ struct Editor {
     RasPt cv4[4];       /* the curve: end point, control point, control point, end point */
     int curveBtn;       /* the mouse button that started the curve ('.' for the right one) */
 
-    /* fill, polygon and contour (see DESIGN.md, "Version 20: fill, eyedropper, polygon and contour") */
+    /* fill, polygon and contour (see DESIGN.md, "Tools of the glyph view") */
     bool contiguous;    /* the bar's Contiguous: the fill takes the cells joined to the one clicked (off: every cell of that character) */
     RasPt *poly;        /* the polygon being made: its vertices */
     int polyN, polyCap;
@@ -144,7 +144,7 @@ struct Editor {
     EditorResult result;
     const char *tip;
     Rectangle tipRect;
-    /* the palette bar under the canvas (version 23, see "palette bar" below) */
+    /* the palette bar under the canvas (see "palette bar" below) */
     Rectangle bar;       /* where it was drawn last frame */
     int barRows;         /* its rows: 1, or more with the font's other colours (test hook) */
     int barExtras;       /* tiles of the font's other colours */
@@ -385,7 +385,7 @@ static void set_advance(Editor *e, int v)
 
 /* ------------------------------------------------------------------ selection
  *
- * Behaviour modelled on common pixel editors (see DESIGN.md, "Version 16: selection and moving").  The mask (src/selection.c) is in glyph space.
+ * Behaviour modelled on common pixel editors (see DESIGN.md, "Selection and moving").  The mask (src/selection.c) is in glyph space.
  * A move is a float: the selected pixels are copied into `fl` and the glyph stays as it is; the float is drawn over the glyph (the cells it was
  * lifted from drawn empty unless it is a copy) and the drop writes it, one undo step per drop.  Cells of the float that hold '.' are transparent:
  * they do not erase what they land on. */
@@ -1063,7 +1063,7 @@ static void glyph_label(const PxGlyph *g, char *buf, size_t n)
     snprintf(buf, n, "U+%04X", (unsigned)g->codepoint);   /* drawn as a glyph caption (Th_TextRich) */
 }
 
-/* ------------------------------------------------------------------ the palette bar (see DESIGN.md, "Version 23")
+/* ------------------------------------------------------------------ the palette bar (see DESIGN.md, "The palette bar and the colour picker")
  *
  * A horizontal bar under the canvas and the tool strip, over the status line.  Its first row is the edited glyph: the transparent tile '.' (the
  * eraser ink), then the slots of the glyph's palette in canonical order, each labelled with its pixel character (0-9, A-Z: the key that picks
@@ -1441,7 +1441,7 @@ static void key_slot(Editor *e, int ch)
     if (i - 1 < ns) set_ink(e, 0, sl[i - 1]);
 }
 
-/* The unused-slot rule (DESIGN.md, "Version 23"): when the view leaves the glyph, or the font is saved, the slots it made that no pixel uses go.
+/* The unused-slot rule (DESIGN.md, "The unused-slot rule"): when the view leaves the glyph, or the font is saved, the slots it made that no pixel uses go.
  * The palette the glyph had when the view opened it stays when it is still that one, and comes back when its first colours are the glyph's
  * again (a palette read or shared keeps being written); otherwise the palette is cut to the colours the pixels use. */
 static void leave_glyph(Editor *e)
@@ -2275,7 +2275,7 @@ static EditorResult editor_frame(Editor *e, Rectangle area)
     bool ctrl = IsKeyDown(KEY_LEFT_CONTROL) || IsKeyDown(KEY_RIGHT_CONTROL) || IsKeyDown(KEY_LEFT_ALT) || IsKeyDown(KEY_RIGHT_ALT);
     bool shift = IsKeyDown(KEY_LEFT_SHIFT) || IsKeyDown(KEY_RIGHT_SHIFT);
     pick_answer(e);
-    /* the slot keys (version 23): a character typed with no modifier while no text field has the keyboard ('blocked' covers a field that has it):
+    /* the slot keys: a character typed with no modifier while no text field has the keyboard ('blocked' covers a field that has it):
      * '.', '0'-'9' and 'A'-'Z' pick that slot of the palette bar.  The characters are read whatever happens (a drag) so that none is left over. */
     if (!blocked) {
         int ch;
@@ -2345,7 +2345,7 @@ static EditorResult editor_frame(Editor *e, Rectangle area)
 
     e->cv = cv;
     canvas_input(e, cv, mouse);
-    /* the glyph is canonical after every edit (version 23): its pixels and palette in reading order, the slots follow */
+    /* the glyph is canonical after every edit: its pixels and palette in reading order, the slots follow */
     if (e->mode == M_NONE && !locked(e) && !g->lazy && px_glyph_canonicalize(e->font, g))
         px_font_compact_palettes(e->font);          /* the palette the stroke made, now renamed, goes from the table */
     draw_canvas(e, cv, mouse);

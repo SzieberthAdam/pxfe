@@ -1,4 +1,4 @@
-/* fit.h - fitting an OUTLINE font to a pixel grid (DESIGN.md "Version 10: importing a font file").
+/* fit.h - fitting an OUTLINE font to a pixel grid (DESIGN.md "Importing a font file").
  *
  * Two questions are answered here, and one job is done:
  *

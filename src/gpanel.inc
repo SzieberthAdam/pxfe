@@ -1,4 +1,4 @@
-/* gpanel.inc - the right panel of the glyph view, included by main.c after panel.inc (DESIGN.md "Version 4", "Glyph view").
+/* gpanel.inc - the right panel of the glyph view, included by main.c after panel.inc (DESIGN.md "Glyph view").
  * Three tabs: Glyph (code, character, advance, bitmap, offsets, the full pxgl hashes of the original and of the current
  * bitmap, "Find in Library"), Usage (the glyph usage list of the Insight module) and Layers (layers.c).
  * The tab (glyphTab) is not remembered: the glyph view opens on Glyph.  Every tab scrolls by itself. */

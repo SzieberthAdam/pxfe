@@ -1,4 +1,4 @@
-/* finder.c - the glyph finder view (see finder.h and DESIGN.md "The glyph finder").
+/* finder.c - the glyph finder view (see finder.h and DESIGN.md "The Glyphs view").
  *
  * The distinct bitmaps of a code point come from a worker thread (store_glyphs_for_code on its own StoreConn); the bitmaps
  * of the cells that are on screen are read on the UI thread, one pxgl row each (a few microseconds), and kept as

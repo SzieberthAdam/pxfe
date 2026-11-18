@@ -1,5 +1,5 @@
 /* flayers.h - FONT LAYERS: reference layers that belong to a font, so that every glyph of the font offers another font's drawing
- * of the same code point (DESIGN.md "Version 9: font layers").
+ * of the same code point (DESIGN.md "Font layers").
  *
  * A font layer is persisted in the settings sidecar (fsettings.h), keyed by the pxfm hash of the edited font.  A FlDoc holds the font
  * layers of the font that is open; main.c loads it when a font is opened and stores it again when it changed (see main.c "Font layers").
@@ -12,7 +12,7 @@
  *
  * PLACEMENT.  The source glyph's baseline origin (pen x = 0, baseline y = 0) sits on the edited glyph's origin; the layer's (dx, dy) in
  * pixels of the edited font (y up) moves it, and a per-glyph correction (dx, dy, dsize, hidden) adds to that.
- * SIZE.  Outline: a layer with s.em > 0 (an imported font's source, DESIGN.md "Version 10") is drawn at  em * dsize  pixels per em and
+ * SIZE.  Outline: a layer with s.em > 0 (an imported font's source, DESIGN.md "Importing a font file") is drawn at  em * dsize  pixels per em and
  * s.aspect times as wide; else the glyph is drawn at  fontPx * scale * dsize  pixels per em, fontPx = the edited font's pixel size = its ascent +
  * descent (px_font_box), scale 1.0 = natural size.  Bitmap: whole-pixel multiples only: the strike's pixels are drawn k x k edited
  * pixels, k = round(scale * dsize) clamped to 1 .. FL_MAX_K; scale 1 is the strike's own size (no shrinking).  Database layers: none.

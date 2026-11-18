@@ -1,5 +1,5 @@
 /* layers.c - reference layers of the glyph view: the stack, the glyph cache, the Layers tab and the Add Layer popover
- * (see layers.h and DESIGN.md "Layers"). */
+ * (see layers.h and DESIGN.md "Font layers"). */
 #include <ctype.h>
 #include <math.h>
 #include <stdio.h>
