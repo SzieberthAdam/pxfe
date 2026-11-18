@@ -735,7 +735,8 @@ void SampleStrip_Draw(Rectangle r, const PxFont *f, bool blocked)
         Rectangle zr = { r.x + r.width - 12 - TH_STEP_W, r.y + (STRIP_HDR - TH_ROW_H) / 2, TH_STEP_W, TH_ROW_H };
         float zx = zr.x - 8 - Th_Measure("Zoom").x, hy = zr.y + (TH_ROW_H - 24) / 2;
         const char *hint = s_edit.hasSel || g_focus == &s_edit ? "Ctrl+Enter applies" : NULL;
-        if (Th_Section("SAMPLE", r.x + 12, &hy, zx - TH_GAP - r.x - 12, s_collapsed ? TH_SEC_CLOSED : TH_SEC_OPEN, hint)) { s_collapsed = !s_collapsed; strip_save(); }
+        Th_SectionSetOpen("SAMPLE", !s_collapsed);
+        if (Th_Section("SAMPLE", r.x + 12, &hy, zx - TH_GAP - r.x - 12, hint) == s_collapsed) { s_collapsed = !s_collapsed; strip_save(); }
         Th_Text("Zoom", zx, r.y + (STRIP_HDR - Th_Measure("Ag").y) / 2, TH_TEXT_DIM);
         char zt[8];
         snprintf(zt, sizeof zt, "%dx", s_zoom);

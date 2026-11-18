@@ -31,7 +31,8 @@ wait 20
 click @card:0
 wait 20
 shot tests/tmp/p2/c4/typeface_view.png
-click @tv.open.0
+bselect 0
+click @card:0
 wait 60
 reveal U+0041
 click @cell:U+0041
@@ -52,7 +53,7 @@ wait 10
 dblclick @cell:U+0041
 wait 60
 shot tests/tmp/p2/c4/glyph_view.png
-click @gtab_Usage
+click @gtab_Glyph
 wait 60
 shot tests/tmp/p2/c4/glyph_usage_tab.png
 click @gtab_Layers

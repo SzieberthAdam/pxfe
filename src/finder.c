@@ -401,9 +401,9 @@ static void draw_view_tab(Finder *f, Rectangle P)
         for (int i = 0; i < f->list.count; i++) fonts += f->list.g[i].nFonts;
         snprintf(s, sizeof s, "%d bitmap%s, %ld font%s", f->list.count, f->list.count == 1 ? "" : "s", fonts, fonts == 1 ? "" : "s");
     }
-    Th_Section("RESULTS", x, &y, w, 0, s);
+    Th_Section("RESULTS", x, &y, w, s);
     y += TH_GAP;
-    Th_Section("CHARACTER", x, &y, w, 0, NULL);
+    if (Th_Section("CHARACTER", x, &y, w, NULL)) {
     Rectangle sb = { x, y, w - 80, TH_ROW_H };
     int tf = Th_TextField(sb, "finder.search", f->text, (int)sizeof f->text, TH_TF_SEARCH | TH_TF_SELECT, "Character or U+XXXX");
     if (tf & TH_TF_CHANGED) snprintf(f->text, sizeof f->text, "%s", Th_TextValue());
@@ -434,7 +434,8 @@ static void draw_view_tab(Finder *f, Rectangle P)
         Th_Text(block_name(f->code), x + 56, y + 22, TH_TEXT_DIM);
     }
     y += 62;
-    Th_Section("VIEW", x, &y, w, 0, NULL);
+    }
+    if (!Th_Section("VIEW", x, &y, w, NULL)) return;
     char zt[8];
     snprintf(zt, sizeof zt, "%dx", f->zoom);
     Rectangle zr = Th_Row(x, &y, w, "Zoom", NULL, 0);
@@ -638,7 +639,7 @@ bool Finder_UpdateDraw(Finder *f, Rectangle area, InsightTarget *target)
             InsightTarget t = { 0 };
             float used = Insight_Draw(f->insight, ia, INSIGHT_SECTION_USAGE, &clicked, &t);
             EndScissorMode();
-            float us = -f->usageScroll;
+            static float us; us = -f->usageScroll;   /* static: Th_ScrollInto may write through the pointer later in the frame */
             Th_ScrollBar(body, &us, used + 8, 48, !blocked);
             f->usageScroll = -us;
             if (clicked && target) { *target = t; opened = true; }

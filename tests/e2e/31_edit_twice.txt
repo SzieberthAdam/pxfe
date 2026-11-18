@@ -15,9 +15,8 @@ assert sql "select count(*) from pxfm" 4
 assert sql "select count(*) from pxfm where ascent = 7" 1
 assert sql "select count(*) from pxfm where lower(hex(hash)) = '0820dc69a21b1cdb3a44d2cff7d884d8'" 0
 # the same font again, edited once more: its first result goes, the second takes its place
-click @card:0 right
-wait 3
-click @Ctx_Open
+bselect 0
+click @card:0
 wait 8
 assert readonly 0
 click @ascent+

@@ -74,6 +74,7 @@ typedef struct SimRes {
 /* ------------------------------------------------------------------ the object */
 
 struct Insight {
+    const PxFont *palFont; int palGi;   /* the glyph whose colours the usage thumbnail takes (Insight_SetPalette) */
     Store *store;
     HANDLE th;
     CRITICAL_SECTION cs;
@@ -159,7 +160,7 @@ static void usage_mask(StoreConn *c, const char *hash, UsageRes *r)
         int row = 0, col = 0;
         for (size_t i = 0; i < len && m; i++) {
             if (t[i] == '\n') { row++; col = 0; continue; }
-            if (row < h && col < w) m[row * w + col] = t[i] != '.';
+            if (row < h && col < w) m[row * w + col] = t[i] == '.' ? 0 : (unsigned char)t[i];   /* the pixel character: its colour comes from the palette */
             col++;
         }
         r->mask = m; r->w = w; r->h = h;
@@ -685,7 +686,7 @@ static bool sec_header(Cx *c, float *y, int idx, const char *label, const char *
     Insight *in = c->in;
     *y += first ? 4 : TH_GAP;
     float sy = *y;
-    if (cx_visible(c, sy, TH_ROW_H) && Th_Section(label, c->area.x + 16, y, c->area.width - 32, in->open[idx] ? TH_SEC_OPEN : TH_SEC_CLOSED, right)) in->open[idx] = !in->open[idx];
+    if (cx_visible(c, sy, TH_ROW_H)) { Th_SectionSetOpen(label, in->open[idx]); in->open[idx] = Th_Section(label, c->area.x + 16, y, c->area.width - 32, right); }
     *y = sy + TH_ROW_H;
     return in->open[idx];
 }
@@ -708,6 +709,27 @@ static void ensure_tex(Texture2D *t, unsigned char **mask, int w, int h)
         *mask = NULL;
     }
 }
+
+/* the usage thumbnail in the colours of the selected glyph (its palette); a pixel the palette does not colour is drawn in the text colour */
+static void ensure_usage_tex(const Insight *in, UsageRes *u)
+{
+    if (u->tex.id || !u->mask) return;
+    const PxPalette *pal = in->palFont && in->palGi >= 0 && in->palGi < in->palFont->count ? px_glyph_palette(in->palFont, &in->palFont->glyphs[in->palGi]) : NULL;
+    Image img = GenImageColor(u->w, u->h, BLANK);
+    Color *px = (Color *)img.data;
+    for (int i = 0; i < u->w * u->h; i++) {
+        int k = u->mask[i] ? px_pixel_index((char)u->mask[i]) : 0;
+        if (!u->mask[i]) continue;
+        px[i] = pal && k > 0 ? (Color){pal->draw[k][0], pal->draw[k][1], pal->draw[k][2], pal->draw[k][3]} : TH_TEXT;
+    }
+    u->tex = LoadTextureFromImage(img);
+    SetTextureFilter(u->tex, TEXTURE_FILTER_POINT);
+    UnloadImage(img);
+    free(u->mask);
+    u->mask = NULL;
+}
+
+void Insight_SetPalette(Insight *in, const PxFont *f, int gi) { in->palFont = f; in->palGi = gi; }
 
 static void click_target(Cx *c, const UsageRow *r)
 {
@@ -779,7 +801,7 @@ static void draw_usage(Cx *c, float *y, bool first)
         if (cx_visible(c, top, 56)) {
             Rectangle box = { x0, top, 56, 56 };
             DrawRectangleRec(box, TH_PANEL);
-            ensure_tex(&u->tex, &u->mask, u->w, u->h);
+            ensure_usage_tex(in, u);
             if (u->tex.id) {
                 int z = (int)fminf(52.0f / (float)u->w, 52.0f / (float)u->h);
                 if (z < 1) z = 1;

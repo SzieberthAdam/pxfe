@@ -361,7 +361,7 @@ static void DrawFontLayersTab(float px, float *yp)
         vr = Th_Row(x, &y, w, "Offset Y", NULL, 0);
         ch |= FStep((Rectangle){vr.x, vr.y, 96, TH_ROW_H}, "fl_y", &s->dy, 0.25f, -999, 999, lock);
         y += 4;
-        Th_Section("GLYPHS FROM THIS LAYER", x, &y, w, 0, NULL);
+        if (Th_Section("GLYPHS FROM THIS LAYER", x, &y, w, NULL)) {
         bool fol = s->follow != 0;
         if (Th_Switch((Rectangle){x, y, w, TH_ROW_H}, "Draw the glyphs from this layer", &fol, TH_CK_RIGHT | (readOnly ? TH_CK_OFF : 0), "fl_follow")) {
             for (int k = 0; k < flDoc->n; k++) flDoc->v[k]->s.follow = 0;
@@ -419,6 +419,7 @@ static void DrawFontLayersTab(float px, float *yp)
                     y += 20;
                 }
             }
+        }
         }
         if (ch) flDoc->rev++;
         y += 12;

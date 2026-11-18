@@ -1,5 +1,5 @@
 # 136. The tool strip with fourteen tools (version 20), font 0820dc69 unlocked, glyph U+0020.
-# At the smallest window (1110 x 600) the fourteen buttons need two columns: the first holds the drawing, shape and fill groups, the second the selection group
+# At the smallest window (1110 x 600) the fourteen buttons need three columns (the sample strip under the glyph view takes some of the height)
 # (a group that does not fit the rest of a column starts the next one); every button answers to its name there.
 wait 5
 click @Unlock
@@ -11,7 +11,7 @@ assert editor_glyph U+0020
 
 resize 1110 600
 wait 8
-assert etoolcols 2
+assert etoolcols 3
 shot tests/tmp/shots/136_strip_1110x600.png
 click @Polygon
 wait 2
@@ -32,13 +32,13 @@ click @Pencil
 wait 2
 assert etool 0
 
-# version 23: three columns, the palette bar under the strip takes some of its height
+# version 23: more columns, the palette bar under the strip and the sample strip under the glyph view take some of the height
 resize 1110 520
 wait 8
-assert etoolcols 3
+assert etoolcols 4
 resize 1110 480
 wait 8
-assert etoolcols 3
+assert etoolcols 5
 shot tests/tmp/shots/136_strip_1110x480.png
 click @Polygon
 wait 2

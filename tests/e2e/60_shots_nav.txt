@@ -12,7 +12,8 @@ dblclick @hdr:0
 wait 150
 shot tests/tmp/nav/2_typeface.png
 sleep 600
-click @tv.open.1
+bselect 1
+click @card:1
 wait 60
 shot tests/tmp/nav/4_font.png
 dblclick @cell:U+0041

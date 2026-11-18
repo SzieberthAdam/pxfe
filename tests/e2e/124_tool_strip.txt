@@ -21,10 +21,10 @@ click @Pencil
 wait 2
 assert etool 0
 
-# version 23: three columns, the palette bar under the strip takes some of its height
+# version 23: more columns, the palette bar under the strip and the sample strip under the glyph view take some of the height
 resize 1110 520
 wait 8
-assert etoolcols 3
+assert etoolcols 4
 click @Lasso
 wait 2
 assert etool 6

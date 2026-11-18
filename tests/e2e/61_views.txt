@@ -47,7 +47,7 @@ assert w.hash_typeface_full 1
 assert tabhash b925951bb94de1d15ec27404b3261476
 assert w.c.family 1
 assert w.c.copyright 1
-assert w.c.italic 1
+assert w.c.italic 0
 assert w.Typeface_hash 0
 shot tests/tmp/p1/td_2_typefaces_tab.png
 click @card:1
@@ -79,7 +79,8 @@ shot tests/tmp/p1/td_3b_typeface_view.png
 sleep 600
 
 # ---- the font view: Font | Glyph | Similar, no Typeface tab; the zoom of the toolbar and of the strip are the same control
-click @tv.open.0
+bselect 0
+click @card:0
 wait 12
 assert nav 3
 assert w.ptab_Font 1

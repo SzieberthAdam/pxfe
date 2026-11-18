@@ -55,13 +55,18 @@ typedef struct Popup {
     Rectangle anchor; int scroll;
 } Popup;
 
-enum { SIDE_VIEW = 0, SIDE_SIMILAR = 1, SIDE_TYPEFACE = 2 };
-static BrowserTypefaceTab g_tfTab;
-static BrowserTypefaceEditing g_tfEditing;
-void Browser_SetTypefaceTab(BrowserTypefaceTab draw, BrowserTypefaceEditing editing) { g_tfTab = draw; g_tfEditing = editing; }
+enum { SIDE_VIEW = 0, SIDE_SIMILAR = 1, SIDE_TYPEFACE = 2, SIDE_FONT = 3 };
+static BrowserInfoTab g_infoTab;
+void Browser_SetInfoTab(BrowserInfoTab draw) { g_infoTab = draw; }
 static BrowserLocked g_locked;
 void Browser_SetLockQuery(BrowserLocked locked) { g_locked = locked; }
-static bool is_locked(bool typeface, const char *hash) { return !g_locked || g_locked(typeface, hash); }
+/* the state mark of an unlocked font or typeface (an open padlock at the right end of r); nothing while it is locked */
+static float unlock_mark(float xr, float y, bool typeface, const char *hash)
+{
+    if (!g_locked || !hash[0] || g_locked(typeface, hash)) return 0;
+    Th_Icon(TH_IC_UNLOCK, (Rectangle){ xr - 18, y, 18, 18 }, TH_ACCENT);
+    return 22;
+}
 
 struct Browser {
     Store *store; Insight *insight;
@@ -74,8 +79,8 @@ struct Browser {
 
     /* view state */
     int tab, zoom, cols, sortKey; bool sortDesc, mono, italic;
-    int sideTab;                   /* side panel: SIDE_VIEW, SIDE_SIMILAR, SIDE_TYPEFACE (shown as View | Typeface | Similar) */
-    bool tfTabShown;               /* the Typeface tab was drawn this frame */
+    int sideTab;                   /* side panel: SIDE_* (shown as View | Typeface | Font | Similar) */
+    bool tfTabShown;               /* the Typeface or Font tab was drawn this frame */
     char scHash[33]; PxtfTypeface scCont; bool scHas;   /* the typeface of the selected entry, for the Typeface tab */
     /* the Typeface view: the Typefaces tab narrowed to the variants of one typeface, drawn as large rows */
     char tfView[33];               /* its pxtf hash, "" in the lists */
@@ -92,7 +97,6 @@ struct Browser {
     char selStr[3][160];           /* chosen style / format / number of colours ("" = Any) */
     char **vals[3]; int nvals[3];  /* values present in the current tab, [0] is "Any" */
     Popup pop;
-    int ctxN, ctxVi; bool ctxHdr; char ctxLabel[5][32]; BrowserAction ctxAct[5]; bool ctxPick; BrowserChoice ctxChoice;
     BrowserAction lastAction; char lastPxfm[33], lastPxtf[33];
     float msUpd[120], msFrame[120]; int msN;   /* CPU time of Browser_UpdateDraw and whole frame time (GetFrameTime) of the last frames, in ms */
     bool mouseEaten, closeEat;
@@ -110,7 +114,6 @@ struct Browser {
     /* scrolling (anchored on the first item of the top row so that rows changing height do not make it jump) */
     int anchorItem[3]; float anchorOff[3];
     float scrollY, maxScroll; bool reveal;
-    double lastClickT; int lastClickIdx;
 
     /* sample */
     int32_t *sCps; int nS;         /* the sample, in order */
@@ -610,7 +613,7 @@ Browser *Browser_Create(Store *store, Insight *insight, char err[PX_ERR_LEN])
     b->scanT = b->lib.scanSeconds;
     b->loader = libloader_create(b->store, 0, 512);
     b->zoom = 2; b->cols = 0; b->tab = TAB_TYPEFACES; b->sortKey = SORT_NAME;
-    b->selVis = -1; b->lastClickIdx = -1; b->keepSelIdx = -1;
+    b->selVis = -1; b->keepSelIdx = -1;
     b->filter[0] = 0;
     sample_changed(b);
     scan_all(b);
@@ -701,7 +704,7 @@ void Browser_LoadSettings(Browser *b, const char *iniPath)
         while (vl && (v[vl - 1] == '\r' || v[vl - 1] == '\n')) v[--vl] = 0;
         int iv = atoi(v);
         if (!strcmp(key, "tab")) { if (iv >= 0 && iv <= 1) b->tab = iv; }
-        else if (!strcmp(key, "sidetab")) { if (iv >= 0 && iv <= 2) b->sideTab = iv; }
+        else if (!strcmp(key, "sidetab")) { if (iv >= 0 && iv <= 3) b->sideTab = iv; }
         else if (!strcmp(key, "zoom")) { if (iv >= 1 && iv <= 8) b->zoom = iv; }
         else if (!strcmp(key, "cols")) { if (iv >= 0 && iv <= 8) b->cols = iv; }
         else if (!strcmp(key, "sort")) { if (iv >= 0 && iv <= 3) b->sortKey = iv; }
@@ -833,7 +836,7 @@ int  Browser_ReadyVisible(const Browser *b) { return b->readyVisible; }
 int  Browser_VisibleCount(const Browser *b) { return b->nvis; }
 int  Browser_Tab(const Browser *b) { return b->tab; }
 bool Browser_TypefaceTabShown(const Browser *b) { return b->tfTabShown; }
-int  Browser_SideTab(const Browser *b) { return b->sideTab; }   /* 0 View, 1 Similar, 2 Typeface */
+int  Browser_SideTab(const Browser *b) { return b->sideTab; }
 int  Browser_Zoom(const Browser *b) { return b->zoom; }
 int  Browser_Columns(const Browser *b) { return b->cols; }
 const char *Browser_FilterText(const Browser *b) { return b->filter; }
@@ -921,20 +924,13 @@ static void ui_dropdown(Browser *b, Rectangle r, int which, const char *name)
 
 #define POP_VIS 10
 
-static int pop_count(const Browser *b) { return b->pop.which == 3 ? b->ctxN : b->nvals[b->pop.which]; }
+static int pop_count(const Browser *b) { return b->nvals[b->pop.which]; }
 
 static void pop_get(void *ud, int i, ThMenuItem *it)
 {
     const Browser *b = ud;
-    if (b->pop.which == 3) {   /* the context menu */
-        BrowserAction a = b->ctxAct[i];
-        it->label = b->ctxLabel[i];
-        it->name = a == BROWSER_DELETE_FONT ? "Ctx_Delete_Font" : a == BROWSER_DELETE_TYPEFACE ? "Ctx_Delete_Typeface" : a == BROWSER_OPEN ? "Ctx_Open" : "Ctx_Lock";
-        it->flags = a == BROWSER_DELETE_FONT || a == BROWSER_DELETE_TYPEFACE ? TH_MI_DANGER : 0;
-    } else {
-        it->label = b->vals[b->pop.which][i];
-        it->flags = (i == 0 ? !b->selStr[b->pop.which][0] : !strcmp(it->label, b->selStr[b->pop.which])) ? TH_MI_CUR : i == 0 ? TH_MI_DIM : 0;
-    }
+    it->label = b->vals[b->pop.which][i];
+    it->flags = (i == 0 ? !b->selStr[b->pop.which][0] : !strcmp(it->label, b->selStr[b->pop.which])) ? TH_MI_CUR : i == 0 ? TH_MI_DIM : 0;
 }
 
 static ThMenu pop_menu(Browser *b)
@@ -964,7 +960,6 @@ static void pop_draw(Browser *b)
     int i = Th_Menu(&m, &b->pop.open);
     if (i < 0) return;
     int k = b->pop.which;
-    if (k == 3) { b->ctxPick = true; b->ctxChoice.action = b->ctxAct[i]; return; }
     b->selStr[k][0] = 0;
     if (i > 0) snprintf(b->selStr[k], sizeof b->selStr[k], "%s", b->vals[k][i]);
     b->dirtyVis = true;
@@ -1094,6 +1089,31 @@ static void draw_shimmer(Rectangle r, float t, int seed)
     }
 }
 
+/* The sample of entry abs in sbox (its baseline at baseY): the font laid out and drawn, its error, or a shimmer while it loads. */
+static void entry_sample(Browser *b, int abs, Rectangle sbox, Rectangle clip, int baseY, float shimmerH, int z, Color bg, float t, int seed)
+{
+    LibEntry *e = E(b, abs);
+    Card *cd = CD(b, abs);
+    const PxFont *pf = NULL; LibFont *lf = NULL;
+    int st = card_font(b, abs, &pf, &lf);
+    if (st == ST_READY) {
+        if (cd->layLf != lf || cd->layGen != b->gen || cd->layCount != pf->count || (lf && strcmp(cd->layHash, lf->hash) != 0) || (!lf && cd->layLf) || !cd->hasLay)
+            layout_build(b, cd, pf, &e->info, lf);
+        if (cd->wantDefault != PX_NO_CODEPOINT && cd->defReq != cd->wantDefault && lf) {
+            int32_t tmp[MAX_SAMPLE + 2];
+            int nn = b->nU > MAX_SAMPLE ? MAX_SAMPLE : b->nU;
+            memcpy(tmp, b->uCps, sizeof(int32_t) * (size_t)nn);
+            tmp[nn++] = cd->wantDefault;
+            cd->defReq = cd->wantDefault;
+            libloader_request(b->loader, e->pxfm, tmp, nn);
+        }
+        draw_sample(b, cd, pf, clip, (int)sbox.x, baseY, z, bg);
+        b->readyVisible++;
+    } else if (st == ST_FAILED) Th_TextClip(e->info.err[0] ? e->info.err : "could not be read", sbox.x, sbox.y + 2, sbox.width, TH_TEXT_ERR, TH_F_SMALL);
+    else draw_shimmer(RR(sbox.x, sbox.y + 2, sbox.width, fminf(shimmerH, 4.0f + 6.0f * z)), t, seed);
+    if (lf) libloader_release(b->loader, lf);
+}
+
 static void details_string(const LibEntry *e, char *out, size_t n)
 {
     char *p = out;
@@ -1131,19 +1151,6 @@ static bool can_open(Browser *b, int vi)
     return e->fontPresent && !e->info.failed;
 }
 
-/* The padlock of a font (or, with `typeface`, of the typeface whose pxtf is `hash`; vi is the entry that names its variant); the popup menu blocks it. */
-static void lock_button(Browser *b, Rectangle r, bool typeface, const char *hash, int vi, BrowserChoice *choice, bool *chosen)
-{
-    if (b->pop.open || Th_InputBlocked()) Th_SetInputBlocked(true);
-    bool lk = is_locked(typeface, hash);
-    if (typeface) Th_Reg("tf_lock", r);   /* the typeface's own name, the label is the font lock's too */
-    if (!Th_Lock(r, lk, typeface ? (lk ? "The typeface is locked: unlock it to edit its fields" : "Lock the typeface") : lk ? "Locked: unlock it to edit it" : "Unlocked: lock it")) return;
-    sel_set(b, vi, false);
-    make_choice(b, vi, typeface ? BROWSER_LOCK_TYPEFACE : BROWSER_LOCK, choice);
-    if (typeface) snprintf(choice->pxtf, sizeof choice->pxtf, "%s", hash);
-    *chosen = true;
-}
-
 /* ------------------------------------------------------------------------------------------------ the panel */
 
 static void draw_empty_icon(float cx, float cy, Color c)
@@ -1156,7 +1163,6 @@ static void draw_empty_icon(float cx, float cy, Color c)
             if (A[r][k] == '#') DrawRectangle((int)(x0 + k * s), (int)(y0 + r * s), s - 1, s - 1, c);
 }
 
-#define SEL_H 158               /* the selection block (name, details, Open / lock) is pinned to the bottom of the panel */
 
 /* opening a box header opens the typeface (the Typeface view); a variant row or a card opens its font */
 static BrowserAction open_action(const Browser *b, bool hdr)
@@ -1196,31 +1202,29 @@ static void panel_ui(Browser *b, Rectangle P, BrowserChoice *choice, bool *chose
 {
     DrawRectangle((int)P.x, (int)P.y, (int)P.width, (int)P.height, TH_PANEL);
     Th_VLine(P.x, P.y, P.y + P.height, TH_LINE);
-    /* the tab control: View | Similar (Similar needs a card of the Fonts or Typefaces tab) */
-    bool hasTfTab = b->tab == TAB_TYPEFACES;      /* the Typefaces and Typeface views: View | Typeface | Similar; the Fonts view: View | Similar */
-    int side = b->sideTab == SIDE_TYPEFACE && !hasTfTab ? SIDE_VIEW : b->sideTab;
+    /* the tabs: View | Typeface | Font | Similar in the Typefaces and Typeface views, View | Font | Similar in the Fonts view */
+    bool hasTfTab = b->tab == TAB_TYPEFACES;
+    int side = b->sideTab == SIDE_TYPEFACE && !hasTfTab ? SIDE_FONT : b->sideTab;
     {
-        static const char *labels3[3] = { "View", "Typeface", "Similar" }, *labels2[2] = { "View", "Similar" };
-        static const int ids3[3] = { SIDE_VIEW, SIDE_TYPEFACE, SIDE_SIMILAR }, ids2[2] = { SIDE_VIEW, SIDE_SIMILAR };
-        const int *ids = hasTfTab ? ids3 : ids2;
-        int nt = hasTfTab ? 3 : 2, cur = 0;
+        static const char *labels[4] = { "View", "Typeface", "Font", "Similar" }, *labels3[3] = { "View", "Font", "Similar" };
+        static const int ids4[4] = { SIDE_VIEW, SIDE_TYPEFACE, SIDE_FONT, SIDE_SIMILAR }, ids3[3] = { SIDE_VIEW, SIDE_FONT, SIDE_SIMILAR };
+        const int *ids = hasTfTab ? ids4 : ids3;
+        int nt = hasTfTab ? 4 : 3, cur = 0;
         for (int i = 0; i < nt; i++) if (ids[i] == side) cur = i;
         bool prevB0 = Th_InputBlocked();
         if (b->pop.open) Th_SetInputBlocked(true);
-        int c = Th_Segmented(RR(P.x + PAD - 8, P.y + 8, P.width - 2 * PAD + 16, TH_ROW_H), &(ThSeg){ hasTfTab ? labels3 : labels2, nt, cur, 0u, "bside" });
+        int c = Th_Segmented(RR(P.x + PAD - 8, P.y + 8, P.width - 2 * PAD + 16, TH_ROW_H), &(ThSeg){ hasTfTab ? labels : labels3, nt, cur, 0u, "bside" });
         Th_SetInputBlocked(prevB0);
         if (c >= 0 && ids[c] != side) { b->sideTab = ids[c]; side = ids[c]; b->panelScroll = 0; }
         Th_HLine(P.x + 1, P.x + P.width, P.y + 43, TH_LINE);
     }
-    Rectangle SR = RR(P.x, P.y + 44, P.width, P.height - SEL_H - 44);      /* the scrolling part */
+    Rectangle SR = RR(P.x, P.y + 44, P.width, P.height - 44);      /* the scrolling part */
     float x = P.x + PAD, w = P.width - 2 * PAD;
     float top0 = SR.y + 12 - b->panelScroll;
     float y = top0;
 
-    /* mouse over the pinned block (or outside the panel): the scrolled widgets must not react */
     bool prevBlocked = Th_InputBlocked(), prevMouseB = Th_MouseOnly(), prevEaten = b->mouseEaten;
-    bool overScroll = pt_in(SR, GetMousePosition());
-    if (!overScroll) { Th_SetMouseBlocked(true); b->mouseEaten = true; }   /* the mouse only: a focused field keeps its keys */
+    if (!pt_in(SR, GetMousePosition())) { Th_SetMouseBlocked(true); b->mouseEaten = true; }   /* the mouse only: a focused field keeps its keys */
     if (b->pop.open) Th_SetInputBlocked(true);
     BeginScissorMode((int)SR.x + 1, (int)SR.y, (int)SR.width - 1, (int)SR.height);
 
@@ -1230,18 +1234,16 @@ static void panel_ui(Browser *b, Rectangle P, BrowserChoice *choice, bool *chose
         if (b->tfView[0]) snprintf(ct, sizeof ct, "%d font%s", b->nvis, b->nvis == 1 ? "" : "s");
         else snprintf(ct, sizeof ct, b->tab == TAB_TYPEFACES ? "%d of %d variants" : "%d of %d", b->nvis, tab_count_of(b, b->tab));
         float rw = Th_ButtonW("Rescan"), hy = y;
-        Th_Section("LIBRARY", x, &y, w - rw - TH_GAP, 0, ct);
+        Th_Section("LIBRARY", x, &y, w - rw - TH_GAP, ct);
         if (Th_Button(RR(x + w - rw, hy - 2, rw, TH_ROW_H), "Rescan", 0, NULL)) b->wantRescan = true;
         y += TH_GAP;
     }
 
     if (!b->tfView[0]) {
     /* ---- filter */
-    Th_Section("FILTER", x, &y, w, 0, NULL);
-    {
+    if (Th_Section("FILTER", x, &y, w, NULL)) {
         if (Th_TextField(RR(x, y, w, TH_ROW_H), "Filter", b->filter, (int)sizeof b->filter, TH_TF_SEARCH, "Filter by name\xE2\x80\xA6") & TH_TF_CHANGED) Browser_SetFilter(b, Th_TextValue());
         y += TH_ROW_H + TH_GAP;
-    }
     ui_dropdown(b, Th_Row(x, &y, w, "Style", NULL, 0), 0, "Style_Dropdown");
     ui_dropdown(b, Th_Row(x, &y, w, "Format", NULL, 0), 1, "Format_Dropdown");
     ui_dropdown(b, Th_Row(x, &y, w, "Colours", NULL, 0), 2, "Colours_Dropdown");
@@ -1250,9 +1252,10 @@ static void panel_ui(Browser *b, Rectangle P, BrowserChoice *choice, bool *chose
     if (Th_Switch(RR(x, y, w, TH_ROW_H), "Italic only", &b->italic, 0, "Italic_only")) b->dirtyVis = true;
     y += TH_ROW_H + TH_GAP;
     }
+    }
 
     /* ---- sample */
-    Th_Section("SAMPLE", x, &y, w, 0, NULL);
+    if (Th_Section("SAMPLE", x, &y, w, NULL)) {
     {
         float eh = SampleEdit_Height(6);
         if (eh < 30) eh = 30;
@@ -1277,10 +1280,10 @@ static void panel_ui(Browser *b, Rectangle P, BrowserChoice *choice, bool *chose
         }
         y += 3 * (TH_ROW_H + 4) + TH_GAP;
     }
+    }
 
     /* ---- view */
-    Th_Section("VIEW", x, &y, w, 0, NULL);
-    {
+    if (Th_Section("VIEW", x, &y, w, NULL)) {
         char zt[8];
         int c;
         snprintf(zt, sizeof zt, "%dx", b->zoom);
@@ -1312,27 +1315,23 @@ static void panel_ui(Browser *b, Rectangle P, BrowserChoice *choice, bool *chose
 
     }
 
-    /* ---- similar fonts / typefaces of the selected card (the shared Insight; it queries on a worker thread) */
-    b->tfTabShown = side == SIDE_TYPEFACE;
-
-    if (side == SIDE_TYPEFACE) {
+    /* ---- the Typeface and Font tabs: drawn by the application (fields, lock, commands) */
+    b->tfTabShown = side == SIDE_TYPEFACE || side == SIDE_FONT;
+    if (b->tfTabShown) {
+        bool haveSel = b->selVis >= 0 && b->selVis < b->nvis;
+        bool hdr = haveSel && b->tab == TAB_TYPEFACES && b->selHdr;
         int var = 0;
-        const PxtfTypeface *tc = sel_typeface(b, &var);
-        if (tc && g_tfTab) {
-            {   /* the lock of the typeface: its fields are editable while it is unlocked */
-                bool lk = is_locked(true, b->scHash);
-                lock_button(b, RR(x, y, TH_ROW_H, TH_ROW_H), true, b->scHash, b->selVis, choice, chosen);
-                Th_Text(lk ? "Locked" : "Unlocked: edits change the typeface in place", x + TH_ROW_H + TH_GAP, y + 3, lk ? TH_TEXT_WARN : TH_TEXT);
-                y += TH_ROW_H + TH_GAP;
-            }
-            g_tfTab(P.x, P.width, &y, tc, b->scHash, var);
-        }
-        else {
-            const char *msg = b->selVis >= 0 && b->selVis < b->nvis ? "This font belongs to no typeface" : "Select a typeface to see its fields";
+        const PxtfTypeface *tc = haveSel ? sel_typeface(b, &var) : NULL;
+        const LibEntry *e = haveSel ? E(b, b->vis[b->selVis]) : NULL;
+        const char *msg = !haveSel ? (side == SIDE_TYPEFACE ? "Select a typeface to see its fields" : "Select a font to see its fields")
+                        : side == SIDE_TYPEFACE && !tc ? "This font belongs to no typeface"
+                        : side == SIDE_FONT && hdr ? "Select a font of the typeface" : NULL;
+        if (msg) {
             Vector2 m = Th_Measure(msg);
             Th_Text(msg, x + floorf((w - m.x) / 2), SR.y + floorf(SR.height / 2) - 24, TH_TEXT_DIM);
-        }
+        } else if (g_infoTab) g_infoTab(side == SIDE_TYPEFACE, P.x, P.width, &y, tc, tc ? b->scHash : "", var, e->pxfm);
     }
+    /* ---- similar fonts / typefaces of the selected card (the shared Insight; it queries on a worker thread) */
     if (side == SIDE_SIMILAR) {
         bool tf = b->tab == TAB_TYPEFACES;
         bool haveSel = b->selVis >= 0 && b->selVis < b->nvis;
@@ -1370,55 +1369,6 @@ static void panel_ui(Browser *b, Rectangle P, BrowserChoice *choice, bool *chose
     b->mouseEaten = prevEaten;
 
     Th_ScrollBar(SR, &b->panelScroll, b->panelContentH, 56, !b->pop.open);
-
-    /* ---- selection, pinned at the bottom */
-    float by = P.y + P.height - SEL_H;
-    DrawRectangle((int)P.x + 1, (int)by, (int)P.width - 1, SEL_H, TH_PANEL);
-    Th_HLine(P.x + PAD, P.x + P.width - PAD, by, TH_LINE_SOFT);
-    by += 12;
-    if (b->selVis >= 0 && b->selVis < b->nvis) {
-        LibEntry *e = E(b, b->vis[b->selVis]);
-        char fam[300], sty[300], det[300];
-        bool ho;
-        entry_names(e, fam, sizeof fam, sty, sizeof sty, &ho);
-        bool hdrSel = b->tab == TAB_TYPEFACES && b->selHdr;
-        if (hdrSel) sty[0] = 0;
-        if (sty[0]) { strncat(fam, "  ", sizeof fam - strlen(fam) - 1); strncat(fam, sty, sizeof fam - strlen(fam) - 1); }
-        if (ho) Th_HashShort(hdrSel && e->pxtf[0] ? "Typeface" : "Font", hdrSel && e->pxtf[0] ? e->pxtf : e->pxfm, x, by, 0, NULL); else Th_TextClip(fam, x, by, w, TH_TEXT, TH_F_BODY);
-        by += 22;
-        if (hdrSel) {
-            int nv = b->box[b->boxOf[b->selVis]].n;
-            snprintf(det, sizeof det, "Typeface  \xC2\xB7  %d variant%s", nv, nv == 1 ? "" : "s");
-        } else details_string(e, det, sizeof det);
-        Th_TextClip(det, x, by, w, TH_TEXT_DIM, TH_F_SMALL);
-        by += 20;
-        if (ho) {}
-        else if (hdrSel && e->pxtf[0]) Th_HashShort("Typeface", e->pxtf, x, by, 0, NULL);
-        else if (e->pxfm[0]) Th_HashShort("Font", e->pxfm, x, by, 0, NULL);
-        by += 24;
-        bool ok = can_open(b, b->selVis);
-        float ow = Th_ButtonW("Open");
-        if (Th_Button(RR(x, by, ow, TH_ROW_H), "Open", TH_BTN_OFF(ok), NULL)) {
-            make_choice(b, b->selVis, open_action(b, hdrSel), choice);
-            *chosen = true;
-        }
-        lock_button(b, RR(x + ow + TH_GAP, by, TH_ROW_H, TH_ROW_H), hdrSel, hdrSel ? e->pxtf : e->pxfm, b->selVis, choice, chosen);   /* of the typeface when its header is selected */
-        /* the deletions, in red under the open commands (also Del and the context menu); main.c asks for the confirmation */
-        {
-            float dy = by + TH_ROW_H + TH_GAP;
-            if (b->tab == TAB_TYPEFACES && hdrSel) {
-                if (Th_ButtonDanger(RR(x, dy, w, TH_ROW_H), "Delete Typeface")) { make_choice(b, b->selVis, BROWSER_DELETE_TYPEFACE, choice); *chosen = true; }
-            } else if (b->tab == TAB_TYPEFACES) {
-                float hw = (w - 8) / 2;
-                if (Th_ButtonDanger(RR(x, dy, hw, TH_ROW_H), "Delete Font")) { make_choice(b, b->selVis, BROWSER_DELETE_FONT, choice); *chosen = true; }
-                if (Th_ButtonDanger(RR(x + hw + TH_GAP, dy, hw, TH_ROW_H), "Delete Typeface")) { make_choice(b, b->selVis, BROWSER_DELETE_TYPEFACE, choice); *chosen = true; }
-            } else {
-                if (Th_ButtonDanger(RR(x, dy, w, TH_ROW_H), "Delete Font")) { make_choice(b, b->selVis, BROWSER_DELETE_FONT, choice); *chosen = true; }
-            }
-        }
-    } else {
-        Th_TextSmall(b->nvis ? "Select a font to open or unlock it." : "Nothing selected.", x, by + 4, TH_TEXT_DIM);
-    }
 }
 
 /* ------------------------------------------------------------------------------------------------ the grid */
@@ -1453,29 +1403,6 @@ static void sample_extent(const Browser *b, const LibEntry *e, int *ab, int *bt)
     *bt = (b->nLines - 1) * (ua + ub + 1) + ub;
     if (*ab + *bt < 8) *ab += 8 - (*ab + *bt);
 }
-
-static void ctx_open(Browser *b, int vi, bool hdr)
-{
-    if (hdr && b->tab == TAB_TYPEFACES) sel_header(b, b->boxOf[vi], false); else sel_set(b, vi, false);
-    b->ctxN = 0; b->ctxVi = vi; b->ctxHdr = hdr;
-    #define ITEM(lbl, act) do { snprintf(b->ctxLabel[b->ctxN], sizeof b->ctxLabel[0], "%s", lbl); b->ctxAct[b->ctxN++] = (act); } while (0)
-    ITEM("Open", open_action(b, hdr));
-    {
-        const LibEntry *ce = E(b, b->vis[vi]);
-        ITEM(is_locked(hdr, hdr ? ce->pxtf : ce->pxfm) ? "Unlock" : "Lock", hdr ? BROWSER_LOCK_TYPEFACE : BROWSER_LOCK);
-    }
-    if (b->tab == TAB_TYPEFACES) {
-        if (!hdr) ITEM("Delete Font\xE2\x80\xA6", BROWSER_DELETE_FONT);
-        ITEM("Delete Typeface\xE2\x80\xA6", BROWSER_DELETE_TYPEFACE);
-    } else ITEM("Delete Font\xE2\x80\xA6", BROWSER_DELETE_FONT);
-    #undef ITEM
-    Vector2 m = GetMousePosition();
-    b->pop.open = true; b->pop.which = 3; b->pop.scroll = 0;
-    b->pop.anchor = RR(m.x, m.y - 4, 210, 0);
-    b->mouseEaten = true;
-}
-
-
 
 /* Del on the selection: the font, or the typeface when its header is selected */
 static bool key_delete(Browser *b, BrowserChoice *choice)
@@ -1535,7 +1462,8 @@ static void draw_boxes(Browser *b, const TfCtx *c)
                 float tx = cx + 14, tw = c->cardW - 28;
                 Th_FitText(fam, ho ? 2 : 3, tw - hw, buf, sizeof buf);
                 if (ho) Th_HashShort("Typeface", e0->pxtf[0] ? e0->pxtf : e0->pxfm, tx, cy + 12, 0, NULL); else Th_TextHead(buf, tx, cy + 6, TH_TEXT);
-                if (e0->pxtf[0] && !ho) Th_HashShort("Typeface", e0->pxtf, tx + tw, cy + 12, TH_HASH_RIGHT, NULL);
+                float mk = unlock_mark(tx + tw, cy + 12, true, e0->pxtf);
+                if (e0->pxtf[0] && !ho) Th_HashShort("Typeface", e0->pxtf, tx + tw - mk, cy + 12, TH_HASH_RIGHT, NULL);
                 char det[160];
                 snprintf(det, sizeof det, "%s%s%d variant%s", e0->format[0] ? e0->format : "", e0->format[0] ? "  \xC2\xB7  " : "", bx->n, bx->n == 1 ? "" : "s");
                 Th_TextSmall(det, tx, cy + 36, TH_TEXT_DIM);
@@ -1559,39 +1487,16 @@ static void draw_boxes(Browser *b, const TfCtx *c)
                 Th_FitText(st, 0, tw * 0.55f, nm, sizeof nm);
                 Th_Text(nm, tx, ry + 6, TH_TEXT);
                 variant_details(e, det, sizeof det);
-                bool btn = sel || hvR;
-                float bbw = TH_ROW_H;
                 Th_FitText(det, 1, tw, clipd, sizeof clipd);
                 Th_TextSmall(clipd, tx, ry + 32, e->info.failed ? TH_TEXT_ERR : TH_TEXT_DIM);
-                if (!btn && e->pxfm[0]) Th_HashShort("Font", e->pxfm, tx + tw, ry + 9, TH_HASH_RIGHT, NULL);
+                float mk = unlock_mark(tx + tw, ry + 9, false, e->pxfm);
+                if (e->pxfm[0]) Th_HashShort("Font", e->pxfm, tx + tw - mk, ry + 9, TH_HASH_RIGHT, NULL);
                 /* the sample */
                 int ab, bt;
                 sample_extent(b, e, &ab, &bt);
                 Rectangle sbox = RR(tx, ry + V_TOP, tw, rh - V_TOP - V_BOT);
                 Rectangle clip = RR(tx, ry + V_TOP - 2, tw, rh - V_TOP - V_BOT + 4);
-                const PxFont *pf = NULL; LibFont *lf = NULL;
-                int stt = card_font(b, abs, &pf, &lf);
-                if (stt == ST_READY) {
-                    if (cd->layLf != lf || cd->layGen != b->gen || cd->layCount != pf->count || (lf && strcmp(cd->layHash, lf->hash) != 0) || (!lf && cd->layLf) || !cd->hasLay)
-                        layout_build(b, cd, pf, &e->info, lf);
-                    if (cd->wantDefault != PX_NO_CODEPOINT && cd->defReq != cd->wantDefault && lf) {
-                        int32_t tmp[MAX_SAMPLE + 2];
-                        int nn = b->nU > MAX_SAMPLE ? MAX_SAMPLE : b->nU;
-                        memcpy(tmp, b->uCps, sizeof(int32_t) * (size_t)nn);
-                        tmp[nn++] = cd->wantDefault;
-                        cd->defReq = cd->wantDefault;
-                        libloader_request(b->loader, e->pxfm, tmp, nn);
-                    }
-                    draw_sample(b, cd, pf, clip, (int)sbox.x, (int)(ry + V_TOP + ab * z), z, bg);
-                    b->readyVisible++;
-                } else if (stt == ST_FAILED) {
-                    Th_TextClip(e->info.err[0] ? e->info.err : "could not be read", sbox.x, sbox.y + 2, sbox.width, TH_TEXT_ERR, TH_F_SMALL);
-                } else draw_shimmer(RR(sbox.x, sbox.y + 2, sbox.width, fminf(sbox.height, 4.0f + 6.0f * z)), c->t, vi);
-                if (lf) libloader_release(b->loader, lf);
-                if (btn) {
-                    Rectangle bb = RR(cx + c->cardW - 8 - bbw, ry + 2, bbw, TH_ROW_H);
-                    lock_button(b, bb, false, E(b, b->vis[vi])->pxfm, vi, c->choice, c->chosen);
-                }
+                entry_sample(b, abs, sbox, clip, (int)(ry + V_TOP + ab * z), sbox.height, z, bg, c->t, vi);
             }
         }
     }
@@ -1801,38 +1706,16 @@ static void grid_ui(Browser *b, Rectangle G, BrowserChoice *choice, bool *chosen
         }
     }
     bool hit = tf ? hoverBox >= 0 : hoverIdx >= 0;
-    /* the lock button of the hovered card (or variant row) eats clicks over it */
-    bool overBtn = false;
-    if (!tf && hoverIdx >= 0) {
-        int r = hoverIdx / cols, k = hoverIdx % cols;
-        Rectangle br = RR(innerX + k * (cardW + GAP) + cardW - 8 - 118, G.y + PAD + b->rowTop[r] - b->scrollY + 8, 118, 24);
-        overBtn = pt_in(br, mp);
-    } else if (tf && hoverVi >= 0) {
-        int k = b->boxOf[hoverVi] % cols;
-        Rectangle br = RR(innerX + k * (cardW + GAP) + cardW - 8 - 118, G.y + PAD + b->vTop[hoverVi] - b->scrollY + 5, 118, 22);
-        overBtn = pt_in(br, mp);
-    }
-    if (hit && !overBtn && !b->pop.open && !Th_InputBlocked() && IsMouseButtonPressed(MOUSE_BUTTON_LEFT) && !b->mouseEaten) {
-        int code, openVi;
-        if (tf && hoverHdr) { sel_header(b, hoverBox, false); code = -2 - hoverBox; openVi = b->box[hoverBox].v0; }
-        else if (tf && hoverVi >= 0) { sel_set(b, hoverVi, false); code = hoverVi; openVi = hoverVi; }
-        else if (tf) { code = -1; openVi = -1; }                  /* the padding of a box */
-        else { sel_set(b, hoverIdx, false); code = hoverIdx; openVi = hoverIdx; }
+    /* a press selects; a press on the entry that is selected already opens it */
+    if (hit && !b->pop.open && !Th_InputBlocked() && IsMouseButtonPressed(MOUSE_BUTTON_LEFT) && !b->mouseEaten) {
+        int openVi = -1;
+        bool was = false;
+        if (tf && hoverHdr) { was = b->selHdr && b->selVis >= 0 && b->boxOf[b->selVis] == hoverBox; sel_header(b, hoverBox, false); openVi = b->box[hoverBox].v0; }
+        else if (tf && hoverVi >= 0) { was = !b->selHdr && b->selVis == hoverVi; sel_set(b, hoverVi, false); openVi = hoverVi; }
+        else if (!tf) { was = b->selVis == hoverIdx; sel_set(b, hoverIdx, false); openVi = hoverIdx; }
         Th_TextBlur();
-        double t = GetTime();
-        if (code != -1 && b->lastClickIdx == code && t - b->lastClickT < 0.4) {
-            if (openVi >= 0 && can_open(b, openVi)) {
-                make_choice(b, openVi, open_action(b, tf && hoverHdr), choice);
-                *chosen = true;
-            }
-            b->lastClickIdx = -1;
-        } else { b->lastClickIdx = code; b->lastClickT = t; }
+        if (was && openVi >= 0 && can_open(b, openVi)) { make_choice(b, openVi, open_action(b, tf && hoverHdr), choice); *chosen = true; }
     } else if (IsMouseButtonPressed(MOUSE_BUTTON_LEFT) && mouseInGrid && !hit) Th_TextBlur();
-    if (hit && !overBtn && !b->pop.open && !Th_InputBlocked() && IsMouseButtonPressed(MOUSE_BUTTON_RIGHT) && !b->mouseEaten) {
-        if (!tf) ctx_open(b, hoverIdx, false);
-        else if (hoverHdr) ctx_open(b, b->box[hoverBox].v0, true);
-        else if (hoverVi >= 0) ctx_open(b, hoverVi, false);
-    }
 
     /* wanted list and requests (visible entries, most urgent first) */
     b->frame++;
@@ -1915,34 +1798,9 @@ static void grid_ui(Browser *b, Rectangle G, BrowserChoice *choice, bool *chosen
             Rectangle sbox = RR(cx + 14, cy + SAMPLE_TOP, cardW - 28, rowSampleH);
             Rectangle clip = RR(cx + 2, cy + 53, cardW - 4, b->rowH[r] - 53 - 2);
             clip.x = sbox.x; clip.width = sbox.width;
-            const PxFont *pf = NULL; LibFont *lf = NULL;
-            int st = card_font(b, abs, &pf, &lf);
-            if (st == ST_READY) {
-                if (c->layLf != lf || c->layGen != b->gen || c->layCount != pf->count || (lf && strcmp(c->layHash, lf->hash) != 0) || (!lf && c->layLf) || !c->hasLay)
-                    layout_build(b, c, pf, &e->info, lf);
-                if (c->wantDefault != PX_NO_CODEPOINT && c->defReq != c->wantDefault && lf) {
-                    int32_t tmp[MAX_SAMPLE + 2];
-                    int nn = b->nU > MAX_SAMPLE ? MAX_SAMPLE : b->nU;
-                    memcpy(tmp, b->uCps, sizeof(int32_t) * (size_t)nn);
-                    tmp[nn++] = c->wantDefault;
-                    c->defReq = c->wantDefault;
-                    libloader_request(b->loader, e->pxfm, tmp, nn);
-                }
-                draw_sample(b, c, pf, clip, (int)sbox.x, (int)(cy + baseOff), z, bg);
-                b->readyVisible++;
-            } else if (st == ST_FAILED) {
-                const char *msg = e->info.err[0] ? e->info.err : "could not be read";
-                Th_TextClip(msg, sbox.x, sbox.y + 2, sbox.width, TH_TEXT_ERR, TH_F_SMALL);
-            } else {
-                draw_shimmer(RR(sbox.x, sbox.y + 2, sbox.width, fminf(rowSampleH, 4.0f + 6.0f * z)), t, vi);
-            }
-            if (lf) libloader_release(b->loader, lf);
+            entry_sample(b, abs, sbox, clip, (int)(cy + baseOff), rowSampleH, z, bg, t, vi);
 
-            /* hover / selected: the lock */
-            if (sel || hv) {
-                Rectangle br = RR(cx + cardW - 8 - TH_ROW_H, cy + 6, TH_ROW_H, TH_ROW_H);
-                lock_button(b, br, false, E(b, b->vis[vi])->pxfm, vi, choice, chosen);
-            }
+            unlock_mark(cx + cardW - 8, cy + 9, false, e->pxfm);
             }
         }
     }
@@ -2091,9 +1949,7 @@ static void tview_ui(Browser *b, Rectangle G, BrowserChoice *choice, bool *chose
         const char *fmt = b->tfHas && b->tfCont.count && b->tfCont.v[0].format ? b->tfCont.v[0].format : "";
         snprintf(sub, sizeof sub, "%d font%s%s%s", n, n == 1 ? "" : "s", fmt[0] ? "  \xC2\xB7  " : "", fmt);
         Th_TextSmall(sub, innerX + 2, hy + 34, TH_TEXT_DIM);
-        if (n > 0) {   /* the typeface's lock (the Typeface tab has the same button); its fields are editable while it is unlocked */
-            lock_button(b, RR(innerX + w - TH_ROW_H - 2, hy + 28, TH_ROW_H, TH_ROW_H), true, b->tfView, b->selVis >= 0 ? b->selVis : 0, choice, chosen);
-        }
+        unlock_mark(innerX + w - 2, hy + 34, true, b->tfView);
     }
     for (int vi = 0; vi < n; vi++) {
         int abs = b->vis[vi];
@@ -2108,38 +1964,7 @@ static void tview_ui(Browser *b, Rectangle G, BrowserChoice *choice, bool *chose
         bool sel = vi == b->selVis, hv = vi == hoverVi;
         Color bg = Th_Card(RR(innerX, ry, w, rh), (sel ? TH_LR_SELECTED : 0) | (hv ? TH_LR_HOVER : 0));
         float tx = innerX + 16, tw = w - 32;
-        /* the commands of this font */
-        float bx = innerX + w - 12;
-        bool over = false;
-        {
-            const char *lab[2] = { "Delete Font", "Open" };
-            if (b->pop.open || Th_InputBlocked()) Th_SetInputBlocked(true);
-            {   /* the lock of the font */
-                bx -= TH_ROW_H;
-                Rectangle lr = RR(bx, ry + 8, TH_ROW_H, TH_ROW_H);
-                lock_button(b, lr, false, e->pxfm, vi, choice, chosen);
-                if (pt_in(lr, mp)) over = true;
-                bx -= TH_GAP;
-            }
-            for (int k = 0; k < 2; k++) {
-                float bwk = Th_ButtonW(lab[k]);
-                bx -= bwk;
-                Rectangle br = RR(bx, ry + 8, bwk, TH_ROW_H);
-                bool dang = k == 0;
-                bool hit = Th_Button(br, lab[k], dang ? TH_BTN_DANGER : 0, NULL);
-                char rn[32];
-                snprintf(rn, sizeof rn, "tv.%s.%d", k == 0 ? "delete" : "open", vi);
-                Th_Reg(rn, br);
-                if (pt_in(br, mp)) over = true;
-                if (hit) {
-                    sel_set(b, vi, false);
-                    if (dang) { make_choice(b, vi, BROWSER_DELETE_FONT, choice); *chosen = true; }
-                    else if (can_open(b, vi)) { make_choice(b, vi, BROWSER_OPEN, choice); *chosen = true; }
-                }
-                bx -= TH_GAP;
-            }
-            Th_SetInputBlocked(b->modalBlocked || b->pop.open);
-        }
+        float bx = innerX + w - 12 - unlock_mark(innerX + w - 12, ry + 11, false, e->pxfm);
         char nm[200], det[260], clipd[260];
         const char *st = e->style[0] ? e->style : (e->fullname[0] ? e->fullname : "Regular");
         Th_FitText(st, 0, bx - tx, nm, sizeof nm);
@@ -2155,37 +1980,13 @@ static void tview_ui(Browser *b, Rectangle G, BrowserChoice *choice, bool *chose
         sample_extent(b, e, &ab, &bt);
         Rectangle sbox = RR(tx, ry + TV_TOP, tw, rh - TV_TOP - TV_BOT);
         Rectangle clip = RR(tx, ry + TV_TOP - 2, tw, rh - TV_TOP - TV_BOT + 4);
-        const PxFont *pf = NULL; LibFont *lf = NULL;
-        int stt = card_font(b, abs, &pf, &lf);
-        if (stt == ST_READY) {
-            if (cd->layLf != lf || cd->layGen != b->gen || cd->layCount != pf->count || (lf && strcmp(cd->layHash, lf->hash) != 0) || (!lf && cd->layLf) || !cd->hasLay)
-                layout_build(b, cd, pf, &e->info, lf);
-            if (cd->wantDefault != PX_NO_CODEPOINT && cd->defReq != cd->wantDefault && lf) {
-                int32_t tmp[MAX_SAMPLE + 2];
-                int nn = b->nU > MAX_SAMPLE ? MAX_SAMPLE : b->nU;
-                memcpy(tmp, b->uCps, sizeof(int32_t) * (size_t)nn);
-                tmp[nn++] = cd->wantDefault;
-                cd->defReq = cd->wantDefault;
-                libloader_request(b->loader, e->pxfm, tmp, nn);
-            }
-            draw_sample(b, cd, pf, clip, (int)sbox.x, (int)(ry + TV_TOP + ab * z), z, bg);
-            b->readyVisible++;
-        } else if (stt == ST_FAILED) {
-            Th_TextClip(e->info.err[0] ? e->info.err : "could not be read", sbox.x, sbox.y + 2, sbox.width, TH_TEXT_ERR, TH_F_SMALL);
-        } else draw_shimmer(RR(sbox.x, sbox.y + 2, sbox.width, fminf(sbox.height, 4.0f + 6.0f * z)), t, vi);
-        if (lf) libloader_release(b->loader, lf);
-        /* click and double click on the row (not on its buttons) */
-        if (hv && !over && !b->pop.open && !Th_InputBlocked() && !b->mouseEaten) {
-            if (IsMouseButtonPressed(MOUSE_BUTTON_LEFT)) {
-                sel_set(b, vi, false);
-                Th_TextBlur();
-                double tt = GetTime();
-                if (b->lastClickIdx == vi && tt - b->lastClickT < 0.4) {
-                    if (can_open(b, vi)) { make_choice(b, vi, BROWSER_OPEN, choice); *chosen = true; }
-                    b->lastClickIdx = -1;
-                } else { b->lastClickIdx = vi; b->lastClickT = tt; }
-            }
-            if (IsMouseButtonPressed(MOUSE_BUTTON_RIGHT)) ctx_open(b, vi, false);
+        entry_sample(b, abs, sbox, clip, (int)(ry + TV_TOP + ab * z), sbox.height, z, bg, t, vi);
+        /* a press selects the row; a press on the selected row opens its font */
+        if (hv && !b->pop.open && !Th_InputBlocked() && !b->mouseEaten && IsMouseButtonPressed(MOUSE_BUTTON_LEFT)) {
+            bool was = vi == b->selVis;
+            sel_set(b, vi, false);
+            Th_TextBlur();
+            if (was && can_open(b, vi)) { make_choice(b, vi, BROWSER_OPEN, choice); *chosen = true; }
         }
     }
     EndScissorMode();
@@ -2262,12 +2063,6 @@ bool Browser_UpdateDraw(Browser *b, Rectangle area, BrowserChoice *choice)
 
     pop_draw(b);
     Th_SetInputBlocked(prevBlocked);
-    if (b->ctxPick && !chosen) {         /* an item of the context menu */
-        b->ctxPick = false;
-        BrowserAction act = b->ctxChoice.action;
-        if (b->ctxVi >= 0 && b->ctxVi < b->nvis) { make_choice(b, b->ctxVi, act, choice); chosen = true; }
-    }
-    b->ctxPick = false;
     if (chosen && choice->action == BROWSER_OPEN_TYPEFACE) {   /* opened a box header: switch to the Typeface view (after the frame's drawing) */
         b->lastAction = choice->action;
         snprintf(b->lastPxfm, sizeof b->lastPxfm, "%s", choice->pxfm);

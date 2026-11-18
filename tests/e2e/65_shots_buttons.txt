@@ -17,7 +17,8 @@ shot tests/tmp/p2/c2/typeface.png
 click @bside_Typeface
 wait 20
 shot tests/tmp/p2/c2/typeface_tab.png
-click @tv.open.0
+bselect 0
+click @card:0
 wait 60
 shot tests/tmp/p2/c2/font.png
 click @cell:U+0041
@@ -73,7 +74,7 @@ shot tests/tmp/p2/c2/glyph_addlayer.png
 click @Add
 wait 10
 shot tests/tmp/p2/c2/glyph_layer_added.png
-click @gtab_Usage
+click @gtab_Glyph
 wait 60
 shot tests/tmp/p2/c2/glyph_usage.png
 click @gtab_Glyph

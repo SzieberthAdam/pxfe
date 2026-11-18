@@ -1,5 +1,5 @@
-# 12. The typeface lock: the typeface is edited in the Typeface view of the library.  Unlocking it makes its fields editable; only the typeface
-# changes (the italic flag, the family), so the typeface is rewritten in place under a new hash (no new pxfm, the same number of pxtf).
+# 12. The typeface lock: the typeface is edited in the Typeface view of the library.  Unlocking it makes its fields editable (the italic flag
+# is the font's, under the font lock in the Font tab); only the typeface changes (the italic flag, the family), so the typeface is rewritten in place under a new hash (no new pxfm, the same number of pxtf).
 wait 5
 assert hascont 1
 assert readonly 1
@@ -27,6 +27,13 @@ assert modified 0
 assert unsaved 1
 assert c.italic 0
 snapdir tests/tmp/e2elib
+# the italic switch is a field of the font (its variant): the Font tab, under the font's own lock
+click @bside_Font
+wait 3
+click @Unlock
+wait 8
+assert readonly 0
+assert unsaved 1
 sleep 500
 wheel -8 1250 400
 wait 12

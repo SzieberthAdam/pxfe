@@ -49,6 +49,8 @@ void     Insight_SetVisible(Insight *in, Rectangle visible);
 /* Insight_SetPreferredCode: for a single glyph, clicking a usage row (and BestUsage) selects this code when the font has the
  *   glyph under it (the finder passes its code point), else the first code the font uses the glyph for.  -1 (default): none. */
 void     Insight_SetPreferredCode(Insight *in, int32_t code);
+/* Insight_SetPalette: the usage thumbnail of a single glyph is drawn in the colours of glyph gi of f (NULL: in the text colour). */
+void     Insight_SetPalette(Insight *in, const PxFont *f, int gi);
 bool     Insight_BestUsage(Insight *in, const char *glyphHash, InsightTarget *target);
 
 /* Test hooks for scripted input: state of the last finished queries. */

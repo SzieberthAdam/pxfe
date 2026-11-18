@@ -60,6 +60,7 @@ struct Layers;
 struct Layers *Editor_Layers(Editor *e);
 /* The metric lines are on (the "Metrics" toggle of the glyph view's bar). */
 bool    Editor_ShowMetrics(const Editor *e);
+void    Editor_ViewPanel(Editor *e, float x, float *y, float w);   /* the View tab of the panel: zoom, metrics, checker */
 /* The bar's Layers toggle: main.c tells it whether the Layers tab is showing and takes the click (true once). */
 void    Editor_SetLayersTabActive(Editor *e, bool on);
 bool    Editor_TakeLayersRequest(Editor *e);

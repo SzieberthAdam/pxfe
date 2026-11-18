@@ -122,7 +122,7 @@ click @cell:U+0078
 wait 3
 click @ptab_Glyph
 wait 3
-click @glyph_find
+click @Find_in_Library
 wait 8
 assert infinder 1
 assert finder_code 120

@@ -1516,21 +1516,6 @@ static float draw_toolbar(Editor *e, Rectangle area)
     }
     sep(x, area.y, h1); x += gap;
 
-    /* zoom: Fit, minus, value, plus */
-    if (Th_Button((Rectangle){x, y, Th_ButtonW("Fit"), bh}, "Fit", 0, NULL)) { e->needFit = true; e->userZoom = false; }
-    Th_Reg("ezoom.fit", (Rectangle){x, y, Th_ButtonW("Fit"), bh});
-    x += Th_ButtonW("Fit") + 6;
-    {
-        char zt[12];
-        snprintf(zt, sizeof zt, "%dx", e->zoom);
-        int zs = Th_Stepper((Rectangle){x, y, TH_STEP_W, bh}, zt, "ezoom", (e->zoom <= 1 ? TH_STEP_NO_MINUS : 0) | (e->zoom >= 64 ? TH_STEP_NO_PLUS : 0));
-        if (Th_StepperHover()) { e->tip = Th_StepperHover() < 0 ? "Zoom out" : "Zoom in"; e->tipRect = (Rectangle){x, y, TH_STEP_W, bh}; }
-        if (zs) zoom_by(e, zs);
-        x += TH_STEP_W + 6;
-    }
-    sep(x, area.y, h1); x += gap;
-    Th_Toggle((Rectangle){x, y, Th_ButtonW("Metrics"), bh}, "Metrics", &e->showMetrics, 0, NULL);
-    x += Th_ButtonW("Metrics") + 6;
     {
         int extra = e->layers ? Layers_Count(e->layers) - 1 : 0;
         char ll[24];
@@ -1636,96 +1621,6 @@ static float draw_strip(Editor *e, Rectangle r)
         if (Th_Button(pos[t], tips[t], TH_BTN_ICON(kTool[t].icon) | (e->tool == (Tool)t ? TH_BTN_ACTIVE : 0) | TH_BTN_OFF(!locked(e)), tips[t])) set_tool(e, (Tool)t);
     }
     return w;
-}
-
-/* ------------------------------------------------------------------ preview strip */
-
-/* The shared sample text (src/sample.h), all its lines that fit, at 1x and at 2x, in the font being edited (so a stroke shows at
- * once).  The last line shown is followed by the edited glyph repeated (when it has a code point). */
-static SampleCache pvCache1, pvCache2;
-
-#define PV_REPEAT 16
-#define PV_PAD 10
-#define PV_GAP 12
-
-/* the first `lines` lines of the sample, then (on the last of them) a space and the edited glyph PV_REPEAT times */
-static void pv_text(const Editor *e, int lines, char *out, size_t cap)
-{
-    const char *s = Sample_Get();
-    size_t o = 0;
-    int ln = 1;
-    for (; *s && o + 1 < cap; s++) {
-        if (*s == '\n') { if (ln >= lines) break; ln++; }
-        out[o++] = *s;
-    }
-    const PxGlyph *g = G((Editor *)e);
-    if (g && g->codepoint > 0x20 && g->codepoint <= 0x10FFFF && o + PV_REPEAT * 4 + 2 < cap) {
-        int n = 0;
-        const char *u = CodepointToUTF8(g->codepoint, &n);
-        out[o++] = ' ';
-        for (int i = 0; i < PV_REPEAT && n > 0; i++) { memcpy(out + o, u, (size_t)n); o += (size_t)n; }
-    }
-    out[o] = 0;
-}
-
-/* height in font pixels of `lines` lines of the sample */
-static int pv_lines_h(const Editor *e, int lines)
-{
-    int w, h, n;
-    Sample_Measure(e->font, "x", e->above, e->below, -1, 1, &w, &h, &n);
-    int one = h;
-    if (lines <= 1) return one;
-    char two[8] = "x\nx";
-    Sample_Measure(e->font, two, e->above, e->below, -1, 2, &w, &h, &n);
-    return one + (lines - 1) * (h - one);
-}
-
-static int pv_total_lines(void)
-{
-    int n = Sample_LineCount(Sample_Get());
-    return n < 1 ? 1 : (n > SAMPLE_MAX_LINES ? SAMPLE_MAX_LINES : n);
-}
-
-/* the height of the strip for the whole sample (before the cap) */
-static float pv_wanted(const Editor *e)
-{
-    int h = pv_lines_h(e, pv_total_lines());
-    return (float)(PV_PAD + h + PV_GAP + 2 * h + PV_PAD + 2);
-}
-
-/* how many lines fit in a strip of height r (at least one) */
-static int pv_fit(const Editor *e, float height)
-{
-    int n = pv_total_lines();
-    for (int k = n; k > 1; k--)
-        if ((float)(PV_PAD + pv_lines_h(e, k) * 3 + PV_GAP + PV_PAD) <= height) return k;
-    return 1;
-}
-
-static void draw_preview(Editor *e, Rectangle r)
-{
-    DrawRectangleRec(r, TH_PANEL);
-    Th_HLine(r.x, r.x + r.width, r.y, TH_LINE);
-    BeginScissorMode((int)r.x, (int)r.y + 1, (int)r.width, (int)r.height - 1);
-    int k = pv_fit(e, r.height);
-    int H = pv_lines_h(e, k);
-    float lx = r.x + 10, tx = r.x + 44;
-    float y1 = r.y + PV_PAD, y2 = y1 + H + PV_GAP;
-    Th_TextSmall("1x", lx, y1 + (box_h(e) > 11 ? (box_h(e) - 11) / 2 : 0), TH_TEXT_DIM);
-    Th_TextSmall("2x", lx, y2 + (box_h(e) > 11 ? (box_h(e) * 2 - 11) / 2 : 0), TH_TEXT_DIM);
-    Th_Reg("Glyph_Preview", (Rectangle){tx, y1, 0, 0});     /* the top left of the 1x text (scripts) */
-    SampleStyle st;
-    memset(&st, 0, sizeof st);
-    st.lineGap = -1;
-    st.bg = TH_PANEL;
-    st.boxAbove = e->above;
-    st.boxBelow = e->below;
-    float maxW = r.x + r.width - 8 - tx;
-    char text[SAMPLE_MAX + PV_REPEAT * 4 + 16];
-    pv_text(e, k, text, sizeof text);
-    Sample_Draw(&pvCache1, e->font, text, tx, y1, 1, maxW, k, &st, NULL);
-    Sample_Draw(&pvCache2, e->font, text, tx, y2, 2, maxW, k, &st, NULL);
-    EndScissorMode();
 }
 
 /* ------------------------------------------------------------------ canvas */
@@ -2323,11 +2218,7 @@ static EditorResult editor_frame(Editor *e, Rectangle area)
 
     /* layout */
     float tbH = draw_toolbar(e, area);
-    float pvH = pv_wanted(e);
-    if (pvH > area.height * 0.34f) pvH = floorf(area.height * 0.34f);
-    if (pvH < 36) pvH = 36;
-    Rectangle pv = {area.x, area.y + area.height - pvH, area.width, pvH};
-    Rectangle st = {area.x, pv.y - STATUS_H, area.width, STATUS_H};
+    Rectangle st = {area.x, area.y + area.height - STATUS_H, area.width, STATUS_H};
     float barH = bar_height(e, area.width);
     Rectangle br = {area.x, st.y - barH, area.width, barH};
     float sw = draw_strip(e, (Rectangle){area.x, area.y + tbH, 0, br.y - (area.y + tbH)});
@@ -2351,7 +2242,7 @@ static EditorResult editor_frame(Editor *e, Rectangle area)
     draw_canvas(e, cv, mouse);
     draw_bar(e, br);
 
-    /* status line: the same strip as the application's (Th_StatusBar), with a Checker toggle in its reserved end */
+    /* status line: the same strip as the application's (Th_StatusBar) */
     {
         char pos[32], tool[240], cur[33], ink[48];
         snprintf(pos, sizeof pos, e->hasHover ? "x %d   y %d" : "x -   y -", e->hx, -1 - e->hy);
@@ -2367,10 +2258,8 @@ static EditorResult editor_frame(Editor *e, Rectangle area)
         ThPart r[3] = {{NULL, {0}, 0, 0, "Glyph", e->origHash}, {"->"}, {NULL, {0}, 0, TH_HASH_ACCENT, NULL, cur}};
         if (differs) Th_StatusBar(st, 90, l, 2, r, 3);
         else Th_StatusBar(st, 90, l, 2, &(ThPart){NULL, {0}, 0, 0, "Glyph", cur}, 1);
-        Th_Toggle((Rectangle){st.x + st.width - 12 - 74, st.y + 1, 74, STATUS_H - 2}, "Checker", &e->checker, 0, NULL);
     }
 
-    draw_preview(e, pv);
 
 
     /* tooltip */
@@ -2475,3 +2364,20 @@ int Editor_SelfTest(Editor *e, PxFont *f)
     return fails;
 }
 
+
+/* The View tab of the glyph view's panel: the zoom (Fit and a stepper), the metric lines and the checker under the glyph. */
+void Editor_ViewPanel(Editor *e, float x, float *y, float w)
+{
+    char zt[12];
+    snprintf(zt, sizeof zt, "%dx", e->zoom);
+    Rectangle zr = Th_Row(x, y, w, "Zoom", NULL, 0);
+    int zs = Th_Stepper((Rectangle){zr.x, zr.y, TH_STEP_W, TH_ROW_H}, zt, "ezoom", (e->zoom <= 1 ? TH_STEP_NO_MINUS : 0) | (e->zoom >= 64 ? TH_STEP_NO_PLUS : 0));
+    if (zs) zoom_by(e, zs);
+    Rectangle fr = {zr.x + zr.width - Th_ButtonW("Fit"), zr.y, Th_ButtonW("Fit"), TH_ROW_H};
+    Th_Reg("ezoom.fit", fr);
+    if (Th_Button(fr, "Fit", 0, "Fit the glyph in the canvas")) { e->needFit = true; e->userZoom = false; }
+    Th_Switch((Rectangle){x, *y, w, TH_ROW_H}, "Metrics", &e->showMetrics, TH_CK_RIGHT, "Metrics");
+    *y += TH_ROW_H + 2;
+    Th_Switch((Rectangle){x, *y, w, TH_ROW_H}, "Checker", &e->checker, TH_CK_RIGHT, "Checker");
+    *y += TH_ROW_H + 2;
+}

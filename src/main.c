@@ -17,6 +17,7 @@
 #include "sqlite3.h"
 #include "library.h"
 #include "browser.h"
+#include "package.h"
 #include "sample.h"
 #include "theme.h"
 #include "editor.h"
@@ -38,8 +39,6 @@ int Play_GetChar(void);
  * Constants
  * ---------------------------------------------------------------------------------------------- */
 #define TOOLBAR_H   48
-#define CMDBAR_H    38          /* the command strip under the toolbar in the font view */
-#define INFO_H      34
 #define STATUS_H    TH_ROW_H
 #define PANEL_W     352
 #define GRID_MARGIN 12
@@ -144,7 +143,7 @@ static int lcap = 0;
 static float rowH = 0, contentH = 0;
 static int boxAbove = 6, boxBelow = 2; /* the font box of the current frame (px_font_box) */
 static float panelScroll = 0;          /* scroll of the right-hand panel */
-static int glyphTab = 0;               /* tab of the glyph view's right panel: 0 Glyph, 1 Usage, 2 Layers (not remembered) */
+static int glyphTab = 0;               /* tab of the glyph view's right panel: 0 Glyph, 2 Layers, 3 View (not remembered) */
 static bool TypefaceEditing(const char *pxtf);   /* panel.inc */
 static bool FlPending(void);                    /* font layers (below) */
 static bool FsDirty(void);
@@ -157,7 +156,7 @@ static void FitSnapDrop(void);
 static void LayersShiftY(float d);         /* fitdoc.inc: every font layer moves by d rows (the baseline moved) */
 static bool filledShapes = false;      /* the glyph view's Filled option for the rectangle and the ellipse (kept in pxfe.ini, key filled) */
 static bool pixelPerfect = false;      /* the glyph view's Pixel-perfect option (kept in pxfe.ini, key pixelPerfect) */
-static int panelTab = 0;               /* tab of the right-hand panel: 0 Font, 1 Glyph, 2 Similar, 3 Layers (kept in pxfe.ini) */
+static int panelTab = 0;               /* tab of the right-hand panel: 0 Font, 1 Glyph, 2 Similar, 3 Layers, 4 View (kept in pxfe.ini) */
 
 /* ------------------------------------------------------------------------------------------------
  * Small utilities
@@ -527,7 +526,7 @@ static void IniSetLastDb(const char *path) { IniSetApp("lastPxfdb", path); }
 
 static void PanelSetTab(int tab)   /* a click on the tab control: remembered in pxfe.ini */
 {
-    if (tab == panelTab || tab < 0 || tab > 3) return;
+    if (tab == panelTab || tab < 0 || tab > 4) return;
     panelTab = tab;
     panelScroll = 0;
     char v[8];
@@ -893,7 +892,9 @@ static bool CommitEdits(void)
         }
     } else {
         bool fontCh = !readOnly && !Same(curHash, origHash);
-        bool tfCh = hasCont && !contLocked && !Same(curContHash, origContHash);
+        PxtfVariant *ov = hasCont ? pxtf_find_variant(&cont, contVariant) : NULL;
+        if (fontCh && ov) { snprintf(ov->pxfm, sizeof ov->pxfm, "%s", curHash); needHash = true; EnsureHashes(); }   /* only the open variant follows: a clone keeps the old font */
+        bool tfCh = hasCont && (!contLocked || !readOnly) && !Same(curContHash, origContHash);
         if (!store_edit_in_place(store, origHash, fontCh ? &font : NULL, hasCont ? origContHash : NULL, tfCh ? &cont : NULL, &er, err)) {
             ShowError("Cannot change the font in the database", err[0] ? err : "Unknown error.");
             return false;
@@ -903,8 +904,6 @@ static bool CommitEdits(void)
             for (int i = 0; i < er.nMoved; i++) fs_rename_typeface(fsettings, er.movedFrom[i], er.movedTo[i]);
         }
         if (browser) for (int i = 0; i < er.nMoved; i++) Browser_Follow(browser, er.movedFrom[i], er.movedTo[i]);
-        if (hasCont)
-            for (int i = 0; i < cont.count; i++) if (Same(cont.v[i].pxfm, origHash)) snprintf(cont.v[i].pxfm, sizeof cont.v[i].pxfm, "%s", er.pxfm);
         snprintf(flSyncedHash, sizeof flSyncedHash, "%s", er.pxfm);
     }
     snprintf(origHash, sizeof origHash, "%s", er.pxfm);
@@ -943,23 +942,24 @@ static bool LockedOf(bool typeface, const char *hash)
     return !(fsettings && fs_is_unlocked(fsettings, typeface ? 1 : 0, hash));
 }
 
-static void ToggleLockOf(bool typeface, const char *hash, const BrowserChoice *c)
+/* The padlock of a Typeface or Font tab.  The open font (or its typeface) locks and unlocks in place.  Another one is unlocked by opening its
+ * font quietly (its fields are edited in the open document), staying in the view the user is in. */
+static bool OpenStoreFont(const char *pxfm, const char *pxtfHash, int variant, int32_t selCode);
+static void ToggleLockOf(bool typeface, const char *pxtf, const char *pxfm, int variant)
 {
+    const char *hash = typeface ? pxtf : pxfm;
     bool locked = LockedOf(typeface, hash);
-    if (!typeface) {
-        if (hasFont && docStored && Same(hash, origHash)) SetFontLocked(!locked);
-        else if (fsettings) fs_set_unlocked(fsettings, 0, hash, locked);
-        return;
-    }
-    if (locked && !(hasCont && docStored && Same(hash, origContHash))) {   /* its fields are edited in the open font's typeface: open the font of the selected variant */
-        char tf[33], fm[33];
-        snprintf(tf, sizeof tf, "%s", c->pxtf);
-        snprintf(fm, sizeof fm, "%s", c->pxfm);
-        if (!OpenStoreFont(fm, tf, c->variant, -1)) return;
-        SetTypefaceLocked(false);
-        ShowTypeface(tf, fm);
-    } else if (hasCont && docStored && Same(hash, origContHash)) SetTypefaceLocked(!locked);
-    else if (fsettings) fs_set_unlocked(fsettings, 1, hash, locked);
+    bool doc = typeface ? hasCont && docStored && Same(hash, origContHash) : hasFont && docStored && Same(hash, origHash);
+    if (doc) { SetLocked(typeface, !locked); return; }
+    if (!locked) { if (fsettings) fs_set_unlocked(fsettings, typeface ? 1 : 0, hash, false); return; }
+    bool wasB = inBrowser, wasF = inFinder;
+    char tf[33], fm[33];
+    snprintf(tf, sizeof tf, "%s", pxtf);
+    snprintf(fm, sizeof fm, "%s", pxfm);
+    if (!OpenStoreFont(fm, tf, variant, -1)) return;
+    SetLocked(typeface, false);
+    inBrowser = wasB;
+    inFinder = wasF;
 }
 
 /* ---- the library on a worker thread: Load, Import and Export (the first build of a big folder takes minutes) ---- */
@@ -1499,8 +1499,6 @@ static void RunChoice(const BrowserChoice *c)
 {
     if (c->action == BROWSER_INSIGHT) HandleInsightTarget(&c->insight);
     else if (c->action == BROWSER_OPEN) OpenStoreFont(c->pxfm, c->pxtf, c->variant, -1);
-    else if (c->action == BROWSER_LOCK) ToggleLockOf(false, c->pxfm, c);
-    else if (c->action == BROWSER_LOCK_TYPEFACE) ToggleLockOf(true, c->pxtf, c);
 }
 
 /* ---- deleting fonts and typefaces (in memory; Save writes the deletion to the database file) ---- */
@@ -1911,38 +1909,6 @@ static void GridSelectClick(int idx, bool ctrl, bool shift)
     }
 }
 
-/* ---- context menu of the grid ---- */
-static struct { bool open; Vector2 pos; } ctx;
-enum { CM_EDIT, CM_DEFAULT, CM_CLONE, CM_OCC, CM_DELETE, CM_COUNT };
-static const char *kCtxLabel[CM_COUNT] = {"Edit Glyph", "Set as Default Glyph", "Clone...", "Select Occurrences", "Delete"};
-
-static bool CtxEnabled(int k)
-{
-    switch (k) {
-    case CM_EDIT: return selCount >= 1;
-    case CM_DEFAULT: return CanSetDefault();
-    case CM_CLONE: return !readOnly && selCount == 1;
-    case CM_OCC: return selCount >= 1;
-    default: return !readOnly && selCount >= 1;
-    }
-}
-
-static void DrawContextMenu(void)
-{
-    if (!ctx.open) return;
-    ThMenuItem it[CM_COUNT];
-    for (int k = 0; k < CM_COUNT; k++) it[k] = (ThMenuItem){kCtxLabel[k], NULL, NULL, NULL, (CtxEnabled(k) ? 0 : TH_MI_OFF) | (k == CM_DELETE ? TH_MI_DANGER : 0)};
-    int k = Th_Menu(&(ThMenu){it, CM_COUNT, .x = ctx.pos.x, .y = ctx.pos.y, .w = 208}, &ctx.open);
-    switch (k) {
-    case CM_EDIT: CmdEditSelected(); break;
-    case CM_DEFAULT: CmdSetDefault(); break;
-    case CM_CLONE: CmdClone(); break;
-    case CM_OCC: CmdSelectOccurrences(); break;
-    case CM_DELETE: CmdDeleteAsk(); break;
-    default: break;
-    }
-}
-
 static void UpdateDrawGrid(Rectangle area)
 {
     DrawRectangleRec(area, TH_BG);
@@ -1954,7 +1920,7 @@ static void UpdateDrawGrid(Rectangle area)
         zoomAnchor = -1;
     }
 
-    bool inArea = Hov(area) && !ctx.open;
+    bool inArea = Hov(area);
     bool ctrl = IsKeyDown(KEY_LEFT_CONTROL) || IsKeyDown(KEY_RIGHT_CONTROL);
     bool shift = IsKeyDown(KEY_LEFT_SHIFT) || IsKeyDown(KEY_RIGHT_SHIFT);
     float wheel = inArea && ctrl ? GetMouseWheelMove() : 0;
@@ -1965,7 +1931,7 @@ static void UpdateDrawGrid(Rectangle area)
         else if (bot - scrollY > area.height) scrollY = bot - area.height + GRID_MARGIN;
     }
     revealIdx = -1;
-    bool overBar = Th_ScrollBar(area, &scrollY, contentH, ctrl || ctx.open ? 0 : 72, true);
+    bool overBar = Th_ScrollBar(area, &scrollY, contentH, ctrl ? 0 : 72, true);
 
     hoverIdx = -1;
     Vector2 m = Mouse();
@@ -1991,13 +1957,6 @@ static void UpdateDrawGrid(Rectangle area)
             lastClickIdx = hoverIdx;
             lastClickTime = now;
         }
-    }
-    if (inArea && !overBar && IsMouseButtonPressed(MOUSE_BUTTON_RIGHT)) {
-        if (hoverIdx >= 0) {
-            if (!(hoverIdx < selN && sel[hoverIdx])) SelOnly(hoverIdx);
-            ctx.open = true;
-            ctx.pos = m;
-        } else ctx.open = false;
     }
     RecountSel();
 }
@@ -2160,21 +2119,6 @@ static void DrawNav(void)
     TbX = track.x + track.width + 8;
 }
 
-/* the "..." menu of the font view's toolbar: deleting the open font or its typeface */
-static struct { bool open; Rectangle anchor; } moreMenu;
-
-static void DrawMoreMenu(void)
-{
-    if (!moreMenu.open) return;
-    bool origFont = hasFont && docStored && store && !EditPending();
-    bool origTf = origFont && hasCont;
-    ThMenuItem it[2] = {
-        {"Delete Font...", NULL, "more.delfont", "Delete the open font from the database", TH_MI_DANGER | (origFont ? 0 : TH_MI_OFF)},
-        {"Delete Typeface...", NULL, "more.deltf", "Delete the typeface of the open font from the database", TH_MI_DANGER | (origTf ? 0 : TH_MI_OFF)}};
-    int k = Th_Menu(&(ThMenu){it, 2, .x = moreMenu.anchor.x + moreMenu.anchor.width, .y = moreMenu.anchor.y + moreMenu.anchor.height + 4, .w = 238, .flags = TH_MENU_RIGHT, .keep = moreMenu.anchor}, &moreMenu.open);
-    if (k >= 0) AskDelete(k == 1, k == 1 ? origContHash : origHash, true);
-}
-
 static void DrawToolbar(int W)
 {
     DrawRectangle(0, 0, W, TOOLBAR_H, TH_PANEL);
@@ -2205,57 +2149,6 @@ static void DrawToolbar(int W)
         if (TbButton("Undo", TH_BTN_OFF(!readOnly && undoN > 0), "Undo  (Ctrl+Z)")) DoUndoRedo(false);
         if (TbButton("Redo", TH_BTN_OFF(!readOnly && redoN > 0), "Redo  (Ctrl+Y)")) DoUndoRedo(true);
     }
-    RecountSel();
-    {
-        int fi = FirstSelected();
-        bool can = store && selCount == 1 && fi >= 0 && px_code_is_codepoint(font.glyphs[fi].codepoint);
-        if (TbX + 18 + Th_ButtonW("Find in Library") <= limit) {
-            TbSep();
-            if (TbButton("Find in Library", TH_BTN_OFF(can), can ? "Find every bitmap the database draws for this code point  (Ctrl+Shift+F)" : "Select one glyph that has a code point")) CmdFindInLibrary();
-        }
-    }
-    if (TbX + 34 <= limit + 6) {
-        Rectangle mb = {TbX, TbY, 34, TH_ROW_H};
-        Th_Reg("More", mb);
-        if (Th_Button(mb, "\xE2\x80\xA6", 0, "More: delete the open font or typeface")) {
-            moreMenu.open = !moreMenu.open;
-            moreMenu.anchor = mb;
-        }
-        TbX += 40;
-    }
-}
-
-/* the strip under the toolbar in the font view: view options and glyph commands */
-static void DrawCommandBar(Rectangle r)
-{
-    DrawRectangleRec(r, TH_PANEL);
-    Th_HLine(r.x, r.x + r.width, r.y + r.height - 1, TH_LINE);
-    TbX = 12;
-    TbY = r.y + 5;
-    const char *saveHint = readOnly ? "The font is locked: unlock it first" : NULL;
-    /* zoom selector: [-] 4x [+] */
-    Th_Text("Zoom", TbX, Fl(TbY + (28 - Th_Measure("Zoom").y) / 2), TH_TEXT_DIM);
-    TbX += Fl(Th_Measure("Zoom").x) + 8;
-    {
-        char zt[8];
-        snprintf(zt, sizeof zt, "%dx", zoom);
-        int zs = Th_Stepper((Rectangle){TbX, TbY, TH_STEP_W, TH_ROW_H}, zt, "zoom", zoom <= 1 ? TH_STEP_NO_MINUS : 0);
-        if (Th_StepperHover()) hintText = Th_StepperHover() < 0 ? "Zoom out  (-)" : "Zoom in  (+)";
-        if (zs) ApplyZoom(zoom + zs);
-        TbX += 96 + 6;
-    }
-    TbSep();
-    Th_Toggle((Rectangle){TbX, TbY, Th_ButtonW("Metrics"), TH_ROW_H}, "Metrics", &showMetrics, 0, "Show projected metric lines in every cell");
-    TbX += Th_ButtonW("Metrics") + 6;
-    Th_Toggle((Rectangle){TbX, TbY, Th_ButtonW("Captions"), TH_ROW_H}, "Captions", &showCaptions, 0, "Show the character and code under each glyph");
-    TbX += Th_ButtonW("Captions") + 6;
-    TbSep();
-    bool grid = !inEditor;
-    if (TbButton("Select Occurrences", TH_BTN_OFF(grid && selCount > 0), "Select every glyph with the same shape as the selected ones  (Ctrl+Shift+A)")) CmdSelectOccurrences();
-    if (TbButton("Add Glyph", TH_BTN_OFF(grid && !readOnly), readOnly ? saveHint : "Add an empty glyph: a code point, or one without")) CmdAddGlyph();
-    if (TbButton("Clone", TH_BTN_OFF(grid && !readOnly && selCount == 1), readOnly ? saveHint : "Clone the selected glyph to a new code point, or to a glyph without one  (Ctrl+D)")) CmdClone();
-    if (TbButton("Set Default", TH_BTN_OFF(grid && CanSetDefault()), readOnly ? saveHint : "Make the selected glyph the font's default glyph")) CmdSetDefault();
-    if (TbButton("Delete", TH_BTN_DANGER | TH_BTN_OFF(grid && !readOnly && selCount > 0), readOnly ? saveHint : "Delete the selected glyphs  (Del)")) CmdDeleteAsk();
 }
 
 static void DrawFileMenu(void)
@@ -2285,21 +2178,6 @@ static void HashNotice(const char *what, bool copied)
 {
     if (copied) Th_Toast(0, "%s hash copied", what);
     else hintText = "Click to copy the full hash";
-}
-
-/* The slim bar above the grid: the font, its hash, and its lock. */
-static void DrawInfoBar(Rectangle r)
-{
-    DrawRectangleRec(r, readOnly ? TH_NOTICE_BG : TH_PANEL_ALT);
-    Th_HLine(r.x, r.x + r.width, r.y + r.height - 1, TH_LINE);
-    float ty = Fl(r.y + (r.height - Th_Measure("M").y) / 2);
-    float x = r.x + 14;
-    float bh = r.height - 7;
-    if (Th_Lock(((Rectangle){r.x + r.width - bh - 12, r.y + 3, bh, bh}), readOnly, readOnly ? "The font is locked: unlock it to edit it  (edits change it in place)" : "Lock the font: nothing can change it")) SetFontLocked(!readOnly);
-    const char *lead = readOnly ? "Locked \xC2\xB7" : docStored ? "Unlocked \xC2\xB7" : "New font, not in the database yet \xC2\xB7";
-    Th_Text(lead, x, ty, readOnly ? TH_TEXT_WARN : TH_TEXT);
-    x += Th_Measure(lead).x + 8;
-    Th_HashShort(NULL, origHash, x, ty, 0, "hash_font");
 }
 
 static int FontPx(void)   /* the pixel size of the open font: its box */
@@ -2679,7 +2557,6 @@ static void HandleShortcuts(void)
     if (ctrl && IsKeyPressed(KEY_Z) && !shift) { if (readOnly) Th_Toast(2, "The font is locked"); else if (inEditor && ed && Editor_CancelFloat(ed)) Th_Toast(0, "Cancelled"); else DoUndoRedo(false); return; }
     if (ctrl && (IsKeyPressed(KEY_Y) || (IsKeyPressed(KEY_Z) && shift))) { if (!readOnly && !(inEditor && ed && Editor_CancelFloat(ed))) DoUndoRedo(true); return; }
     if (inEditor) return;
-    if (ctx.open) return;
 
     if (ctrl && shift && IsKeyPressed(KEY_A)) { CmdSelectOccurrences(); return; }
     if (ctrl && IsKeyPressed(KEY_A)) { CmdSelectAll(); return; }
@@ -2765,7 +2642,7 @@ int main(int argc, char **argv)
     SetTraceLogLevel(LOG_WARNING);
     InitWindow(winW, winH, "pxfe");
     Browser_SetCharSource(Play_GetChar);
-    Browser_SetTypefaceTab(DrawTypefaceTab, TypefaceEditing);
+    Browser_SetInfoTab(DrawLibraryTab);
     Browser_SetLockQuery(LockedOf);
     SetWindowMinSize(1110, 600);
     SetExitKey(0);
@@ -2778,7 +2655,7 @@ int main(int argc, char **argv)
     Sample_LoadIni(IniPath());   /* the shared sample text and the font view strip settings */
     { char v[8]; if (IniGetApp("pixelPerfect", v, sizeof v)) pixelPerfect = atoi(v) != 0; }
     { char v[8]; if (IniGetApp("filled", v, sizeof v)) filledShapes = atoi(v) != 0; }
-    { char v[8]; if (IniGetApp("fontTab", v, sizeof v)) { int t = atoi(v); panelTab = t < 0 || t > 3 ? 0 : t; } }
+    { char v[8]; if (IniGetApp("fontTab", v, sizeof v)) { int t = atoi(v); panelTab = t < 0 || t > 4 ? 0 : t; } }
     { char v[8]; if (IniGetApp("pickerMode", v, sizeof v)) Th_ColorPickSetMode(atoi(v)); }
 
     px_font_init(&font);
@@ -2824,7 +2701,7 @@ int main(int argc, char **argv)
         /* the mouse button that opened a document (a double click) is still down: its release must not hit the new view */
         if (swallowMouse && !IsMouseButtonDown(MOUSE_BUTTON_LEFT) && !IsMouseButtonReleased(MOUSE_BUTTON_LEFT)) swallowMouse = false;
         bool baseBlocked = modal.kind != M_NONE || xd.open || nf.open || fimp.open || job.active || swallowMouse || Th_ColorPickIsOpen();
-        uiBlocked = baseBlocked || fileMenu.open || moreMenu.open;   /* an open menu owns the mouse: nothing below it reacts */
+        uiBlocked = baseBlocked || fileMenu.open;   /* an open menu owns the mouse: nothing below it reacts */
         Th_SetInputBlocked(uiBlocked);
         hintText = NULL;
         Th_RegClear();
@@ -2842,25 +2719,22 @@ int main(int argc, char **argv)
         }
 
         bool fontView = hasFont && !inBrowser && !inFinder;
-        bool edFrame = fontView && inEditor;   /* the glyph view has its own bar: no command bar, no info bar */
-        float top = TOOLBAR_H + (fontView && !inEditor ? CMDBAR_H : 0);
+        bool edFrame = fontView && inEditor;
+        float top = TOOLBAR_H;
         float contentH2 = (float)(H - top - STATUS_H);
         bool ownStatus = inBrowser && browser && !inFinder;   /* the browser has its own status line: no second bar below it */
         Rectangle fullArea = {0, TOOLBAR_H, (float)W, (float)(H - TOOLBAR_H - STATUS_H) + (ownStatus ? STATUS_H : 0)};
-        Rectangle cmdArea = {0, TOOLBAR_H, (float)W, CMDBAR_H};
-        Rectangle infoArea = {0, top, (float)(W - PANEL_W), INFO_H};
-        Rectangle gridArea = {0, top + INFO_H, (float)(W - PANEL_W), contentH2 - INFO_H};
+        Rectangle gridArea = {0, top, (float)(W - PANEL_W), contentH2};
         Rectangle panelArea = {(float)(W - PANEL_W), top, PANEL_W, contentH2};
-        Rectangle edArea = {0, top, (float)(W - PANEL_W), contentH2};
-        Rectangle stripArea = {0};   /* the font view's sample strip, at the bottom of the grid */
-        if (fontView && !inEditor) {
+        Rectangle stripArea = {0};   /* the sample strip, at the bottom of the grid or of the glyph view */
+        if (fontView) {
             float sh = SampleStrip_Height(gridArea.height);
             gridArea.height -= sh;
             stripArea = (Rectangle){0, gridArea.y + gridArea.height, gridArea.width, sh};
         }
+        Rectangle edArea = gridArea;
         play.gridArea = gridArea;
         hoverIdx = -1;
-        if (!fontView) ctx.open = false;
         if (inFinder && finder) {
             InsightTarget tg;
             memset(&tg, 0, sizeof tg);
@@ -2904,10 +2778,9 @@ int main(int argc, char **argv)
             } else {
                 if (ed) Layers_PopoverClose(Editor_Layers(ed));
                 UpdateDrawGrid(gridArea);
-                if (stripArea.height > 0) SampleStrip_Draw(stripArea, &font, uiBlocked);
             }
+            if (stripArea.height > 0) SampleStrip_Draw(stripArea, &font, uiBlocked);
             if (edFrame == inEditor) {   /* (the frame in which the glyph view opens or closes draws no panel) */
-                if (!inEditor) { DrawCommandBar(cmdArea); DrawInfoBar(infoArea); }
                 bool popOpen = inEditor && ed && Layers_PopoverOpen(Editor_Layers(ed));
                 if (popOpen) Th_SetInputBlocked(true);   /* the Add Layer popover is modal */
                 DrawMetricsPanel(panelArea);
@@ -2915,17 +2788,16 @@ int main(int argc, char **argv)
                 if (inEditor && ed) Layers_DrawPopover(Editor_Layers(ed), panelArea);
             }
         }
+        RunLibCommand();           /* a command of a Typeface or Font tab */
         uiBlocked = baseBlocked;   /* the toolbar and the menus themselves stay live */
         Th_SetInputBlocked(uiBlocked);
         DrawToolbar(W);
         EnsureHashes();
         DrawStatus(W, H);
         DrawFileMenu();
-        DrawMoreMenu();
-        DrawContextMenu();
-        {   /* the browser's side panel (Delete buttons) stays clear, and the Typeface view's row buttons at the right */
-            bool side = inBrowser && browser && !inFinder;
-            Th_ToastDraw((Rectangle){0, 0, (float)(W - (side ? PANEL_W : 0)), (float)(H - STATUS_H)}, side && Browser_InTypeface(browser));
+        {   /* the right panel (its commands) stays clear */
+            bool side = (inBrowser && browser && !inFinder) || (hasFont && !inBrowser && !inFinder);
+            Th_ToastDraw((Rectangle){0, 0, (float)(W - (side ? PANEL_W : 0)), (float)(H - STATUS_H)}, inBrowser && browser && Browser_InTypeface(browser));
         }
         DrawExportDialog(W, H);
         DrawNewFontDialog(W, H);

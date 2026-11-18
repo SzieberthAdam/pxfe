@@ -11,12 +11,10 @@ typedef struct Browser Browser; /* opaque, defined in browser.c */
 typedef enum {
     BROWSER_NONE = 0,
     BROWSER_OPEN,       /* open the chosen entry */
-    BROWSER_LOCK,       /* flip the lock of the font choice.pxfm (main.c does it) */
     BROWSER_INSIGHT,    /* the user clicked an entry of the "Similar" list: see BrowserChoice.insight */
-    BROWSER_DELETE_FONT,     /* delete the font choice.pxfm (Del, context menu); main.c confirms and deletes */
-    BROWSER_DELETE_TYPEFACE, /* delete the typeface choice.pxtf (box header or a variant row) */
-    BROWSER_OPEN_TYPEFACE,   /* a box header was opened: the browser itself switches to the Typeface view (never returned to main) */
-    BROWSER_LOCK_TYPEFACE    /* flip the lock of the typeface choice.pxtf (choice.pxfm / variant: the selected font; main.c opens it to edit the fields) */
+    BROWSER_DELETE_FONT = 4, /* (the numbers are kept for the scripts) Del on a font: main.c confirms and deletes the font choice.pxfm */
+    BROWSER_DELETE_TYPEFACE, /* Del on a box header: the typeface choice.pxtf */
+    BROWSER_OPEN_TYPEFACE    /* a box header was opened: the browser itself switches to the Typeface view (never returned to main) */
 } BrowserAction;
 
 typedef struct BrowserChoice {
@@ -36,14 +34,14 @@ const char *Browser_Root(const Browser *b);
 /* The index of the store (typeface variants first, then fonts): main.c finds the typeface of a font in it. */
 const Library *Browser_Lib(const Browser *b);
 
-/* The Typeface tab of the side panel is drawn by the application (main.c, panel.inc) with the widgets of the font view: it gets the
- * panel's x and width, the y to draw at (advanced past what it drew) and the pxtf hash of the typeface as the library stores it, and one variant of it. */
-typedef void (*BrowserTypefaceTab)(float x, float width, float *y, const PxtfTypeface *tf, const char *hash, int variant);
-typedef bool (*BrowserTypefaceEditing)(const char *pxtf);   /* the open font's typeface is this one and it is unlocked */
-void     Browser_SetTypefaceTab(BrowserTypefaceTab draw, BrowserTypefaceEditing editing);
-bool     Browser_TypefaceTabShown(const Browser *b);
+/* The Typeface and Font tabs of the side panel are drawn by the application (main.c, panel.inc): `typeface` picks the tab; it gets the
+ * panel's x and width, the y to draw at (advanced past what it drew), the selected entry's typeface as the library stores it (NULL when it has
+ * none), its pxtf hash and variant, and the font's pxfm hash.  The tabs hold the fields, the lock and the commands. */
+typedef void (*BrowserInfoTab)(bool typeface, float x, float width, float *y, const PxtfTypeface *tf, const char *pxtf, int variant, const char *pxfm);
+void     Browser_SetInfoTab(BrowserInfoTab draw);
+bool     Browser_TypefaceTabShown(const Browser *b);   /* the Typeface or Font tab was drawn */
 
-/* The lock of a font or typeface (true: locked), asked by every lock button the browser draws. */
+/* The lock of a font or typeface (true: locked): the cards and rows mark an unlocked one. */
 typedef bool (*BrowserLocked)(bool typeface, const char *hash);
 void     Browser_SetLockQuery(BrowserLocked locked);
 /* Editing changed hashes: a typeface (and the font) the browser holds (selection, the open Typeface view) follows to the new one. */
@@ -53,7 +51,7 @@ void     Browser_Follow(Browser *b, const char *oldPxtf, const char *newPxtf);
 void     Browser_Rescan(Browser *b);
 
 /* Per frame, between BeginDrawing/EndDrawing, inside `area`; owns all input inside it.
- * Returns true and fills *choice when the user opened an entry or toggled its lock. */
+ * Returns true and fills *choice when the user opened an entry, picked a similar one or pressed Del. */
 bool     Browser_UpdateDraw(Browser *b, Rectangle area, BrowserChoice *choice);
 
 /* View settings are loaded from / saved to an ini file (pxfe.ini beside the exe), section [browser]. */
@@ -77,7 +75,7 @@ void     Browser_SetColumns(Browser *b, int cols);     /* 0 = Auto, 1..8 */
 void     Browser_ScrollBy(Browser *b, float pixels);   /* positive: down */
 void     Browser_SelectVisible(Browser *b, int visibleIndex);
 int      Browser_Tab(const Browser *b);
-int      Browser_SideTab(const Browser *b);   /* 0 View, 1 Similar, 2 Typeface (shown as View | Typeface | Similar) */
+int      Browser_SideTab(const Browser *b);   /* 0 View, 1 Similar, 2 Typeface, 3 Font (shown as View | Typeface | Font | Similar) */
 int      Browser_Zoom(const Browser *b);
 int      Browser_Columns(const Browser *b);
 const char *Browser_FilterText(const Browser *b);

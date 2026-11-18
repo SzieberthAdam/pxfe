@@ -19,7 +19,8 @@ click @bside_Typeface
 wait 20
 shot tests/tmp/p1/real_3_typeface_tab.png
 sleep 600
-click @tv.open.1
+bselect 1
+click @card:1
 wait 60
 shot tests/tmp/p1/real_4_font.png
 key left alt

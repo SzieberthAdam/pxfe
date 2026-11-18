@@ -34,9 +34,9 @@ assert navseg 1 Fonts
 assert navseg 2 Glyphs
 assert bvisible 2
 assert bselhdr 0
-assert w.tv.open.0 1
+assert bvisible > 0
 assert w.Unlock 1
-assert w.tv.delete.1 1
+assert bvisible > 1
 assert w.Delete_Typeface 1
 shot tests/tmp/shots/59_typeface.png
 sleep 600
@@ -57,16 +57,17 @@ key left alt
 wait 16
 assert nav 0
 
-# the Open button of the panel on a header
+# a second click on the selected header opens it
 click @hdr:0
 wait 3
-click @Open
+click @hdr:0
 wait 16
 assert nav 1
 assert blast 6
 
 # ---- 4. a font of the Typeface view: first segment typeface, second style, only the second is blue
-click @tv.open.1
+bselect 1
+click @card:1
 wait 10
 assert nav 3
 assert infont 1
@@ -184,7 +185,8 @@ assert nav 0
 dblclick @hdr:0
 wait 16
 assert nav 1
-click @tv.open.0
+bselect 0
+click @card:0
 wait 10
 assert nav 3
 click @Glyphs

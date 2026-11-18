@@ -2641,7 +2641,9 @@ bool store_edit_in_place(Store *s, const char *oldPxfm, const PxFont *font, cons
             store_hex_to_blob(tfs[i], th);
             if (!load_typeface_nolock(c, th, &t, err)) { pxtf_free(&t); goto done; }
         }
-        if (fontCh) for (int j = 0; j < t.count; j++) if (strcmp(t.v[j].pxfm, oldPxfm) == 0) memcpy(t.v[j].pxfm, out->pxfm, 33);
+        bool given = tf && oldPxtf && strcmp(tfs[i], oldPxtf) == 0;   /* the caller's typeface names the fonts it wants: a clone keeps the old font */
+        for (int j = 0; j < t.count; j++)
+            if (fontCh && strcmp(t.v[j].pxfm, oldPxfm) == 0) { if (given) p.nFonts = 0; else memcpy(t.v[j].pxfm, out->pxfm, 33); }
         StoreRewrite rw;
         memset(&rw, 0, sizeof rw);
         snprintf(rw.oldPxtf, sizeof rw.oldPxtf, "%s", tfs[i]);
@@ -2662,5 +2664,108 @@ done:
     free(tfs);
     if (ok && (p.nFonts || p.nGone || p.nRw)) ok = store_apply_delete(s, &p, err);
     store_plan_free(&p);
+    return ok;
+}
+
+/* ================================================================== adding files given in memory (packages: src/package.c)
+ * The files are written to a temporary folder at their library paths, read there by the folder import's strict readers as a
+ * library of their own (build_store_from_folder into a scratch store), and the new ones are added to memory by the
+ * incremental build (build_from_files, fresh = false).  Nothing above is changed for it. */
+
+static volatile LONG g_addSerial = 0;
+
+static char *file_text_of(StoreConn *c, int kind, const char *hex, size_t *len) {
+    char got[33];
+    return kind == K_GLYPH ? store_pxgl_text(c, hex, len, got) : kind == K_PXFM ? store_pxfm_text(c, hex, len, got)
+         : kind == K_PXTF ? store_pxtf_text(c, hex, len, got) : store_palette_text(c, hex, len, got);
+}
+
+bool store_add_files(Store *s, const StoreFile *files, int n, StoreCounts *addedOut, StoreCounts *skippedOut, char err[PX_ERR_LEN]) {
+    StoreCounts added = {0, 0, 0, 0}, skipped = {0, 0, 0, 0};
+    for (int i = 0; i < n; i++) {
+        if (files[i].kind < 0 || files[i].kind >= NKIND || !px_is_hash(files[i].hash, false, true)) return fail(err, "store_add_files: file %d has no kind or no lower-case hash", i);
+    }
+    char base[MAX_PATH], root[MAX_PATH + 80];
+    DWORD bl = GetTempPathA(sizeof base, base);
+    if (bl == 0 || bl >= sizeof base) return fail(err, "no temporary folder");
+    snprintf(root, sizeof root, "%spxfe-files-%lu-%lu-%ld", base, (unsigned long)GetCurrentProcessId(), (unsigned long)GetTickCount(), (long)InterlockedIncrement(&g_addSerial));
+    trim_slashes(root);
+    if (!px_mkdir_p(root)) return fail(err, "%s: cannot make the temporary folder", root);
+    bool ok = false;
+    bool *isNew = (bool *)calloc((size_t)(n ? n : 1), sizeof(bool));
+    HashList lists[NKIND];
+    memset(lists, 0, sizeof lists);
+    if (!isNew) { fail(err, "out of memory"); goto done; }
+    for (int i = 0; i < n; i++) {
+        const StoreFile *f = &files[i];
+        char path[MAX_PATH + 300], dir[MAX_PATH + 200];
+        snprintf(dir, sizeof dir, "%s/%s/%c%c", root, KIND_SUB[f->kind], f->hash[0], f->hash[1]);
+        snprintf(path, sizeof path, "%s/%s.%s", dir, f->hash, KIND_EXT[f->kind]);
+        if (!px_mkdir_p(dir) || !px_write_file(path, f->data, f->len)) { fail(err, "%s: cannot write", path); goto done; }
+    }
+    {   /* the files alone, with the strict readers */
+        Store *chk = store_new(err);
+        if (!chk) goto done;
+        bool good = build_store_from_folder(chk, root, NULL, err);
+        store_close(chk);
+        if (!good) {
+            size_t rl = strlen(root);   /* the messages name the temporary paths: keep the part inside the library */
+            char *p = strstr(err, root);
+            while (p) { memmove(p, p + rl + 1, strlen(p + rl + 1) + 1); p = strstr(err, root); }
+            goto done;
+        }
+    }
+    if (!s) { ok = true; goto done; }
+    {   /* what memory has: the same text is skipped, another text is a clash */
+        StoreConn *c = store_conn_open(s);
+        if (!c) { fail(err, "cannot open a store connection"); goto done; }
+        bool clash = false;
+        for (int i = 0; i < n && !clash; i++) {
+            size_t len = 0;
+            char *t = file_text_of(c, files[i].kind, files[i].hash, &len);
+            if (!t) isNew[i] = true;
+            else if (len == files[i].len && memcmp(t, files[i].data, len) == 0) (*count_of(&skipped, files[i].kind))++;
+            else { fail(err, "the library has the %s file %s with another content: nothing was imported", KIND_SUB[files[i].kind], files[i].hash); clash = true; }
+            free(t);
+        }
+        store_conn_close(c);
+        if (clash) goto done;
+    }
+    for (int i = 0; i < n; i++) {
+        if (!isNew[i]) continue;
+        HashList *l = &lists[files[i].kind];
+        if (l->n == l->cap) { l->cap = l->cap ? l->cap * 2 : 64; l->h = (uint8_t(*)[16])realloc(l->h, (size_t)l->cap * 16); }
+        store_hex_to_blob(files[i].hash, l->h[l->n++]);
+    }
+    for (int k = 0; k < NKIND; k++) {            /* sorted (build_from_files searches them), each once */
+        HashList *l = &lists[k];
+        if (l->n > 1) qsort(l->h, (size_t)l->n, 16, cmp16);
+        int m = 0;
+        for (int i = 0; i < l->n; i++) if (m == 0 || memcmp(l->h[m - 1], l->h[i], 16) != 0) memcpy(l->h[m++], l->h[i], 16);
+        l->n = m;
+        *count_of(&added, k) = m;
+    }
+    if (lists[0].n + lists[1].n + lists[2].n + lists[3].n > 0) {
+        AcquireSRWLockExclusive(&s->lock);
+        bool good = build_from_files(s, root, lists, false, NULL, err);
+        ReleaseSRWLockExclusive(&s->lock);
+        if (!good) goto done;
+        InterlockedIncrement(&s->gen);
+        for (int i = 0; i < lists[K_PXFM].n; i++) { char hex[33]; store_blob_to_hex(lists[K_PXFM].h[i], hex); store_sim_font_added(s, hex); }
+        count_rows(s);
+    }
+    ok = true;
+done:
+    {
+        char e2[PX_ERR_LEN];
+        delete_contents(root, e2);
+        RemoveDirectoryA(root);
+    }
+    for (int k = 0; k < NKIND; k++) free(lists[k].h);
+    free(isNew);
+    if (ok) {
+        if (addedOut) *addedOut = added;
+        if (skippedOut) *skippedOut = skipped;
+    }
     return ok;
 }

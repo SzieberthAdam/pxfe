@@ -1,5 +1,5 @@
-# 52b. The glyph view's preview strip shows every line of the shared sample (as many as fit), at 1x and 2x, and the edited glyph
-# repeated after the last line; it follows the edit.  (The H of this font: 5x5 px, stem on the left, box 6 + 2 rows, line gap 1.)
+# 52b. The glyph view has the font view's sample strip under it (it folds, resizes and zooms the same way); it shows the shared sample in
+# the font as it is edited.  (The H of this font: 5x5 px, stem on the left, box 6 + 2 rows.)
 wait 8
 click @Unlock
 wait 4
@@ -17,16 +17,15 @@ click @cell:U+0048
 key enter
 wait 6
 assert editor 1
-# the 1x text: the stem of the H on the first line and on the second line (its box starts 9 rows lower)
-assert pixel @Glyph_Preview 0 4 141418
-assert pixel @Glyph_Preview 0 13 141418
-assert pixel @Glyph_Preview 0 8 FFFFFF
+# the strip at 1x: the stem of the H on the first line
+assert w.sz+ 1
+click @sz-
+wait 3
+assert pixel @Sample_Origin 0 4 141418
 shot tests/tmp/shots/52b_before.png
-# the repeated glyph follows the last line (a space of 4 pixels after the 6 of the H)
-assert pixel @Glyph_Preview 10 13 141418
-# the strip follows an edit: ink one more pixel at the top left of the H (box row 0, above the H; it shows on both lines)
+# the strip follows an edit: ink one more pixel at the top left of the H (box row 0, above the H)
+assert pixel @Sample_Origin 0 0 F8F8FA
 click @ecell:0,0
 wait 3
 assert modified 1
-assert pixel @Glyph_Preview 0 0 141418
-assert pixel @Glyph_Preview 0 9 141418
+assert pixel @Sample_Origin 0 0 141418

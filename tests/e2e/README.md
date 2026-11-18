@@ -62,11 +62,13 @@ One command per line, `#` starts a comment.
   The navigation segment of an open glyph reads `U+0041` (`assert navseg 2 U+0041`), no longer "A U+0041".
 - Navigation (version 6): `nav` (0 Typefaces, 1 Typeface, 2 Fonts, 3 Font, 4 Glyph, 5 Glyphs), `navactive` (the blue segment), `intypeface`, `assert navseg <0|1|2> <text>`; the segments are `@nav.0`, `@nav.1`, `@nav.2` (also `@Typefaces`, `@Fonts`, `@Glyphs` where they read so); the way back to the open font is `key right alt`.
   In the Typeface view the rows' buttons are `@tv.open.N`, `@tv.dup.N` and `@tv.delete.N`; `blast` 6 is the opening of a typeface.
-- Panel tabs: `ptab` (right panel of the font view: 0 Font, 1 Glyph, 2 Similar), `bside` (side panel of the browser: 0 View, 1 Similar, 2 Typeface), `fside` (side panel of the Glyphs view: 0 View, 1 Usage).
+- Panel tabs: `ptab` (right panel of the font view, shown as View | Font | Glyph | Similar | Layers: 4 View, 0 Font, 1 Glyph, 2 Similar, 3 Layers), `bside` (side panel of the browser, shown as View | Typeface | Font | Similar: 0 View, 1 Similar, 2 Typeface, 3 Font), `fside` (side panel of the Glyphs view: 0 View, 1 Usage).
+  The commands are in the tabs: `@Clone_Font`, `@Delete_Font`, `@Delete_Typeface`, the padlock `@Unlock` / `@Lock` (`@tf_lock` in a Typeface tab); the glyph commands `@Select_Occurrences`, `@Find_in_Library`, `@Add_Glyph`, `@Clone`, `@Set_Default`, `@Delete` in the font view's Glyph tab; `@zoom±`, `@Metrics`, `@Captions` in its View tab.
   The tab buttons are `@ptab_Font`, `@ptab_Glyph`, `@ptab_Similar`, `@bside_View`, `@bside_Typeface`, `@bside_Similar`, `@fside_View`, `@fside_Usage`.
-  The Typeface tab exists in the Typefaces and Typeface views only (version 7); its fields (`@c.family`, `@c.italic`…) and the boxed hash `@hash_typeface_full` are read-only until the typeface lock (`@tf_lock` in the tab and in the Typeface view's heading) unlocked the typeface; then `@hash_typeface_orig` shows the hash in the database beside the current one.
-  A script scrolls the panel (`wheel -8 1250 400`) before it clicks a switch, and waits 10 frames after the click (the content changes height with the original hash box).
-  The metric widgets (`@ascent+`…) exist only on their tab, so a script clicks the tab first.
+  The Typeface tab exists in the Typefaces and Typeface views only (version 7); its fields (`@c.family`, `@c.copyright`…; `@c.italic` is in the Font tab) and the boxed hash `@hash_typeface_full` are read-only until the typeface lock (`@tf_lock` in the tab and in the Typeface view's heading) unlocked the typeface; then `@hash_typeface_orig` shows the hash in the database beside the current one.
+  A widget that is not drawn may be in a panel tab not shown: the player opens the view's tabs one after the other and runs the line again (for a click target, and for `assert w.X 1`).
+  A widget drawn below the fold of a scrolled panel is scrolled to the panel's middle before the click (once a line).
+  A script waits 10 frames after a click on a switch (the content changes height with the original hash box).
 - Zoom (version 7): every zoom is one stepper, `[-] 3x [+]`, registered as `@<prefix>-` and `@<prefix>+`: `@zoom` (font view toolbar), `@ezoom` (glyph view), `@sz` (the sample strip), `@bzoom` (the library views' View tab), `@fzoom` (the Glyphs view's View tab, `fzoom` is its value, default 3).
   The Glyphs view's sort is `@fsort_Count`, `@fsort_Height`, `@fsort_Width`, the search `@finder.search`, Previous and Next `@finder.prev`, `@finder.next`.
   The rows of the usage and similar lists are `@usage_row_N` and `@similar_row_N`, and the panel's link is `@glyph_find`.
@@ -80,14 +82,15 @@ One command per line, `#` starts a comment.
   `@card:N` is the N-th visible variant row (in the Fonts tab the N-th card), `@hdr:N` the header of box N.
   `bink<N>` counts the lines of the sample of visible entry N that show ink (-1 until laid out).
   `blast` is the BrowserAction of the last choice the browser returned (1 open, 2 unused, 3 insight, 4 delete font, 5 delete typeface), `assert blastpxfm <hash>` and `assert blastpxtf <hash>` check its hashes (a prefix is enough).
-  Right click: `click @card:0 right`; the side panel's buttons are `@Delete_Font` and `@Delete_Typeface` (`assert w.Delete_Font 0|1`); the context menu items are `@Ctx_Open`, `@Ctx_Lock`, `@Ctx_Delete_Font`, `@Ctx_Delete_Typeface`.
+  A press on the selected entry opens it; there is no right-click menu.
+  The Typeface and Font tabs have `@Delete_Typeface` and `@Delete_Font` (`assert w.Delete_Font 0|1`); Del asks for the selected one too.
 - Sample (shared by the browser and the font view): `assert sample <text>` (`\n` is a new line, `-` is empty), `samplelines`, `samplefocus`, `setclip <text>` puts text on the clipboard for Ctrl+V.
   The browser's box is `@Sample`, the strip's `@Sample_Edit`.
   Strip state: `stripzoom`, `striph` (stored height), `stripcollapsed`; widgets `@sz-`, `@sz+`, `@Sample_Resize` (the top edge), `@Sample_Fold`, `@Sample_Preview`, and `@Sample_Origin`, the top left of the first line's font box (for `assert pixel`).
 - `assert tabhash <hash>` (the hash in the Typeface tab's boxed field), `assert hashname` checks that the current hash of the font (and of its typeface) equals the hash it was opened with, names a row of the store and, for a root, a file of the library.
 - `waitfor <name> <op> <value> [ms]` idles until a state of `assert` holds (default timeout 60 s, a timeout is a failure).
 - `snapdir <dir>` takes the snapshot used by `assert snapdir`.
-- Glyph view (version 4): `gtab` (right panel: 0 Glyph, 1 Usage, 2 Layers; the tab buttons are `@gtab_Glyph`, `@gtab_Usage`, `@gtab_Layers`), `emetrics` (metric lines on), `ehidden` (the edited glyph's layer is hidden), `ezoom`.
+- Glyph view: `gtab` (right panel, shown as View | Glyph | Layers: 3 View, 0 Glyph with the glyph usage, 2 Layers; the tab buttons are `@gtab_View`, `@gtab_Glyph`, `@gtab_Layers`), `emetrics` (metric lines on), `ehidden` (the edited glyph's layer is hidden), `ezoom`; the View tab has `@ezoom±`, `@ezoom.fit`, `@Metrics`, `@Checker`, and the sample strip (`@sz±`) is under the glyph view as under the grid.
   The bar has `@ezoom-`, `@ezoom+`, `@ezoom.fit`, `@Metrics` and the lock (`@Unlock` or `@Lock`).
   The panel has `@ghash_orig` and `@ghash_cur` (click copies the full glyph hash, `assert clip <text>` checks the clipboard) and `@glyph_find`.
 - Layers: `assert l.count`, `l.cur` (index of the "Current glyph" row), `l.sel`, `l.pop` (the Add Layer popover is open), `l.focus`, `l.fonts` (fonts in the layer glyph cache) and, per layer N from the top: `l.vis.N`, `l.op.N` (opacity %), `l.dx.N`, `l.dy.N`, `l.color.N` (`0xRRGGBB`), `l.same.N` (follows the edited glyph), `l.this.N` (from this font), `l.code.N`, `l.ink.N` (inked pixels, -1 = not in font).

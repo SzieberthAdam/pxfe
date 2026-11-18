@@ -66,6 +66,11 @@ The files of `handoff/` are old agent reports, kept for history.
 - Save runs on the UI thread; on the real library it freezes the window for the length of `TRACE saveas`.
 - SQLite gets Windows ANSI paths; a path with characters outside the code page is not supported.
 - Tests: `test_store.c`, `test_fsettings.c`, `test_pxtf.c`, scripts 15 to 18b, 23 to 31, 52b, 07a, 07b.
+- Font and typeface packages (`.pxfp`, `.pxtp`): `src/package.c` and `.h` (API in the header, DESIGN.md "Packages (pxfp, pxtp)"); zlib 1.4 vendored in `vendor/zlib`, linked by `build.bat`; `store_add_files` at the end of `store.c`.
+  Export Font… and Export Typeface… of the Font and Typeface tabs write one (`ExportPackage`, panel.inc; `setdialog save` answers its dialog).
+  Not in the UI yet: Import Package (`pkg_import`, then rescan; a store change, saved by Save).
+- Open: package bytes depend on the deflate implementation (zlib, as pxfe uses, against zlib-ng in Windows Python); importing is not affected.
+  Tests: `test_package.c` with `tests/pkg_reference.py`, script 70.
 
 ## Locks
 
@@ -73,7 +78,10 @@ The files of `handoff/` are old agent reports, kept for history.
 - `src/store.c`: `store_edit_in_place` adds the new font, rewrites the typefaces that name the old one, removes the old font and orphan glyphs, and reports the moved typeface hashes.
 - `src/fsettings.c`: `fs_is_unlocked`, `fs_set_unlocked`, `fs_rename_font`, `fs_rename_typeface`.
 - `src/main.c`: `EditPending`, `CommitEdits`, `SetFontLocked`, `SetTypefaceLocked`, `LockedOf`, `ToggleLockOf`, `docStored`; `readOnly` means the font is locked, `contLocked` the typeface; `origHash` and `origContHash` move at each commit.
-- `src/browser.c`: `lock_button`, `Browser_SetLockQuery`, `Browser_Follow`.
+- The padlocks are only in the Typeface and Font tabs (`DrawInfoTab`, panel.inc) and in the glyph view's bar.
+  Cards, rows and headings show an open padlock as a mark when unlocked (`unlock_mark`, browser.c; `Browser_SetLockQuery`).
+- Unlocking a library font or typeface opens its font quietly and stays in the view (`ToggleLockOf`).
+- The typeface lock governs the typeface-wide fields; the font lock governs the font's own fields (style, full name, weight name, slant, italic, underlined, struck-out), which live in its typeface variant.
 - A change of a lock counts as unsaved (the sidecar changes) while the font stays unmodified.
 - The `unlocked` row of a deleted font is not removed (harmless).
 - Tests: `105_lock`, `105b_lock_reload`, `29_edit_replace`, `31_edit_twice`, `32_edit_back_to_original`.
@@ -87,14 +95,21 @@ The files of `handoff/` are old agent reports, kept for history.
 
 ## Library browser
 
-- `src/browser.c`: the Typefaces, Typeface and Fonts views; `SIDE_VIEW`, `SIDE_SIMILAR`, `SIDE_TYPEFACE`, `sel_typeface`; the Typeface view (`tview_ui`, `Browser_OpenTypeface`, `Browser_CloseTypeface`); the Colours filter (`collect_colors`, ini key `colors`; `StoreEntry.colors`, `LibInfo.colors`).
+- `src/browser.c`: the Typefaces, Typeface and Fonts views; the side tabs View | Typeface | Font | Similar (View | Font | Similar in the Fonts view; `SIDE_*`, ini key `sidetab`), `sel_typeface`; the Typeface view (`tview_ui`, `Browser_OpenTypeface`, `Browser_CloseTypeface`); the Colours filter (`collect_colors`, ini key `colors`; `StoreEntry.colors`, `LibInfo.colors`).
+- A press on the selected entry opens it; there is no context menu, no pinned selection block and no button on cards or rows.
+- The Typeface and Font tabs are drawn by main.c through `Browser_SetInfoTab` (`DrawLibraryTab`, `DrawInfoTab`).
+  Their commands (lock, Clone Font, Export, Delete) are queued with `LibCmd` and run at the end of the frame (`RunLibCommand`).
+- Clone Font (`CloneFont`, panel.inc; `pxtf_clone_variant`) adds a variant naming the same font, style "<style> copy"; the typeface must be unlocked.
+  The two variants share the font until one is edited: `CommitEdits` points only the open variant at the new font and `store_edit_in_place` keeps the old font for the other.
 - The Colours count is of palette entries other than `.`; a font that states no ascent or descent has its info loaded when the list opens or a count is chosen.
-- Typeface editing: the typeface lock (`@tf_lock`) opens the font of the selected variant, unlocks the typeface and shows the Typeface view again; `DrawTypefaceTab` (panel.inc) then edits `cont`; while a field has the keyboard the browser reads no keys (`extTyping`).
-- Tests: `109_color_filter`, `12_typeface`.
+- While a field has the keyboard the browser reads no keys (`extTyping`).
+- Tests: `109_color_filter`, `12_typeface`, `70_panel_tabs`.
 
 ## Font view
 
-- `src/panel.inc`: the tabs Font | Glyph | Similar | Layers (`panelTab`, ini key `fontTab`); the Baseline row (`CmdBaseline`, `BaselineRow`); `GlyphFacts` (editable in the glyph view, text in the font view); `ParseHexCode`, `ParseCharCode`, `SetGlyphCode`.
+- `src/panel.inc`: the tabs View | Font | Glyph | Similar | Layers (`panelTab` 4, 0, 1, 2, 3; ini key `fontTab`); View has the zoom, Metrics and Captions; Font has `DrawInfoTab` and the metrics; Glyph has the selection (with its character), the glyph commands (`ButtonRow`), the glyph hash and the usage.
+- There is no command bar, no info bar, no "..." menu and no grid context menu; the toolbar keeps Menu, the navigation, Undo, Redo and Save.
+- The Baseline row (`CmdBaseline`, `BaselineRow`); `GlyphFacts` (editable in the glyph view, text in the font view); `ParseHexCode`, `ParseCharCode`, `SetGlyphCode`.
 - `src/main.c`: `baseShift`, `undoBase`, `undoCode`; `DoUndoRedo` moves the font layers by the difference and follows the glyph by its code.
 - The font layers are not in the undo snapshots; the baseline's effect on them is undone through `baseShift`, so a layer added after a step also moves when that step is undone.
 - New Font (Menu, first item) makes an empty orphan font; Add Glyph adds a glyph.
@@ -102,7 +117,8 @@ The files of `handoff/` are old agent reports, kept for history.
 
 ## Glyph view
 
-- `src/editor.c` and `.h`: the canvas, the bar, the preview strip (the shared multi-line sample of `src/sample.h` at 1x and 2x), the status line; `Editor_SetGlyphIndex`.
+- `src/editor.c` and `.h`: the canvas, the bar, the status line; `Editor_SetGlyphIndex`; `Editor_ViewPanel` (zoom, Fit, Metrics, Checker) is the View tab of `gpanel.inc` (View | Glyph | Layers, `glyphTab` 3, 0, 2; the glyph usage is in the Glyph tab).
+- The sample strip (`SampleStrip_Draw`) is under the glyph view as under the grid: it folds, resizes and has its own zoom.
 - `Editor_Flush` (called by `CommitEdits` and `CloseGlyphView`) drops floating pixels and draws or closes a curve or polygon being made; `Editor_CancelFloat` throws them away (Ctrl+Z).
 - `src/main.c` and `src/sample.c` draw with each glyph's own palette.
 - Tests: `06_editor`, `110b_type_mouse_away_glyph`.

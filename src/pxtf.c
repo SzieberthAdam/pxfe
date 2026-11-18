@@ -83,6 +83,25 @@ bool pxtf_copy(PxtfTypeface *dst, const PxtfTypeface *src) {
     return true;
 }
 
+PxtfVariant *pxtf_clone_variant(PxtfTypeface *c, int number) {
+    PxtfVariant *src = pxtf_find_variant(c, number);
+    if (!src) return NULL;
+    if (c->count == c->cap) {
+        int cap = c->cap ? c->cap * 2 : 4;
+        PxtfVariant *nv = (PxtfVariant *)realloc(c->v, sizeof(PxtfVariant) * (size_t)cap);
+        if (!nv) return NULL;
+        c->v = nv;
+        c->cap = cap;
+        src = pxtf_find_variant(c, number);
+    }
+    PxtfVariant *d = &c->v[c->count];
+    memset(d, 0, sizeof *d);
+    if (!variant_copy(d, src)) return NULL;
+    d->number = c->v[c->count - 1].number + 1;   /* the variants are in ascending order: the new one is last */
+    c->count++;
+    return d;
+}
+
 PxtfVariant *pxtf_find_variant(PxtfTypeface *c, int number) {
     for (int i = 0; i < c->count; i++) if (c->v[i].number == number) return &c->v[i];
     return NULL;

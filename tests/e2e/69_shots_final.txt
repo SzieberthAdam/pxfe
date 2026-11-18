@@ -46,7 +46,8 @@ dblclick @hdr:0
 wait 150
 shot tests/tmp/p3/final/typeface.png
 sleep 600
-click @tv.open.0
+bselect 0
+click @card:0
 wait 60
 reveal U+0041
 click @cell:U+0041
@@ -142,7 +143,8 @@ dblclick @hdr:0
 wait 150
 shot tests/tmp/p3/final/s_typeface.png
 sleep 600
-click @tv.open.0
+bselect 0
+click @card:0
 wait 60
 reveal U+0041
 click @cell:U+0041

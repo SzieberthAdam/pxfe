@@ -21,6 +21,7 @@ typedef struct PFrame {
 static struct {
     bool active, finished, expectQuit;
     char **lines; int nlines, cur, lineNo;
+    int revealLine, revealStep, scrollLine; bool retry;   /* a target in a panel tab not shown: the tabs tried for this line, and the line runs again */
     PFrame *q; int qn, qhead, qcap;
     int fails, passes;
     int *chq; int chn, chhead, chcap;
@@ -159,6 +160,27 @@ static bool CellCenter(const char *tok, float *x, float *y)
     return true;
 }
 
+/* A widget that is not drawn may be in a tab of the right panel that is not shown: the player opens the panel's tabs one after the other (as a
+ * user looks for a command) and runs the line again.  False when every tab of this view was tried for this line. */
+static bool RevealTab(void)
+{
+    static const char *fontTabs[] = {"ptab_Font", "ptab_Glyph", "ptab_View", "ptab_Layers", NULL}, *glyphTabs[] = {"gtab_Glyph", "gtab_View", "gtab_Layers", NULL},
+                      *libTabs[] = {"bside_Font", "bside_Typeface", "bside_View", NULL};
+    const char **tabs = inFinder ? NULL : inBrowser ? libTabs : !hasFont ? NULL : inEditor ? glyphTabs : fontTabs;
+    if (play.revealLine != play.lineNo) { play.revealLine = play.lineNo; play.revealStep = 0; }
+    Rectangle tr;
+    while (tabs && tabs[play.revealStep]) {
+        const char *tn = tabs[play.revealStep++];
+        if (!Th_RegFind(tn, &tr)) continue;
+        QClick((int)(tr.x + tr.width / 2), (int)(tr.y + tr.height / 2), MOUSE_BUTTON_LEFT, (Mods){false, false, false});
+        QWait(3);
+        play.retry = true;
+        play.cur = play.lineNo - 1;   /* the line runs again once the tab is shown */
+        return true;
+    }
+    return false;
+}
+
 /* Resolve a target at tok[0] (@name or a number pair). Returns tokens used (0 on failure). */
 static int Target(char **tok, int n, float *x, float *y)
 {
@@ -207,7 +229,15 @@ static int Target(char **tok, int n, float *x, float *y)
         if (!strcmp(nm, "grid.empty")) { *x = play.gridArea.x + play.gridArea.width - 40; *y = play.gridArea.y + play.gridArea.height - 8; return 1; }
         if (!strcmp(nm, "grid.scrollbar")) { *x = play.gridArea.x + play.gridArea.width - 8; *y = play.gridArea.y + 40; return 1; }
         Rectangle r;
-        if (!Th_RegFind(nm, &r)) { PLAY_FAIL("no widget named '%s'", tok[0]); return 0; }
+        if (!Th_RegFind(nm, &r) && !RevealTab()) { PLAY_FAIL("no widget named '%s'", tok[0]); return 0; }
+        if (play.retry) return 0;
+        if (play.scrollLine != play.lineNo && Th_ScrollInto(r)) {   /* below the fold of a scrolled panel: scroll it there, once a line */
+            play.scrollLine = play.lineNo;
+            QWait(2);
+            play.retry = true;
+            play.cur = play.lineNo - 1;
+            return 0;
+        }
         *x = r.x + r.width / 2; *y = r.y + r.height / 2;
         return 1;
     }
@@ -383,7 +413,7 @@ static bool GetInt(const char *name, long *v)
     else if (!strcmp(name, "usage")) *v = insight ? Insight_UsageFontCount(insight) : -2;        /* fonts holding the selected glyphs; -1 loading */
     else if (!strcmp(name, "usagevar")) *v = insight ? Insight_UsageVariantCount(insight) : -2;     /* typeface variants naming those fonts; -1 loading */
     else if (!strcmp(name, "usagecode")) *v = insight ? Insight_UsageCodeFonts(insight) : -2;       /* fonts that hold the glyph under the code of the selected glyph / the finder; -1 none */
-    else if (!strcmp(name, "ptab")) *v = panelTab;                                                   /* tab of the font view's right panel: 0 Font, 1 Glyph, 2 Similar, 3 Layers */
+    else if (!strcmp(name, "ptab")) *v = panelTab;                                                   /* tab of the font view's right panel: 0 Font, 1 Glyph, 2 Similar, 3 Layers, 4 View */
     else if (!strcmp(name, "fside")) *v = finder ? Finder_SideTab(finder) : -2;                        /* side panel of the Glyphs view: 0 View, 1 Usage */
     else if (!strcmp(name, "fzoom")) *v = finder ? Finder_Zoom(finder) : -2;
     else if (!strcmp(name, "fcellfonts")) *v = finder ? Finder_CellFonts(finder, 0) : -2;           /* the "N fonts" of the first finder cell */
@@ -393,7 +423,7 @@ static bool GetInt(const char *name, long *v)
     else if (!strcmp(name, "opentime")) *v = (long)(job.seconds * 1000);                           /* ms of the last library open */
     else if (!strcmp(name, "bvisible")) *v = browser ? Browser_VisibleCount(browser) : -1;
     else if (!strcmp(name, "btotal")) *v = browser ? Browser_TotalCount(browser) : -1;
-    else if (!strcmp(name, "bside")) *v = browser ? Browser_SideTab(browser) : -1;                  /* side panel of the browser: 0 View, 1 Similar, 2 Typeface */
+    else if (!strcmp(name, "bside")) *v = browser ? Browser_SideTab(browser) : -1;                  /* side panel of the browser: 0 View, 1 Similar, 2 Typeface, 3 Font */
     else if (!strcmp(name, "btab")) *v = browser ? Browser_Tab(browser) : -1;
     else if (!strcmp(name, "bzoom")) *v = browser ? Browser_Zoom(browser) : -1;
     else if (!strcmp(name, "bcols")) *v = browser ? Browser_Columns(browser) : -1;
@@ -423,7 +453,7 @@ static bool GetInt(const char *name, long *v)
     else if (!strcmp(name, "editor_glyph")) *v = (inEditor && ed && Editor_GlyphIndex(ed) < font.count) ? font.glyphs[Editor_GlyphIndex(ed)].codepoint : -1;
     else if (!strncmp(name, "l.", 2)) return LayerStat(name + 2, v);
     else if (!strncmp(name, "w.", 2)) { Rectangle wr; *v = Th_RegFind(name + 2, &wr); }          /* assert w.<widget> 0|1: a widget of that name was drawn in the last frame */
-    else if (!strcmp(name, "gtab")) *v = glyphTab;                                                   /* tab of the glyph view's right panel: 0 Glyph, 1 Usage, 2 Layers */
+    else if (!strcmp(name, "gtab")) *v = glyphTab;                                                   /* tab of the glyph view's right panel: 0 Glyph, 2 Layers, 3 View */
     else if (!strcmp(name, "emetrics")) *v = ed ? Editor_ShowMetrics(ed) : -1;                      /* metric lines of the glyph view on */
     else if (!strcmp(name, "ehidden")) *v = ed ? Editor_CurrentHidden(ed) : -1;                     /* the edited glyph's layer is hidden */
     else if (!strcmp(name, "etool")) *v = ed ? Editor_Tool(ed) : -1;
@@ -926,6 +956,7 @@ static void DoAssert(char **t, int n)
         if (n >= 4) { op = t[2]; val = t[3]; }
         long want = (val[0] == '\'' && val[1]) ? val[1] : ((val[0] == 'U' && val[1] == '+') ? strtol(val + 2, NULL, 16) : ((val[0] == '0' && val[1] == 'x') ? strtol(val + 2, NULL, 16) : atol(val)));
         ok = Compare(v, op, want);
+        if (!ok && v == 0 && want == 1 && !strncmp(k, "w.", 2) && RevealTab()) return;   /* a widget in a panel tab not shown: show the tabs in turn */
         if (!ok) PlayLog("  actual %s = %ld", k, v);
     } else { PLAY_FAIL("unknown assert '%s'", k); return; }
     if (ok) PLAY_PASS("assert %s", line); else PLAY_FAIL("assert %s", line);
@@ -985,7 +1016,7 @@ static void PlayExecLine(const char *line)
         while (*sub == ' ') sub++;
         char subc[1024];
         snprintf(subc, sizeof subc, "%s", sub);
-        for (int i = atoi(t[1]); i > 0; i--) PlayExecLine(subc);
+        for (int i = atoi(t[1]); i > 0 && !play.retry; i--) PlayExecLine(subc);
         return;
     }
     const char *c = t[0];
@@ -1008,6 +1039,7 @@ static void PlayExecLine(const char *line)
     float x, y, x2, y2;
 
     if (!strcmp(c, "wait")) QWait(na > 1 ? atoi(t[1]) : 1);
+    else if (!strcmp(c, "bselect")) { if (browser && na > 1) Browser_SelectVisible(browser, atoi(t[1])); else PLAY_FAIL("bselect N needs the library"); }   /* select the N-th visible entry: a click on it then opens it */
     else if (!strcmp(c, "move")) { if (Target(t + 1, na - 1, &x, &y)) QMove((int)x, (int)y); }
     else if (!strcmp(c, "click") || !strcmp(c, "dblclick")) {
         if (Target(t + 1, na - 1, &x, &y)) {
@@ -1190,6 +1222,7 @@ static void PlayExec(void)
 {
     if (play.cur >= play.nlines) { play.finished = true; return; }
     play.lineNo = play.cur + 1;
+    play.retry = false;
     PlayExecLine(play.lines[play.cur++]);
 }
 

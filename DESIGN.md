@@ -149,12 +149,15 @@ Exactly two forms, both in Unifont; nothing else prints a hash.
 
 - `Th_TextField`: 28 px, `TH_PANEL` fill; focused has the accent border and a caret; a search field adds a placeholder and a clear mark.
   Enter commits, Escape reverts.
+- Text selects as in any editor: a drag, a double click (a word), Shift with the arrows, Home and End, Ctrl+A; Ctrl+C, Ctrl+X and Ctrl+V act on the selection, and typing replaces it.
+- `TH_TF_READONLY`: the field takes the focus, selects and copies, but takes no edits (a locked field).
 - `Th_Check` is for a setting in a form, `Th_Switch` for an on/off property; both carry their label and share one geometry helper.
 
 #### Section caption
 
-- `Th_Section(title, x, &y, w, flags, right)`: semibold 13, dim, upper case, a hairline to the right, 24 px high; `right` is a small dim count at the end.
-- `TH_SEC_OPEN` / `TH_SEC_CLOSED` make a fold header (chevron, hover plate), registered as `<Title>_Fold`.
+- `Th_Section(title, x, &y, w, right)`: semibold 13, dim, upper case, a hairline to the right, 24 px high; `right` is a small dim count at the end.
+- Every caption folds (chevron, hover plate, registered as `<Title>_Fold`) and returns whether it is open; the caller draws the content only then.
+  The state is kept per title for the session (`Th_SectionOpen`, `Th_SectionSetOpen`); the sample strip keeps its own in pxfe.ini.
 - Used by every panel (the library side panel, the Font, Glyph and Usage tabs, the Glyphs view's panel, the Layers panel and its Add Layer popover, the Usage and Similar sections and the sample strip as fold headers) and by the full-hash field.
 - A panel never writes its own heading look (dialog and view titles are `Th_TextHead`); inline toolbar labels (MOVE, ADVANCE) use `Th_TextCap`, the primitive under it.
 
@@ -384,6 +387,21 @@ The text folders (`pxtf/`, `pxfm/`, `pxgl/`, `palette/`) are reached only throug
 - Overwrite offers "Make a backup first", on by default: the folder's data is imported into `<folder>-backup-<YYYYMMDD-HHMM>.pxfdb` beside it first; if that fails, nothing is deleted, and overwriting without a backup needs a second confirmation.
 - A summary says what was written, skipped and deleted; the sidecar is not touched.
 
+### Packages (pxfp, pxtp)
+
+A font package (`.pxfp`) carries one font, a typeface package (`.pxtp`) a typeface with all its fonts, from one library to another (pixelglyphlib `spec/pxfp.md`, `spec/pxtp.md`).
+Both are plain zip files of library files named by their hashes: the pxfm or pxtf at the root, then flat `pxfm/`, `pxgl/` and `palette/` folders.
+`src/package.c` writes, checks and imports them; it uses no raylib.
+
+- Writing takes the text of every file from the rows, as Export does, and gives the bytes pixelglyphlib's `package export` gives: entries in byte order of their names, deflate at level 9, 1980-01-01 00:00:00, Unix mode 0644, no extra field, no comment.
+- The deflate is zlib's own, vendored unchanged in `vendor/zlib/` (zlib 1.4, zlib licence), since another deflate (zlib-ng, sdefl) gives other bytes.
+- The recommended file name is `<family>-<style>.pxfp` after the first typeface variant that names the font (else `<hash>.pxfp`) and `<family>.pxtp` (else `typeface.pxtp`); a name taken in the folder by other bytes gets `-<first 8 hex digits of the hash>`.
+- Reading decides the kind by the file at the root, never by the file name or extension, and checks the whole package before anything is used: the zip itself, the shape of the kind, every name against the hash of the canonical form of its content, that the files name each other exactly, and every file with the strict readers of Import.
+- Each file is kept in its canonical form: a package whose files have CR LF line ends or trailing blanks reads as the same files.
+- Importing adds the files to memory, all or nothing: a file memory has already with the same text is skipped; one memory has under the same hash with another text stops the import, and nothing is added.
+- An import is a change of memory like any other, written by Save; it brings no source file and no font JSON.
+- `tests/test_package.c` checks round trips on the test databases, every rejection rule with a crafted zip, and byte identity with packages written by the Python reference (run with zlib's deflate; the Windows builds of Python use zlib-ng).
+
 ### Deleting fonts and typefaces
 
 - A font or a whole typeface can be deleted from the library views (`Del`, the context menu, the red buttons of the pinned selection) and from the font view.
@@ -416,7 +434,10 @@ Beside the exe: `lastPxfdb`, the sample text, `[app] fontTab` (0 Font, 1 Glyph, 
 Every font and every typeface has a lock, locked by default; what is unlocked is edited in place.
 
 - A locked font is a viewer: grid, glyph view, selection, zoom and picking an ink work, but every change refuses ("The font is locked: unlock it first") and the editing controls are dim.
-- The padlock (`Th_Lock`) is the only way to change a lock: in the font view's info bar, the glyph view's bar, the library's cards, rows and selection block, the Typeface view's heading and font rows, and the Typeface tab.
+- The padlock (`Th_Lock`) is the only way to change a lock: in the Typeface and Font tabs of the panels and in the glyph view's bar.
+  Cards, rows and the Typeface view's heading show an open padlock as a mark while unlocked, and no button.
+- Unlocking a font or typeface of the library opens its font quietly as the document; the view stays where it is.
+- The typeface lock governs the typeface-wide fields; the font lock governs the font's own fields (style, full name, weight name, slant, italic, underlined, struck-out), although they are stored in its typeface variant.
 - A lock change is a settings change: unsaved until Save.
 - A locked font may still get layers: they are program settings, and the database is not changed.
 
@@ -495,17 +516,19 @@ The library views are Typefaces, Typeface and Fonts (`src/browser.c`).
   A variant row selects that font, the header the typeface.
 - Fonts: one card per font: family and style (or the hash), details (format, size `ASCENT + DESCENT`, glyph count, Mono, Symbolic, ratio, hash) and the sample, pixel perfect.
 - The lists are virtualized; fonts load lazily on worker threads (the pxfm and the glyphs of the sample's characters, cached, reloaded when the sample changes); a 1,200-font library shows its cards within a second.
-- Click selects; double-click or Enter opens.
+- A press selects; a press on the entry that is selected already, or Enter, opens it.
+  There is no context menu.
 - Coming back from a font (Alt+Left or a segment) finds the list with its scroll, filters and selection as they were.
 - Counts are in the side panel ("N of M variants", "N of M", "N fonts") and the status line ("N of M typefaces").
 
 ### The side panel
 
-- Tabs **View | Typeface | Similar** in the Typefaces and Typeface views, **View | Similar** in the Fonts view.
+- Tabs **View | Typeface | Font | Similar** in the Typefaces and Typeface views, **View | Font | Similar** in the Fonts view.
 - View: Rescan in the heading row; FILTER: the name filter (substring over family, full name, style, designer, hash; `Ctrl+F` focuses it), the Style, Format and Colours dropdowns built from the values present, Clear filters; SAMPLE: the sample and its presets; VIEW: the zoom, the columns (1 to 8, or Auto) and the sort (name, size, format, glyph count).
   In the Typeface view only the sample and the zoom.
+- Typeface and Font: see "The Typeface and Font tabs".
 - Similar: the similar fonts or typefaces of the selection, else "Select a font to see similar ones".
-- The selection is pinned at the bottom: name, detail line, hash, Open, the padlock, and the red "Delete Font" and "Delete Typeface".
+- Nothing is pinned over the panel: every command is in a tab.
 
 ### The Colours filter
 
@@ -517,17 +540,28 @@ The library views are Typefaces, Typeface and Fonts (`src/browser.c`).
 
 ### The Typeface view
 
-- One large card per font: style, details (format, size, glyph count, mono, italic and so on), "Font xxxxxxxx", Open, the padlock, Delete Font, and the shared multi-line sample at 2x or more.
-- The heading carries the family, "Typeface xxxxxxxx" and the typeface's padlock.
-- `Enter` and a double click open the selected font, `Del` deletes it.
+- One large card per font: style, details (format, size, glyph count, mono, italic and so on), "Font xxxxxxxx" and the shared multi-line sample at 2x or more.
+- The heading carries the family and "Typeface xxxxxxxx".
+- `Enter` and a press on the selected card open its font, `Del` deletes it.
 - After a deletion the view follows the rewritten typeface by family name, and returns to the list when it is gone.
 
-### The Typeface tab
+### The Typeface and Font tabs
 
-- `DrawTypefaceTab` (`src/panel.inc`, through `Browser_SetTypefaceTab`): the variant line, the boxed full hash, the pxtf's text fields and the italic, underlined and struck-out switches, for the selected box or row.
-- Read-only while locked; its padlock opens the font of the selected variant for it and the view stays.
-- Unlocked, the fields of the selected variant are editable (Enter or a click elsewhere keeps, Escape reverts); the first segment shows "*" while it differs from the database.
+`DrawInfoTab` (`src/panel.inc`) draws both, for the library views (through `Browser_SetInfoTab`) and for the font view's Font tab.
+
+- The padlock and "Locked" or "Unlocked: edits change it in place"; the boxed hash (the current one and the stored one while they differ).
+- A row of commands: Export Typeface… and Delete Typeface; Clone Font, Export Font… and Delete Font.
+  They are queued (`LibCmd`) and run at the end of the frame (`RunLibCommand`), because they may replace the document or rescan the library.
+- Typeface: TYPEFACE (the variant count and format at the right): the typeface-wide fields (family, version, designer, URLs, copyright, trademark, licence, vendor, description, code page); an edit sets the field in every variant.
+- Font: FONT (its variant number at the right): style, full name, weight name, slant and the italic, underlined and struck-out switches of its variant.
+- Read-only fields can be selected and copied; they are editable only for the open document's font and typeface while unlocked (Enter or a click elsewhere keeps, Escape reverts); the first navigation segment shows "*" while it differs from the database.
 - Leaving the view, opening a font, Save, Export, Load and quit commit the edit in place; it has no undo.
+
+### Clone Font
+
+- A new variant of the same typeface, under the next number, naming the same font, its style "<style> copy" (`pxtf_clone_variant`, `CloneFont`).
+- It needs the typeface unlocked; the open font's edits are committed first.
+- The two variants share the font until one is edited: `CommitEdits` points only the open variant at the new font, and `store_edit_in_place`, given the typeface, keeps the old font for the other variant.
 
 ### Similar fonts and typefaces
 
@@ -539,19 +573,22 @@ The library views are Typefaces, Typeface and Fonts (`src/browser.c`).
 
 ## Font view
 
-- Top: the toolbar (Undo, Redo, the zoom stepper 1x to 16x, Metrics and Captions toggles, Select Occurrences, Clone, Delete, Add Glyph, a "..." menu, a selection summary) and an info bar with the font's name, hash and padlock.
+- Top: the toolbar: Menu, the navigation, Undo, Redo and Save; no command bar and no info bar.
 - Center: the glyph grid, as in FontLab's font window: each cell shows the glyph at the zoom inside its font box, the advance wide (at least a minimum cell width), with the projected metric lines and a caption strip; Ctrl+wheel zooms.
 - Right: the panel.
 - Bottom: the sample strip: the shared sample in the current state of the font at 1x to 8x, with kerning, updated as the font is edited, resized by dragging its top edge and folded by its header; then the status bar (file, glyph count, selection count, the stored hash, the current hash when it differs, the modified marker).
+  The same strip is under the glyph view.
 
 ### The right panel
 
-Tabs **Font | Glyph | Similar | Layers**, remembered; selecting a glyph never changes the tab, and each tab scrolls by itself.
+Tabs **View | Font | Glyph | Similar | Layers**, remembered; selecting a glyph never changes the tab, and each tab scrolls by itself.
 
-- Font: the boxed hash; FONT METRICS: every metric as an optional row (a check for "stated" and a number field), `RATIO` as two fields, `MONOSPACED` and `SYMBOLIC` as switches, and the Baseline row; changes show live on all cells.
-- Glyph: the selection's facts as text, "Open in Glyph View", "Find in Library", and the glyph usage.
+- View: the zoom stepper (1x to 16x, also Ctrl+wheel), Metrics and Captions.
+- Font: the Font tab of "The Typeface and Font tabs", then FONT METRICS: every metric as an optional row (a check for "stated" and a number field), `RATIO` as two fields, `MONOSPACED` and `SYMBOLIC` as switches, and the Baseline row; changes show live on all cells.
+- Glyph: SELECTION: the selection's facts as text (with the character), "Open in Glyph View", the commands (Select Occurrences and Find in Library; Add Glyph, Clone, Set Default, Delete), the glyph hash; then the glyph usage.
 - Similar: the similar fonts and typefaces.
 - Layers: the font layers.
+- Every section caption folds (`Th_Section`), and the state lasts for the session.
 
 ### Selection and commands
 
@@ -560,6 +597,7 @@ Tabs **Font | Glyph | Similar | Layers**, remembered; selecting a glyph never ch
 - Delete (`Del`) after a confirmation; Clone (`Ctrl+D`) to a code typed in a dialog (`U+XXXX`, hex, or a character); Add Glyph adds an empty glyph with or without a code; Set Default.
 - `Enter` or a double click opens the glyph view.
 - Every editing command refuses on a locked font.
+- There is no context menu.
 
 ### The baseline
 
@@ -574,7 +612,7 @@ The Baseline row (under Descent) has up and down buttons (`@Baseline_up`, `@Base
 
 ### Glyph usage
 
-- With one glyph selected (font view, glyph view, Glyphs view): the pxgl hash, the size, and "In N fonts · M typeface variants": the fonts that hold the bitmap under any code, and the typeface variants that name them, which can be more than the fonts.
+- With one glyph selected (font view, glyph view, Glyphs view): the bitmap in the selected glyph's colours, the pxgl hash, the size, and "In N fonts · M typeface variants": the fonts that hold the bitmap under any code, and the typeface variants that name them, which can be more than the fonts.
 - With a code point a second line, "K use it for U+0065", counts the fonts that draw the bitmap for that code; it is the number the Glyphs view shows under the bitmap.
 - One row per font and variant (family and style, font hash) with every code the font uses the bitmap for.
 - With several glyphs: the fonts that hold all of them.
@@ -585,17 +623,20 @@ The Baseline row (under Descent) has up and down buttons (`@Baseline_up`, `@Base
 - The canvas: the font box large (Fit, integer zoom, wheel), a 1 px pixel grid, the metric lines with labels, the pen origin and the dashed advance line, which can be dragged.
 - The screen mapping is frozen from mouse-down to mouse-up, so a stroke that grows the font box never shifts the view; it is fitted again after the stroke.
 - Painting outside the bitmap grows it, up to 4096 cells a side.
-- Around the canvas: the tool strip at the left, the palette bar below, then the preview strip (the sample at 1x and 2x) and the status line (position, tool, ink, zoom, bitmap; the glyph hashes; the Checker toggle).
+- Around the canvas: the tool strip at the left, the palette bar below, the status line (position, tool, ink, zoom, bitmap; the glyph hashes), then the sample strip of the font view (it folds, resizes and zooms the same way).
 
 ### The bar
 
-- Row 1: Back, previous and next glyph (`PgUp`, `PgDn`), the glyph's caption, Fit, the zoom, Metrics, and Layers ("Layers 2" with two reference layers; a click shows the Layers tab).
+- Row 1: Back, previous and next glyph (`PgUp`, `PgDn`), the glyph's caption, and Layers ("Layers 2" with two reference layers; a click shows the Layers tab).
 - Row 2: the padlock, the current tool's options (Pixel-perfect; Filled; Set, Add, Sub, And with 8-way; Contiguous with 8-way), MOVE (four arrows: the selection, or without one the bitmap, by 1 cell) and ADVANCE.
 
 ### The right panel
 
-Tabs **Glyph | Usage | Layers** (`src/gpanel.inc`); opening the glyph view shows the Glyph tab.
-They hold the glyph's fields and the full pxgl hashes of the glyph as opened and as it is now; the glyph usage; session and font layers in one stack.
+Tabs **View | Glyph | Layers** (`src/gpanel.inc`); opening the glyph view shows the Glyph tab.
+
+- View: the zoom with Fit, Metrics and Checker (`Editor_ViewPanel`).
+- Glyph: the glyph's fields, Find in Library, the full pxgl hashes of the glyph as opened and as it is now, and the glyph usage.
+- Layers: session and font layers in one stack.
 
 ### The facts of a glyph
 

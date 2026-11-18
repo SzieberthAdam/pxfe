@@ -1,0 +1,125 @@
+# 70. The panel tabs and their commands (testdata/lib, no font open).
+# 1 the library's Font tab: padlock, hash, Clone Font / Delete Font, Export Font and Export Typeface write packages, no right-click menu; 2 Clone Font needs the typeface unlocked, unlocking it from
+# the Typeface tab opens its font quietly and stays in the library; 3 Clone Font adds a variant naming the same font; 4 a press on the selected
+# entry opens it; 5 the font view's View, Font and Glyph tabs hold what the command bar had; 6 the glyph view's View tab and its sample strip;
+# 7 a text field selects (Ctrl+A, then typing replaces the selection).
+wait 16
+assert nav 0
+assert bvisible 3
+
+# ---- 1. the Font tab of a variant row
+click @card:0
+wait 3
+click @bside_Font
+wait 3
+assert bside 3
+assert w.Clone_Font 1
+assert w.Delete_Font 1
+assert w.Unlock 1
+click @card:0 right
+wait 3
+assert w.Ctx_Open 0
+assert w.Ctx_Delete_Font 0
+# Export Font... writes a .pxfp package where the dialog says, Export Typeface... a .pxtp
+delete tests/tmp/x70.pxfp
+delete tests/tmp/x70.pxtp
+setdialog save tests/tmp/x70.pxfp
+click @Export_Font…
+wait 10
+assert file tests/tmp/x70.pxfp exists
+click @bside_Typeface
+wait 3
+setdialog save tests/tmp/x70.pxtp
+click @Export_Typeface…
+wait 10
+assert file tests/tmp/x70.pxtp exists
+setdialog save none
+click @bside_Font
+wait 3
+
+# ---- 2. Clone Font is off while the typeface is locked
+click @Clone_Font
+wait 10
+assert bvisible 3
+click @bside_Typeface
+wait 3
+assert w.Delete_Typeface 1
+click @tf_lock
+wait 12
+assert inbrowser 1
+assert nav 0
+assert hascont 1
+assert contlocked 0
+
+# ---- 3. the clone: one more variant, the same fonts, the same number of typefaces
+click @bside_Font
+wait 3
+click @Clone_Font
+wait 16
+assert bvisible 4
+assert storefonts 4
+assert storetypefaces 2
+assert toast Cloned as variant
+
+# ---- 4. a press on the selected entry opens it
+click @card:0
+wait 3
+sleep 600
+click @card:0
+wait 12
+assert inbrowser 0
+assert nav 3
+
+# ---- 5. the font view: View (zoom, metrics, captions), Font (padlock, fields, metrics), Glyph (the glyph commands)
+assert w.ptab_View 1
+click @ptab_View
+wait 3
+assert ptab 4
+assert w.zoom+ 1
+assert w.Metrics 1
+assert w.Captions 1
+click @ptab_Font
+wait 3
+assert w.c.style 1
+assert w.ascent+ 1
+click @cell:U+0041
+wait 2
+click @ptab_Glyph
+wait 3
+assert w.Select_Occurrences 1
+assert w.Find_in_Library 1
+assert w.Add_Glyph 1
+assert w.Set_Default 1
+
+# ---- 6. the glyph view: View | Glyph | Layers, the sample strip under it
+click @Open_in_Glyph_View
+wait 12
+assert editor 1
+assert gtab 0
+click @gtab_View
+wait 3
+assert gtab 3
+assert w.Checker 1
+assert w.ezoom+ 1
+assert w.sz+ 1
+key escape
+wait 10
+assert editor 0
+
+# ---- 7. Ctrl+A in a text field, then typing replaces what it selected
+click @nav.0
+wait 12
+click @Typefaces
+wait 4
+click @bside_View
+wait 3
+click @Filter
+wait 2
+type Test
+wait 3
+assert bfilter Test
+key a ctrl
+wait 2
+type U
+wait 3
+assert bfilter U

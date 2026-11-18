@@ -445,17 +445,21 @@ bool Th_Released(Rectangle r, const char *id, bool hover)
     return IsMouseButtonReleased(MOUSE_BUTTON_LEFT) && th_press_set && th_press_key == k;
 }
 
+/* the scrolled views of this frame, for Th_ScrollInto (the e2e player brings a widget below the fold into view) */
+static struct { Rectangle v; float *s; } th_scr[16];
+static int th_scr_n;
+
 #define TH_REG_MAX 384
 static struct { char name[64]; Rectangle r; } th_reg[TH_REG_MAX];
 static int th_reg_n = 0;
 
-static struct { char name[64], buf[4096], old[4096]; int cur, start; bool sel, seen; } th_ed;   /* the text field that has the keyboard */
+static struct { char name[64], buf[4096], old[4096]; int cur, anc, start; bool seen, drag; double clickT; } th_ed;   /* the text field that has the keyboard; between anc and cur is selected */
 
 static bool th_wheel_used;
 bool Th_WheelUsed(void) { return th_wheel_used; }
 
 static bool th_menu_prev, th_menu_cur;   /* a menu was open at the end of the last frame / is open this frame (Th_MenuKeys) */
-void Th_RegClear(void) { if (IsMouseButtonPressed(MOUSE_BUTTON_LEFT)) th_press_set = false; th_menu_prev = th_menu_cur; th_menu_cur = false; th_reg_n = 0; th_tip = NULL; th_wheel_used = false; if (!th_ed.seen) th_ed.name[0] = 0; th_ed.seen = false; }
+void Th_RegClear(void) { if (IsMouseButtonPressed(MOUSE_BUTTON_LEFT)) th_press_set = false; th_menu_prev = th_menu_cur; th_menu_cur = false; th_reg_n = 0; th_tip = NULL; th_wheel_used = false; th_scr_n = 0; if (!th_ed.seen) th_ed.name[0] = 0; th_ed.seen = false; }
 
 void Th_Reg(const char *name, Rectangle r)
 {
@@ -498,7 +502,7 @@ const char *Th_Tip(Rectangle *r) { if (r) *r = th_tip_r; return th_tip; }
 static void th_tri(Vector2 a, Vector2 b, Vector2 c, Color col) { DrawTriangle(a, c, b, col); DrawTriangle(a, b, c, col); }
 
 /* The icons of the icon buttons, centred in r. */
-static void th_icon(int ic, Rectangle r, Color c)
+void Th_Icon(int ic, Rectangle r, Color c)
 {
     float x = (float)(int)(r.x + r.width / 2), y = (float)(int)(r.y + r.height / 2);
     switch (ic) {
@@ -588,7 +592,7 @@ bool Th_Button(Rectangle r, const char *label, int flags, const char *hint)
     else if (hover) { fill = icon ? TH_HOVER : TH_PANEL; line = icon ? BLANK : danger ? hue : TH_HOVER_BORDER; }
     else if (danger && !off && !icon) line = th_mix(TH_PANEL, hue, 0.4f);
     th_draw_rounded_button(s, fill, line);
-    if (icon) th_icon(icon - 1, s, ink); else th_draw_label(s, label, ink);
+    if (icon) Th_Icon(icon - 1, s, ink); else th_draw_label(s, label, ink);
     if (over && hint) { th_tip = hint ? hint : label; th_tip_r = s; }
     return Th_Released(s, label, hover);
 }
@@ -666,19 +670,29 @@ Color Th_Card(Rectangle r, int f)
     return fill;
 }
 
-bool Th_Section(const char *title, float x, float *y, float w, int flags, const char *right)
+/* The fold state of the section captions: the titles that are closed (every caption folds; the state lasts for the session). */
+#define TH_FOLD_MAX 64
+static char th_fold[TH_FOLD_MAX][48];
+static int th_fold_n;
+static int th_fold_find(const char *t) { for (int i = 0; i < th_fold_n; i++) if (!strcmp(th_fold[i], t)) return i; return -1; }
+bool Th_SectionOpen(const char *title) { return th_fold_find(title) < 0; }
+void Th_SectionSetOpen(const char *title, bool open)
 {
-    Rectangle r = { x, *y, w, 24 };
-    bool fold = flags & (TH_SEC_OPEN | TH_SEC_CLOSED), hv = fold && th_hover(r);
-    float tx = x;
-    if (fold) {
-        char n[64];
-        snprintf(n, sizeof n, "%s Fold", title);
-        Th_RegLabel(n, r);
-        Th_ListRow(r, hv ? TH_LR_HOVER : 0);
-        th_icon(flags & TH_SEC_OPEN ? TH_IC_CHEV_DOWN : TH_IC_CHEV_RIGHT, (Rectangle){ x, *y, 20, r.height }, TH_TEXT_DIM);
-        tx += 20;
-    }
+    int i = th_fold_find(title);
+    if (open && i >= 0) memmove(th_fold[i], th_fold[i + 1], sizeof th_fold[0] * (size_t)(--th_fold_n - i));
+    else if (!open && i < 0 && th_fold_n < TH_FOLD_MAX) snprintf(th_fold[th_fold_n++], sizeof th_fold[0], "%s", title);
+}
+
+bool Th_Section(const char *title, float x, float *y, float w, const char *right)
+{
+    Rectangle r = { x - 4, *y, w + 4, 24 };
+    bool open = Th_SectionOpen(title), hv = th_hover(r);
+    char n[64];
+    snprintf(n, sizeof n, "%s Fold", title);
+    Th_RegLabel(n, r);
+    Th_ListRow(r, hv ? TH_LR_HOVER : 0);
+    Th_Icon(open ? TH_IC_CHEV_DOWN : TH_IC_CHEV_RIGHT, (Rectangle){ x - 4, *y, 18, r.height }, TH_TEXT_DIM);
+    float tx = x + 14;
     Vector2 m = Th_MeasureCap(title);
     Th_TextCap(title, tx, *y + 2, TH_TEXT_DIM);
     float x1 = x + w;
@@ -689,7 +703,9 @@ bool Th_Section(const char *title, float x, float *y, float w, int flags, const 
     }
     Th_HLine(tx + m.x + TH_GAP, x1, *y + 2 + m.y / 2, TH_LINE_SOFT);
     *y += r.height;
-    return Th_Released(r, title, hv);
+    if (Th_Released(r, title, hv)) { open = !open; Th_SectionSetOpen(title, open); }
+    if (!open) *y += 4;
+    return open;
 }
 
 Rectangle Th_Row(float x, float *y, float w, const char *label, const char *value, int flags)
@@ -836,7 +852,7 @@ float Th_HashShort(const char *kind, const char *hash, float x, float y, int fla
 
 void Th_HashField(float x, float *y, float w, const char *caption, const char *hash, const char *name, const char *what, int flags)
 {
-    Th_Section(caption, x + 16, y, w - 32, 0, NULL);
+    if (!Th_Section(caption, x + 16, y, w - 32, NULL)) return;
     Rectangle r = { x + 12, *y, w - 24, TH_ROW_H };
     bool hv = th_hash_copy(r, name, hash, what);
     th_draw_rounded_button(th_snap(r), TH_PANEL_ALT, hv ? TH_ACCENT : TH_LINE);
@@ -906,21 +922,35 @@ static bool th_accepts(int c, int flags)
     return true;
 }
 
+static int th_lo(void) { return th_ed.anc < th_ed.cur ? th_ed.anc : th_ed.cur; }
+static int th_hi(void) { return th_ed.anc < th_ed.cur ? th_ed.cur : th_ed.anc; }
+
+/* Deletes the selection; true when there was one. */
+static bool th_cut(void)
+{
+    int a = th_lo(), z = th_hi();
+    if (z <= a) return false;
+    memmove(th_ed.buf + a, th_ed.buf + z, strlen(th_ed.buf + z) + 1);
+    th_ed.cur = th_ed.anc = a;
+    return true;
+}
+
 static bool th_insert(const char *s, int n, int cap)
 {
-    if (th_ed.sel) { th_ed.buf[0] = 0; th_ed.cur = 0; th_ed.sel = false; }
+    th_cut();
     int len = (int)strlen(th_ed.buf);
     if (len + n >= cap) return false;
     memmove(th_ed.buf + th_ed.cur + n, th_ed.buf + th_ed.cur, (size_t)(len - th_ed.cur) + 1);
     memcpy(th_ed.buf + th_ed.cur, s, (size_t)n);
     th_ed.cur += n;
+    th_ed.anc = th_ed.cur;
     return true;
 }
 
 const char *Th_TextValue(void) { return th_ed.buf; }
 bool Th_TextIs(const char *name) { return th_ed.name[0] && (!name || !strcmp(th_ed.name, name)); }
 bool Th_TextIsIn(const char *prefix) { return th_ed.name[0] && !strncmp(th_ed.name, prefix, strlen(prefix)); }
-void Th_TextBlur(void) { th_ed.name[0] = 0; }
+void Th_TextBlur(void) { th_ed.name[0] = 0; th_ed.drag = false; }
 
 void Th_TextFocus(const char *name, const char *text, bool selectAll)
 {
@@ -928,38 +958,62 @@ void Th_TextFocus(const char *name, const char *text, bool selectAll)
     snprintf(th_ed.buf, sizeof th_ed.buf, "%s", text);
     snprintf(th_ed.old, sizeof th_ed.old, "%s", text);
     th_ed.cur = (int)strlen(th_ed.buf);
+    th_ed.anc = selectAll ? 0 : th_ed.cur;
     th_ed.start = 0;
-    th_ed.sel = selectAll && th_ed.cur > 0;
     th_ed.seen = true;
     while (GetCharPressed() > 0) {}   /* the keystroke that led here is not text */
 }
 
-/* The keys of the focused field; returns TH_TF_* bits. */
+/* The caret position nearest to the mouse in a field whose visible text starts at x0. */
+static int th_pos_at(float x0)
+{
+    float mx = GetMousePosition().x - x0, bd = 1e9f;
+    int best = th_ed.start;
+    for (int i = th_ed.start; ; i = th_next(th_ed.buf, i)) {
+        float d = fabsf(th_w(th_ed.buf, th_ed.start, i) - mx);
+        if (d < bd) { bd = d; best = i; }
+        if (!th_ed.buf[i] || d > bd + 40) break;
+    }
+    return best;
+}
+
+static bool th_word(char c) { return c && c != ' ' && c != ',' && c != ';'; }
+
+/* The keys of the focused field; returns TH_TF_* bits.  A read-only field selects and copies but takes no edit. */
 static int th_edit(int cap, int flags)
 {
     int res = 0, c;
+    bool ro = flags & TH_TF_READONLY;
     char *b = th_ed.buf;
     if (cap <= 0 || cap > (int)sizeof th_ed.buf) cap = (int)sizeof th_ed.buf;
     while ((c = GetCharPressed()) > 0) {
         int n = 0;
         const char *u = CodepointToUTF8(c, &n);
-        if (th_accepts(c, flags) && th_insert(u, n, cap)) res |= TH_TF_CHANGED;
+        if (!ro && th_accepts(c, flags) && th_insert(u, n, cap)) res |= TH_TF_CHANGED;
     }
     int len = (int)strlen(b);
-    for (int k = 0; k < 2; k++) if (th_key(k ? KEY_DELETE : KEY_BACKSPACE)) {
-        int a = th_ed.cur, z = a;
-        if (th_ed.sel) { a = 0; z = len; } else if (k) z = th_next(b, a); else a = th_prev(b, a);
-        if (z > a) { memmove(b + a, b + z, (size_t)(len - z) + 1); th_ed.cur = a; len -= z - a; res |= TH_TF_CHANGED; }
-        th_ed.sel = false;
+    bool shift = IsKeyDown(KEY_LEFT_SHIFT) || IsKeyDown(KEY_RIGHT_SHIFT), ctrl = th_ctrl();
+    for (int k = 0; k < 2 && !ro; k++) if (th_key(k ? KEY_DELETE : KEY_BACKSPACE)) {
+        if (th_ed.anc == th_ed.cur) th_ed.cur = k ? th_next(b, th_ed.cur) : th_prev(b, th_ed.cur);
+        if (th_cut()) { res |= TH_TF_CHANGED; len = (int)strlen(b); }
     }
     bool alt = IsKeyDown(KEY_LEFT_ALT) || IsKeyDown(KEY_RIGHT_ALT);
-    if (!alt && th_key(KEY_LEFT)) { th_ed.cur = th_ed.sel ? 0 : th_prev(b, th_ed.cur); th_ed.sel = false; }
-    if (!alt && th_key(KEY_RIGHT)) { th_ed.cur = th_ed.sel ? len : th_next(b, th_ed.cur); th_ed.sel = false; }
-    if (IsKeyPressed(KEY_HOME)) { th_ed.cur = 0; th_ed.sel = false; }
-    if (IsKeyPressed(KEY_END)) { th_ed.cur = len; th_ed.sel = false; }
-    if (th_ctrl() && IsKeyPressed(KEY_A)) th_ed.sel = len > 0;
-    if (th_ctrl() && IsKeyPressed(KEY_C) && len) SetClipboardText(b);
-    if (th_ctrl() && IsKeyPressed(KEY_V) && GetClipboardText()) {
+    int to = -1;
+    if (!alt && th_key(KEY_LEFT)) to = !shift && th_ed.anc != th_ed.cur ? th_lo() : th_prev(b, th_ed.cur);
+    if (!alt && th_key(KEY_RIGHT)) to = !shift && th_ed.anc != th_ed.cur ? th_hi() : th_next(b, th_ed.cur);
+    if (IsKeyPressed(KEY_HOME)) to = 0;
+    if (IsKeyPressed(KEY_END)) to = len;
+    if (to >= 0) { th_ed.cur = to; if (!shift) th_ed.anc = to; }
+    if (ctrl && IsKeyPressed(KEY_A)) { th_ed.anc = 0; th_ed.cur = len; }
+    bool cut = ctrl && IsKeyPressed(KEY_X);
+    if (ctrl && (cut || IsKeyPressed(KEY_C)) && th_hi() > th_lo()) {
+        char t[sizeof th_ed.buf];
+        snprintf(t, sizeof t, "%.*s", th_hi() - th_lo(), b + th_lo());
+        SetClipboardText(t);
+        if (!ro && cut && th_cut()) res |= TH_TF_CHANGED;
+    }
+    if (!ro && ctrl && IsKeyPressed(KEY_V) && GetClipboardText()) {
+        if (th_cut()) res |= TH_TF_CHANGED;
         for (const char *q = GetClipboardText(); *q; q++)
             if (*q != '\n' && *q != '\r' && *q != '\t' && th_accepts((unsigned char)*q, flags) && th_insert(q, 1, cap)) res |= TH_TF_CHANGED;
     }
@@ -975,40 +1029,48 @@ static int th_edit(int cap, int flags)
 int Th_TextField(Rectangle r, const char *name, const char *text, int cap, int flags, const char *placeholder)
 {
     Rectangle s = th_snap(r);
-    bool off = flags & TH_TF_DISABLED, lock = off || (flags & TH_TF_READONLY), bare = flags & TH_TF_BARE, search = flags & TH_TF_SEARCH;
-    bool foc = !lock && Th_TextIs(name), over = !lock && th_hover(s);
+    bool off = flags & TH_TF_DISABLED, ro = flags & TH_TF_READONLY, bare = flags & TH_TF_BARE, search = flags & TH_TF_SEARCH;
+    bool foc = !off && Th_TextIs(name), over = !off && th_hover(s);
     int res = 0;
     Th_Reg(name, s);
     if (foc && !th_blocked) {
-        if (!(flags & TH_TF_COMMIT) && strcmp(text, th_ed.buf)) { snprintf(th_ed.buf, sizeof th_ed.buf, "%s", text); th_ed.cur = (int)strlen(th_ed.buf); }   /* changed from outside */
+        if ((ro || !(flags & TH_TF_COMMIT)) && strcmp(text, th_ed.buf)) { snprintf(th_ed.buf, sizeof th_ed.buf, "%s", text); th_ed.cur = th_ed.anc = (int)strlen(th_ed.buf); }   /* changed from outside */
         res = th_edit(cap, flags);
         foc = Th_TextIs(name);
     }
     if (over) SetMouseCursor(MOUSE_CURSOR_IBEAM);
-    float pad = search ? 30 : bare ? 2 : 8, avail = s.width - 2 * pad;
+    float pad = search ? 30 : bare ? 2 : 8, avail = s.width - 2 * pad, x0 = s.x + pad;
+    if (bare && foc) x0 = s.x + (s.width - th_w(th_ed.buf, th_ed.start, (int)strlen(th_ed.buf))) / 2;
     if (IsMouseButtonPressed(MOUSE_BUTTON_LEFT) && !th_blocked) {
-        if (over && !foc) { Th_TextFocus(name, text, flags & TH_TF_SELECT); foc = true; }
-        else if (over) {   /* caret at the click */
-            float mx = GetMousePosition().x - (s.x + pad), bd = 1e9f;
-            int best = th_ed.start;
-            for (int i = th_ed.start; ; i = th_next(th_ed.buf, i)) {
-                float d = fabsf(th_w(th_ed.buf, th_ed.start, i) - mx);
-                if (d < bd) { bd = d; best = i; }
-                if (!th_ed.buf[i] || d > bd + 40) break;
-            }
-            th_ed.cur = best; th_ed.sel = false;
+        bool shift = IsKeyDown(KEY_LEFT_SHIFT) || IsKeyDown(KEY_RIGHT_SHIFT);
+        double t = GetTime();
+        if (over && !foc) {
+            Th_TextFocus(name, text, flags & TH_TF_SELECT);
+            foc = true;
+            if (!(flags & TH_TF_SELECT)) { th_ed.cur = th_ed.anc = th_pos_at(x0); th_ed.drag = true; }
+            th_ed.clickT = t;
+        } else if (over) {   /* the caret at the click (Shift: the selection to it); a double click selects the word */
+            int p = th_pos_at(x0);
+            if (t - th_ed.clickT < 0.4) {
+                int a = p, z = p;
+                while (a > 0 && th_word(th_ed.buf[a - 1])) a--;
+                while (th_word(th_ed.buf[z])) z++;
+                th_ed.anc = a; th_ed.cur = z;
+            } else { th_ed.cur = p; if (!shift) th_ed.anc = p; th_ed.drag = true; }
+            th_ed.clickT = t;
         } else if (foc) { Th_TextBlur(); foc = false; res |= TH_TF_BLUR; }
     }
+    if (foc && th_ed.drag) { if (IsMouseButtonDown(MOUSE_BUTTON_LEFT)) th_ed.cur = th_pos_at(x0); else th_ed.drag = false; }
     if (foc) th_ed.seen = true;
     const char *show = foc ? th_ed.buf : text;
-    th_draw_rounded_button(s, bare ? BLANK : lock ? TH_PANEL_ALT : TH_PANEL, bare ? BLANK : foc ? TH_ACCENT : over ? TH_HOVER_BORDER : TH_LINE);
-    if (search) th_icon(TH_IC_SEARCH, (Rectangle){ s.x + 4, s.y, 22, s.height }, TH_TEXT_DIM);
-    float ty = s.y + (s.height - Th_Measure("A").y) / 2, x0 = s.x + pad;
+    th_draw_rounded_button(s, bare ? BLANK : (off || ro) ? TH_PANEL_ALT : TH_PANEL, bare ? BLANK : foc ? TH_ACCENT : over ? TH_HOVER_BORDER : TH_LINE);
+    if (search) Th_Icon(TH_IC_SEARCH, (Rectangle){ s.x + 4, s.y, 22, s.height }, TH_TEXT_DIM);
+    float ty = s.y + (s.height - Th_Measure("A").y) / 2;
     char vis[sizeof th_ed.buf];
     if (!foc) {
         Th_FitText(show, TH_F_BODY, avail, vis, sizeof vis);
         if (!show[0] && placeholder) Th_Text(placeholder, x0, ty, TH_TEXT_HINT);
-        else Th_Text(vis, bare ? s.x + (s.width - Th_Measure(vis).x) / 2 : x0, ty, lock ? TH_TEXT_DIM : TH_TEXT);
+        else Th_Text(vis, bare ? s.x + (s.width - Th_Measure(vis).x) / 2 : x0, ty, (off || ro) ? TH_TEXT_DIM : TH_TEXT);
     } else {
         int len = (int)strlen(show), end;
         if (th_ed.cur < th_ed.start) th_ed.start = th_ed.cur;
@@ -1019,16 +1081,17 @@ int Th_TextField(Rectangle r, const char *name, const char *text, int cap, int f
         vis[end - th_ed.start] = 0;
         Vector2 m = Th_Measure(vis);
         float tx = bare ? s.x + (s.width - m.x) / 2 : x0;
-        if (th_ed.sel && vis[0]) DrawRectangle((int)tx - 1, (int)ty, (int)m.x + 2, (int)m.y, TH_ACCENT_TINT);
-        Th_Text(vis, tx, ty, TH_TEXT);
-        if (!th_ed.sel && (int)(GetTime() * 2) % 2 == 0) DrawRectangle((int)(tx + th_w(show, th_ed.start, th_ed.cur) + 1), (int)ty, 1, (int)m.y, TH_TEXT);
+        int a = th_lo() > th_ed.start ? th_lo() : th_ed.start, z = th_hi() < end ? th_hi() : end;
+        if (z > a) DrawRectangle((int)(tx + th_w(show, th_ed.start, a)), (int)ty, (int)(th_w(show, a, z) + 1), (int)m.y, TH_SELECTION);
+        Th_Text(vis, tx, ty, ro ? TH_TEXT_DIM : TH_TEXT);
+        if (th_ed.anc == th_ed.cur && !ro && (int)(GetTime() * 2) % 2 == 0) DrawRectangle((int)(tx + th_w(show, th_ed.start, th_ed.cur) + 1), (int)ty, 1, (int)m.y, TH_TEXT);
     }
-    if (search && show[0] && !lock) {
+    if (search && show[0] && !off && !ro) {
         char nm[72];
         snprintf(nm, sizeof nm, "%s_Clear", name);
         if (Th_Button((Rectangle){ s.x + s.width - 24, s.y + 4, 20, 20 }, nm, TH_BTN_ICON(TH_IC_CLOSE), "Clear")) {
             if (!foc) Th_TextFocus(name, text, false);
-            th_ed.buf[0] = 0; th_ed.cur = 0; th_ed.sel = false; res |= TH_TF_CHANGED;
+            th_ed.buf[0] = 0; th_ed.cur = th_ed.anc = 0; res |= TH_TF_CHANGED;
         }
     }
     return res;
@@ -1072,7 +1135,7 @@ bool Th_Dropdown(Rectangle r, const char *name, const char *value, bool dim, boo
     th_draw_rounded_button(s, TH_PANEL, open ? TH_ACCENT : over ? TH_HOVER_BORDER : TH_LINE);
     Th_FitText(value, TH_F_BODY, s.width - 36, fit, sizeof fit);
     Th_Text(fit, s.x + 8, s.y + (s.height - Th_Measure(fit).y) / 2, dim ? TH_TEXT_DIM : TH_TEXT);
-    th_icon(TH_IC_CHEV_DOWN, (Rectangle){ s.x + s.width - 24, s.y, 20, s.height }, TH_TEXT_DIM);
+    Th_Icon(TH_IC_CHEV_DOWN, (Rectangle){ s.x + s.width - 24, s.y, 20, s.height }, TH_TEXT_DIM);
     return Th_Released(s, name, over);
 }
 
@@ -1130,8 +1193,24 @@ static Vector2 th_sb_id;
 static bool th_sb_drag;
 static float th_sb_grab;
 
-bool Th_ScrollBar(Rectangle view, float *scroll, float content, float step, bool live)
+bool Th_ScrollInto(Rectangle r)
 {
+    float cx = r.x + r.width / 2, cy = r.y + r.height / 2;
+    int best = -1;
+    for (int i = 0; i < th_scr_n; i++) {
+        Rectangle v = th_scr[i].v;
+        if (r.x < v.x || r.x + r.width > v.x + v.width || r.height >= v.height) continue;
+        if (cy >= v.y + 4 && cy <= v.y + v.height - 4) return false;   /* a view shows it */
+        if (best < 0 || v.height > th_scr[best].v.height) best = i;
+    }
+    if (best < 0 || cx < 0) return false;
+    *th_scr[best].s += cy - (th_scr[best].v.y + th_scr[best].v.height / 2);
+    return true;
+}
+
+static bool th_scrollbar(Rectangle view, float *scroll, float content, float step, bool live, bool reg)
+{
+    if (reg && th_scr_n < 16) th_scr[th_scr_n++] = (typeof(th_scr[0])){ view, scroll };
     float max = content - view.height;
     Rectangle tr = { view.x + view.width - TH_SB_W, view.y + 4, TH_SB_W - 4, view.height - 8 };
     bool mine = th_sb_drag && th_sb_id.x == tr.x && th_sb_id.y == tr.y;
@@ -1156,10 +1235,12 @@ bool Th_ScrollBar(Rectangle view, float *scroll, float content, float step, bool
     return hot;
 }
 
+bool Th_ScrollBar(Rectangle view, float *scroll, float content, float step, bool live) { return th_scrollbar(view, scroll, content, step, live, true); }
+
 bool Th_ScrollRows(Rectangle view, int *first, int n, int vis, float rowH, bool live)
 {
     float px = *first * rowH;
-    bool hot = Th_ScrollBar(view, &px, n * rowH + view.height - vis * rowH, 2 * rowH, live);
+    bool hot = th_scrollbar(view, &px, n * rowH + view.height - vis * rowH, 2 * rowH, live, false);
     *first = n > vis ? (int)(px / rowH + 0.5f) : 0;
     return hot;
 }

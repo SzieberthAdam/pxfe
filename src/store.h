@@ -149,6 +149,8 @@ bool store_save_to_memory(Store *s, const PxFont *font, const PxtfTypeface *tf, 
 /* Editing in place: the font `oldPxfm` is replaced by `font` (NULL: the font is unchanged) and the typeface `oldPxtf` by `tf` (NULL: as it is).
  * The new font is added, every typeface that names the old font is rewritten under its new hash with its variant lines following, the
  * old font goes (nothing else can name it any more: all its typefaces were rewritten) and so do the glyphs no font names now.
+ * `tf` (for `oldPxtf`) is taken as it is: a variant of it that still names the old font (a clone of the edited one) keeps it, and then the old
+ * font stays.
  * Nothing changes when the hashes stay.  Fails with nothing changed (the new font may have been added). */
 typedef struct StoreEditResult {
     char pxfm[33];                       /* the font's hash now */
@@ -265,4 +267,18 @@ bool store_font_similarity(Store *s, const char *pxfmA, const char *pxfmB, Store
 /* hex <-> 16-byte blob */
 bool store_hex_to_blob(const char *hex, uint8_t out[16]);
 void store_blob_to_hex(const uint8_t *blob, char out[33]);
+
+/* ------------------------------------------------------------------ adding files given in memory (packages: src/package.c) */
+
+enum { STORE_FILE_PXGL = 0, STORE_FILE_PXFM = 1, STORE_FILE_PXTF = 2, STORE_FILE_PALETTE = 3 };
+typedef struct StoreFile {
+    int kind;                   /* STORE_FILE_* */
+    char hash[33];              /* lower case: the hash of the content */
+    const char *data; size_t len;   /* the file in canonical form */
+} StoreFile;
+/* Reads the files with the strict readers of store_import_folder, as a library of their own (every glyph, palette and font
+ * they name must be among them), then, when s is not NULL, adds them to memory, all or nothing: a file memory has already
+ * with the same text is skipped; if memory has a file of that hash with another text, nothing is added and the call fails.
+ * The files pass through a temporary folder.  A change when something was added.  added / skipped may be NULL. */
+bool store_add_files(Store *s, const StoreFile *files, int n, StoreCounts *added, StoreCounts *skipped, char err[PX_ERR_LEN]);
 #endif

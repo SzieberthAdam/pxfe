@@ -252,6 +252,8 @@ copy /y testdata\lib_many.pxfdb tests\tmp\e2e.pxfdb >nul
 call :run 142_shots_bar_many "%DB% --font cd17ae6df4a73ab2581ed3fcf3ebf554"
 call :fresh
 call :run 143_shots_picker "%DB% --font %H1%"
+call :fresh
+call :run 70_panel_tabs "%DB%"
 
 echo.
 echo %RUNS% scripts run, %FAILS% failed

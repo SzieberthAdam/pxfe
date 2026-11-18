@@ -118,6 +118,7 @@ enum { TH_IC_PENCIL, TH_IC_ERASER, TH_IC_LINE, TH_IC_RECT, TH_IC_FILL, TH_IC_PRE
        TH_IC_CLOSE, TH_IC_EYE, TH_IC_EYE_OFF, TH_IC_CHEV_DOWN, TH_IC_CHEV_RIGHT, TH_IC_SEARCH, TH_IC_LOCK, TH_IC_UNLOCK,
        TH_IC_MARQUEE, TH_IC_LASSO, TH_IC_WAND, TH_IC_MOVE, TH_IC_CURVE, TH_IC_ELLIPSE, TH_IC_PICK, TH_IC_POLY, TH_IC_CONTOUR };
 bool  Th_Button(Rectangle r, const char *label, int flags, const char *hint);
+void  Th_Icon(int ic, Rectangle r, Color c);   /* an icon alone, centred in r (a state mark, not a control) */
 #define Th_ButtonDanger(r, label) Th_Button(r, label, TH_BTN_DANGER, NULL)   /* every delete command */
 /* The lock of a font or typeface: one padlock icon button (closed = locked, shown as on when unlocked); true when clicked.  Square, bh x bh. */
 #define Th_Lock(r, locked, hint) Th_Button(r, (locked) ? "Unlock" : "Lock", TH_BTN_ICON((locked) ? TH_IC_LOCK : TH_IC_UNLOCK) | ((locked) ? 0 : TH_BTN_ACTIVE), hint)
@@ -254,14 +255,13 @@ extern void (*Th_NoticeFn)(const char *what, bool copied);
 
 /* Section caption, label/value row, list row and card (DESIGN.md "Section caption", "Label/value row", "List row and card").
  * Th_Section: the caption `title` (semibold, upper case, dim) and a hairline to the right at (x, *y), width w; *y advances by 24.  `right`: small dim text
- * at the right end.  TH_SEC_OPEN / TH_SEC_CLOSED make it a fold header (chevron, hover plate); true when clicked this frame; it registers "<title>_Fold".
+ * at the right end.  Every caption folds (chevron, hover plate, registers "<title>_Fold"); it returns whether the section is open, and the caller draws
+ * its content only then.  The state is kept per title for the session (Th_SectionOpen / Th_SectionSetOpen read and set it).
  * Th_Row: a dim label at the left, in a column of TH_ROW_LABEL_W; `value` right-aligned at x + w, fitted (TH_ROW_UNI: Unifont).  With value NULL the
  * row is for a control: the returned rectangle is the value part, where the caller draws it.  *y advances.
  * Th_ListRow (a row in a list or inside a card: hover plate, selected tint with an accent bar) and Th_Card (a bordered card) draw only the surface and
  * return its opaque fill (the background of a sample drawn on it); the caller draws the content.  Flags: TH_LR_HOVER, TH_LR_SELECTED, TH_LR_WITHIN
  * (a card that holds the selected row), TH_LR_DISABLED (inert: dim surface). */
-#define TH_SEC_OPEN   1
-#define TH_SEC_CLOSED 2
 #define TH_ROW_LABEL_W 108
 #define TH_ROW_UNI    1
 #define TH_LR_HOVER    1
@@ -269,7 +269,9 @@ extern void (*Th_NoticeFn)(const char *what, bool copied);
 #define TH_LR_WITHIN   4
 #define TH_LR_DISABLED 8
 #define TH_SELECTED_FILL (Color){0xEA, 0xF0, 0xFD, 0xFF}  /* TH_ACCENT_TINT over TH_PANEL, opaque */
-bool      Th_Section(const char *title, float x, float *y, float w, int flags, const char *right);
+bool      Th_Section(const char *title, float x, float *y, float w, const char *right);
+bool      Th_SectionOpen(const char *title);
+void      Th_SectionSetOpen(const char *title, bool open);
 Rectangle Th_Row(float x, float *y, float w, const char *label, const char *value, int flags);
 Color     Th_ListRow(Rectangle r, int flags);
 Color     Th_Card(Rectangle r, int flags);
@@ -284,6 +286,8 @@ Color     Th_Card(Rectangle r, int flags);
 #define TH_SCROLL_TRACK     (Color){0x6B, 0x6B, 0x76, 30}
 bool Th_ScrollBar(Rectangle view, float *scroll, float content, float step, bool live);
 bool Th_ScrollRows(Rectangle view, int *first, int n, int vis, float rowH, bool live);
+/* For the e2e player: a widget rectangle in a view scrolled by Th_ScrollBar this frame but outside it is scrolled to its middle (true). */
+bool Th_ScrollInto(Rectangle r);
 
 /* Raised surface of everything that floats (menu, popover, dialog, toast): shadow, white fill, hairline border; `a` (0..1) fades it. */
 void Th_Raised(Rectangle r, float a);

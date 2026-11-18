@@ -609,13 +609,14 @@ float Layers_DrawPanel(Layers *l, Rectangle area, Rectangle vis)
 
     /* header: the title and the Add Layer button (with no reference layer yet the empty state has the big button) */
     float hy = y, bw = Th_ButtonW("+ Add Layer");
-    Th_Section("LAYERS", px, &y, pw - (l->n > 1 ? bw + TH_GAP : 0), 0, NULL);
+    bool open = Th_Section("LAYERS", px, &y, pw - (l->n > 1 ? bw + TH_GAP : 0), NULL);
     if (l->n > 1) {
         Rectangle br = {px + pw - bw, hy - 2, bw, TH_ROW_H};
         if (l->n < MAX_LAYERS) {
             if (Th_Button(br, "+ Add Layer", 0, NULL)) open_add(l);
         } else Th_Button(br, "+ Add Layer", TH_BTN_DISABLED, NULL);
     }
+    if (!open) return y + 4 - area.y;
     y = hy + TH_ROW_H + TH_GAP;
 
     int opKind = 0, opIdx = -1;   /* a reorder or a removal, applied after the loop */
@@ -757,9 +758,9 @@ float Layers_DrawPanel(Layers *l, Rectangle area, Rectangle vis)
                 }
             }
             if (a->fontLevel) {   /* the correction of the edited glyph */
-                Th_Section("THIS GLYPH", bxo, &by, rw, 0, NULL);
                 int32_t code = l->editedCode;
-                if (!px_code_is_codepoint(code)) {
+                if (!Th_Section("THIS GLYPH", bxo, &by, rw, NULL)) {
+                } else if (!px_code_is_codepoint(code)) {
                     Th_TextSmall("A glyph without a code point has no corrections.", bxo, by, TH_TEXT_DIM);
                 } else {
                     const FlCorr *old = FlLayer_Corr(a->fl, code);
@@ -996,8 +997,7 @@ void Layers_DrawPopover(Layers *l, Rectangle panel)
     y += 32;
 
     /* source */
-    Th_Section("FONT", x, &y, w, 0, NULL);
-    {
+    if (Th_Section("FONT", x, &y, w, NULL)) {
         static const char *labels[3] = {"This font", "Library font", "File"};
         int c = Th_Segmented((Rectangle){x, y, w, TH_ROW_H}, &(ThSeg){ labels, 3, l->popSrc, fileDialog ? 0u : 4u, "lay_src" });
         if (c >= 0 && c != l->popSrc) {
@@ -1091,18 +1091,21 @@ void Layers_DrawPopover(Layers *l, Rectangle panel)
     /* scope: a session layer (this glyph only, kept while the program runs) or a font layer (saved with the font) */
     {
         static const char *sl[2] = {"This glyph only", "Font layer"};
-        Th_Section("LAYER", x, &y, w, 0, l->popScope == 1 ? "saved beside the database" : "session only");
+        if (Th_Section("LAYER", x, &y, w, l->popScope == 1 ? "saved beside the database" : "session only")) {
         int c = Th_Segmented((Rectangle){x, y, w, TH_ROW_H}, &(ThSeg){ sl, 2, l->popScope, canFontLayer ? 0u : 2u, "lay_scope" });
         if (c >= 0 && c != l->popScope) { l->popScope = c; l->scopeTouched = true; Th_TextBlur(); return; }
         y += TH_ROW_H + 10;
+        }
     }
     bool fontScope = l->popScope == 1 && canFontLayer;
 
     /* glyph */
-    Th_Section("GLYPH", x, &y, w, 0, NULL);
+    bool gOpen = Th_Section("GLYPH", x, &y, w, NULL);
     int32_t code = -1;
     bool codeOk = l->same || fontScope;
-    if (fontScope) {
+    if (!gOpen) {
+        if (!codeOk) codeOk = parse_glyph(l->glyphText, &code);
+    } else if (fontScope) {
         Th_TextSmall("A font layer follows the edited glyph:", x, y + 4, TH_TEXT_DIM);
         Th_TextSmall("it offers this font's code for every glyph.", x, y + 24, TH_TEXT_DIM);
         y += 56;
