@@ -1,0 +1,23 @@
+# 137. Version 21: a colour font made from a picture is saved with hex palettes.  Menu, Import Font File on a picture of three colours
+# (testdata/sheet/font-20x20-RPG.png) gives a font of COLORS 3; committed and saved, its pxfm row has colors 3, every glyph line with a
+# glyph file names a palette, and the palettes are rows of the palette table.  137b reopens it in a second process.
+wait 16
+assert storefonts 4
+assert sql "SELECT COUNT(*) FROM palette" 1
+importfont testdata/sheet/font-20x20-RPG.png
+wait 12
+assert docnew 1
+assert palette 3
+assert colors 3
+assert symbolic 0
+assert glyphs 118
+shot tests/tmp/shots/137_colour_font.png
+click @nav.0
+wait 10
+assert storefonts 5
+key s ctrl
+waitfor unsaved == 0 20000
+assert sql "SELECT COUNT(*) FROM pxfm WHERE colors = 3" 1
+assert sql "SELECT COUNT(*) FROM pxfm_glyph WHERE glyph NOTNULL AND palette ISNULL AND pxfm IN(SELECT hash FROM pxfm WHERE colors=3)" 0
+assert sql "SELECT COUNT(*) FROM pxfm_glyph WHERE palette NOT IN(SELECT hash FROM palette)" 0
+assert sql "SELECT COUNT(*) > 1 FROM palette" 1

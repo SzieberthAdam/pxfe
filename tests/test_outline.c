@@ -256,6 +256,7 @@ static void test_pfb(void) {
     outline_metrics(f, &asc, &desc, &gap);
     CHECK(asc == 1000 && desc == -300 && gap == 0, "pfb metrics from FontBBox");
     CHECK(outline_glyph_count(f) > 15, "pfb glyph count");
+    CHECK(outline_symbolic(f) == 1 && outline_symbolic(t) == 0, "SYMBOLIC: the pfb's own Encoding (not StandardEncoding) is symbolic, the ttf (no (3,0) cmap) is not");
     CHECK(outline_glyph_index(f, 'A') > 0 && outline_glyph_index(f, 0x25A0) > 0 && outline_glyph_index(f, 0x25A1) > 0, "pfb names: A, uni25A0, u25A1");
     CHECK(outline_glyph_index(f, 0xE9) > 0, "pfb name eacute -> U+00E9");
     CHECK(outline_glyph_index(f, 0x7E) > 0, "pfb Encoding maps code 126 to foo");

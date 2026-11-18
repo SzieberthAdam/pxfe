@@ -468,6 +468,14 @@ static void DrawMetricsPanel(Rectangle p)
             }
             y += TH_ROW_H + 4;
         }
+        {   /* SYMBOLIC: the codes are not the characters' code points (a symbol or dingbat font) */
+            bool v = font.symbolic;
+            if (Th_Switch((Rectangle){px + 54, y, PANEL_W - 54 - 16, TH_ROW_H}, "Symbolic", &v, TH_CK_RIGHT | (readOnly ? TH_CK_OFF : 0), "symbolic")) {
+                PushUndo(0);
+                font.symbolic = v;
+            }
+            y += TH_ROW_H + 4;
+        }
         int a, b;
         px_font_box(&font, &a, &b);
         char s[96];

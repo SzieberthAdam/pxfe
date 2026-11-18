@@ -78,6 +78,13 @@ static void test_bdf(void) {
     BmSource *s = open_ok("font.bdf", "bdf");
     if (!s) return;
     CHECK(bm_strike_count(s) == 1, "bdf: one strike");
+    {
+        BmStrikeInfo si;
+        CHECK(bm_strike_info(s, 0, &si) && !si.symbolic, "bdf: microsoft-437 is not symbolic");
+        BmSource *y = open_ok("symbol.bdf", "bdf (symbol)");
+        CHECK(y && bm_strike_info(y, 0, &si) && si.symbolic, "bdf: Adobe-FontSpecific is symbolic (SYMBOLIC)");
+        bm_close(y);
+    }
     CHECK(info_is(s, 0, "9px", 9, 7, 2, 6, "Tiny", "Medium"), "bdf: strike info (ascent 7, descent 2, 6 glyphs)");
     CHECK_GLYPH(bm_find(s, 0, 'A'), 0, 0, 6, A, "bdf: A");
     CHECK_GLYPH(bm_find(s, 0, 'B'), 0, 0, 6, B, "bdf: B");
@@ -171,7 +178,12 @@ static void test_fnt_strikes(const BmSource *s, const char *what, int expect_two
 
 static void test_fnt(void) {
     BmSource *s = open_ok("font.fnt", "fnt");
-    if (s) { test_fnt_strikes(s, "fnt", 0); bm_close(s); }
+    if (s) {
+        BmStrikeInfo si;
+        CHECK(bm_strike_info(s, 0, &si) && !si.symbolic, "fnt: charset 0 is not symbolic");
+        test_fnt_strikes(s, "fnt", 0);
+        bm_close(s);
+    }
     s = open_ok("fixed_prop_ne.fon", "fon (NE)");
     if (s) { test_fnt_strikes(s, "fon NE", 1); bm_close(s); }
     s = open_ok("fixed_prop_pe.fon", "fon (PE)");
@@ -249,6 +261,10 @@ static void test_ttf(void) {
     BmSource *s = open_ok("strikes.ttf", "ttf sbit");
     if (!s) return;
     CHECK(bm_strike_count(s) == 3, "ttf: three strikes");
+    {
+        BmStrikeInfo si;
+        CHECK(bm_strike_info(s, 0, &si) && !si.symbolic, "ttf: no (3,0) cmap subtable, not symbolic");
+    }
     CHECK(info_is(s, 0, "8px", 8, 7, 1, 3, "Tiny Strikes", "Regular"), "ttf: strike 0 info (ppem 8)");
     CHECK(info_is(s, 1, "14px", 14, 12, 2, 2, "Tiny Strikes", "Regular"), "ttf: strike 1 info (ppem 14)");
     BmStrikeInfo in;

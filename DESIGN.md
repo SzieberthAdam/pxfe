@@ -1120,9 +1120,8 @@ Three small changes of the shared widgets and of the library views' filter.
 The FILTER section of the library views' side panel has a third dropdown, Colours, under Style and Format.
 It works in the Typefaces tab and in the Fonts tab, and in the Typeface view's lists the filter is not shown, as for Style and Format.
 
-- The number of colours of a font is the number of ink colours it uses: the pixel characters other than `.` (the background) that its palette lists, and at least 1.
-  A font without COLOR lines is a classic one-colour font, and so is a font whose palette lists only `.`.
-  The count is read from `pxfm_color` with the other facts of the font (`StoreEntry.colors`), or from the loaded palette (`LibInfo.colors`), so it is known once the info of the font is.
+- The number of colours of a font is the number of ink colours it uses, at least 1.
+  Since version 21 it is `pxfm.colors` (the `COLORS` of the pxfm, NULL for a font of one colour) with the other facts of the font (`StoreEntry.colors`), or `px_font_colors` of the loaded font (`LibInfo.colors`), so it is known once the info of the font is.
 - The values are Any and the counts that occur in the tab, as numbers in numeric order.
   The list follows the info that arrives while it is open: a font that states no ascent or descent is loaded for its info while the dropdown is open or a count is chosen.
   A chosen count that no font of the tab has is dropped only when the info of every font is known.
@@ -1158,7 +1157,7 @@ The Baseline buttons lost their local workaround.
 
 ### Tests
 
-`109_color_filter` (on `testdata/lib_colors.pxfdb`, a copy of `lib.pxfdb` with palettes for two fonts), `110_type_mouse_away` and `110b_type_mouse_away_glyph`, and `111_press_release`.
+`109_color_filter` (on `testdata/lib_colors.pxfdb`, then a copy of `lib.pxfdb` with palettes for two fonts; since version 21 made by `tests/make_testdata.exe` from colour fonts), `110_type_mouse_away` and `110b_type_mouse_away_glyph`, and `111_press_release`.
 
 ### Not done
 
@@ -1582,3 +1581,95 @@ In the editor, `region_pix` builds the character grid of the glyph region once f
 - `136_strip_v20`: the strip at 1110 x 600 (two columns), 1110 x 520 (two), 1110 x 480 (three) and 1400 x 900 (one), every button by name.
 - Changed: `129_strip_order` (the new order), `124_tool_strip` and `129_strip_order` use 1110 x 520 for their short window, `121_clip_to_selection` (the Fill is clipped).
 - Play: `assert epoly N` (vertices of the polygon being made), `assert econtig 0|1`.
+
+## Version 21: hex palettes, canonical colour glyphs, COLORS and SYMBOLIC
+
+pxfe follows pixelglyphlib's spec commit 5dd97ca2c4, "Add hex palettes, canonical colour glyphs, COLORS and SYMBOLIC".
+A colour no longer belongs to the font: each glyph line of a colour font names a palette file of its own, and the glyph file numbers its colours in reading order.
+
+### The formats
+
+- A hex palette (`palette/xx/<hash>.hex`, spec `hex.md`) is one colour per line, `RRGGBB`, or `RRGGBBAA` when the alpha is not `FF`, in upper case.
+  It has at least one line, no colour twice and no empty line.
+  Its hash is the hash of its canonical text, as for the other files.
+- A pxgl file of more than one colour is canonical: its first inked pixel in reading order is `0`, the next new colour `1`, and so on.
+  A reader refuses any other numbering ("the colours are not numbered in reading order from 0").
+- A pxfm file of a colour font has `COLORS n` (n ≥ 2), and a fifth field, the palette's hash, on every glyph line with a glyph file.
+  A font of one colour has neither.
+  `COLORS` is the number of distinct colours over the first k lines of each glyph's palette, k being the number of colours the glyph uses.
+- The key `SYMBOLIC` (no field) marks a symbol font: its codes are not the characters' code points.
+- A `COLOR` line, the colours of a pxfm before hex palettes, is refused: "a COLOR line: the colours of a pxfm file before hex palettes (the file was made by an older pixelglyphlib)".
+- The pxfdb (format_version stays 1) has the table `palette` (`hash`, `colors` and `colorset`: the RGBA bytes in order and sorted) with the index `palette_by_colorset`, the columns `pxfm.symbolic`, `pxfm.colors` (NULL for one colour) and `pxfm_glyph.palette`; `pxfm_color` is gone.
+  The schema in `src/store.c` is copied verbatim from `pxfdb.md`.
+
+### In memory: one palette for the font
+
+The editor keeps what it had: one font-wide palette of up to 36 ink characters (`PxFont.color[1..36]`, `colorUsed`, `hasPalette`), and glyph bitmaps that use those characters.
+`.` has no colour.
+`hasPalette` now means a colour font.
+The conversion happens at the edge, when a font is read and when it is written.
+
+Reading (`px_load_glyphs` for files, `load_font_nolock` for the store):
+
+1. The palettes the glyph lines name are read once each (from `palette/` or the `palette` table) into `PxFont.pals`, checked strictly (the file's hash must be its name).
+2. `px_font_adopt_palettes` makes the font-wide palette: the colours of the whole palettes, in the order of the glyph lines and then of the lines of each palette, become the characters `0`, `1`, ….
+   When that union has more than 36 colours, the font-wide palette waits (`palDeferred`) until every bitmap is read, and is then made from only the first k lines of each glyph's palette.
+3. Each glyph read (`px_glyph_from_canonical`) is checked to be canonical and to have a palette of at least k lines, and its pixels are mapped from the palette's numbering onto the font-wide characters.
+   Each glyph remembers the hash of the palette it was read with (`PxGlyph.pal`).
+4. `px_font_finish_palette` checks `COLORS` against the colours in use.
+   A font of more than 36 colours is refused: "the font uses N colours; pxfe can edit a font of at most 36 colours".
+
+Lazy loading stays for fonts of one colour: only the glyphs that are drawn are read.
+A colour font is read whole when its first glyph is needed, so its palette and its `COLORS` are exact.
+A font that is only parsed (all glyphs lazy) writes its `COLORS` back from the line it read (`colorsRead`).
+
+Writing (`px_pxfm_text`, `px_save_final`, `store_save_to_memory`):
+
+- The glyph text is renumbered canonically (`px_font_glyph_pxgl`); in a font of one colour every ink pixel is `0`.
+- The palette of a glyph (`glyph_write_palette`) is, in this order:
+  1. the palette it was read with, when its first k lines are still the glyph's colours in reading order (so an unchanged font is written back byte for byte, shared palettes included);
+  2. otherwise the glyph's colours in reading order, then the rest of its old palette when that palette holds all of them, else the rest of the font-wide palette, without repeats (the `canonical_pixels` rule of the reference).
+- `COLORS` is `px_font_colors`: the distinct colours of the ink characters the glyphs use, written when there are at least two.
+- The palettes are written as `palette/xx/<hash>.hex` (an existing file is left) and inserted into the `palette` table with `OR IGNORE`.
+
+The font hash is the hash of that text, so the hash of a font does not depend on the characters the editor gave its colours.
+The grey font of the tests is the colour example of `pxfm.md`: `408c4d7d…`, its A `3ad25ae0…`, its palette `ebbba949…`.
+
+Drafts (`PXFEDRAFT 3`) carry the font-wide palette as `COLOR` lines of the ink characters, the remembered palettes as `PALETTE <HASH> <RRGGBBAA,...>` lines, a seventh GLYPH field with the glyph's palette hash, and `SYMBOLIC`; all are optional, so older drafts still load.
+
+### The store
+
+- A database is built from four folders: `pxgl/`, `pxfm/`, `pxtf/` and `palette/` (`.hex`).
+  The build checks that every palette a glyph line names exists, has a line for each colour of its glyph, that a glyph of more than one colour has a palette, and that `COLORS` is the count of distinct colours.
+- Export writes `palette/` too, and Overwrite clears it; the counts of the scan and of the export have `palettes` (shown only when not 0).
+- Deleting a font deletes the palettes no other glyph line names, as it does with glyphs ("1 font, 14 glyphs, 2 palettes").
+- `store_palette_text` makes the `.hex` text from a row.
+- A pxfdb made before hex palettes (a `pxfm_color` table, no `palette` table, no `pxfm.symbolic` or `pxfm_glyph.palette`) is refused when it is opened: "made by an older pixelglyphlib (before hex palettes: colour lines, no palette table): rebuild it from its files with the current pixelglyphlib".
+  pxfe never migrates such a file.
+
+### The Colours filter, SYMBOLIC
+
+- The Colours filter (version 15) counts `pxfm.colors`, NULL counting as 1 (`StoreEntry.colors`); for a loaded font it is `px_font_colors`, at least 1 (`LibInfo.colors`).
+- `PxFont.symbolic` is read and written with the pxfm, stored in `pxfm.symbolic`, and shown in the Font tab of the font view as a Symbolic switch under Monospaced, editable only while the font is unlocked (one undo step).
+  The library cards show "Symbolic" after "Mono".
+- The importers set it:
+  - TTF and OTF (outline or sbit): the cmap has a (3,0) subtable (`outline_symbolic`, `sfnt_symbolic` in `bmsrc.c`).
+  - FON and FNT: `dfCharSet` 2.
+  - BDF and PCF: `CHARSET_REGISTRY-CHARSET_ENCODING` ends in `fontspecific`, in any case.
+  - PFB: an `Encoding` that is not `StandardEncoding`.
+- A picture of a font no longer gives `.` a colour; a font of one ink colour from a picture is a font of one colour.
+- Pasting pixels from another font: a pixel of a colour this font has not takes the current ink (or the font's first colour); in a font of one colour it becomes `0`.
+
+### Not done
+
+- A font of more than 36 colours cannot be opened (the spec allows any number).
+- The palette of a glyph is not shown or edited on its own: the editor still edits the font-wide palette.
+
+### Tests
+
+- `tests/test_pxfont.c`: the hex example of `hex.md` (`808080`, `FFFFFF`, `00000080` hash to `dd6506ef…`) and the strict reader of hex, canonical numbering, the colour example of `pxfm.md` (font, glyph and palette hashes and its text), a shared palette, the reuse of a remembered palette and a palette of its own after a new colour, a glyph file that is not canonical, 37 colours refused, `COLORS` and `SYMBOLIC` in the strict reader, `COLOR` refused, the draft with `SYMBOLIC`.
+- `tests/test_store.c`: the palette table, `pxfm.colors`, a 3-colour SYMBOLIC font saved into memory, loaded, exported and imported again, deleting it deletes its palettes, a wrong `COLORS` stops a build, an old pxfdb is refused, `lib_colors.pxfdb` has fonts of 1, 2, 2 and 3 colours.
+- `tests/test_bmsrc.c` and `tests/test_outline.c`: SYMBOLIC of a BDF (`testdata/bitmap/symbol.bdf`, Adobe-FontSpecific), a FNT, an sbit TTF and a PFB.
+- `tests/make_testdata.c` writes `testdata/lib` (now with `palette/`), `testdata/lib.pxfdb` and `testdata/lib_colors.pxfdb` (its files in `tests/tmp/lib_colors`).
+- End to end: `137_colour_font` and `137b_colour_font_reload` (a picture of three colours imported, saved and reopened), `138_symbolic` (a symbol BDF, the Symbolic switch, undo, the saved row); the scripts that named the old grey font `03696f65` now name `408c4d7d`, `06b_palette` checks COLORS and the palette field, `27_export_overwrite` and `30_delete_save` check that the palette goes with its font.
+- Play: `assert colors N` (COLORS of the open font, 0 for one colour), `assert symbolic 0|1`.

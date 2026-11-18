@@ -1,4 +1,5 @@
-# 6b. Glyph view with a colour palette: testdata font 03696f65 (COLOR 0 FFFFFFFF, 1 808080FF; glyphs U+0020 and U+0041), as a duplicate.
+# 6b. Glyph view with a colour palette: testdata font 408c4d7d (the colour example of pxfm.md: COLORS 2, the A with the palette 808080 FFFFFF;
+# glyphs U+0020 and U+0041), as a duplicate.  Read, the font-wide palette is 0 = 808080, 1 = FFFFFF.
 wait 5
 click @Unlock
 wait 4
@@ -47,7 +48,7 @@ assert editor 1
 key esc
 wait 3
 assert editor 0
-# Export: COLOR lines in the pxfm, reader accepts it
+# Export: COLORS and a palette field per glyph line with a glyph file; the space (white only) gets a palette of its own, FFFFFF first
 setdialog folder tests/tmp/xout
 click @Menu
 click @file.export
@@ -57,6 +58,7 @@ key enter
 wait 3
 assert modal none
 assert saved pxfm
-assert file $SAVEDPXFM contains COLOR\t1\t808080FF
-assert file $SAVEDPXFM contains COLOR\t.\t00000000
+assert file $SAVEDPXFM contains COLORS\t2
+assert file $SAVEDPXFM contains \tEBBBA94934DA6897D86C5E8EA2AC5409
+assert file tests/tmp/xout/palette/eb/ebbba94934da6897d86c5e8ea2ac5409.hex contains 808080\nFFFFFF
 verifylib $SAVEDPXFM tests/tmp/xout 2

@@ -15,7 +15,7 @@ set LIBD=tests\tmp\e2elib
 set DB=tests\tmp\e2e.pxfdb
 set H1=0820dc69a21b1cdb3a44d2cff7d884d8
 set H2=e6109c134eda8d747bac9a3c2a62d204
-set H3=03696f658319e9dfddc2cb6ea2520592
+set H3=408c4d7dd946543f8e9b4553dd1ba62e
 set H4=fa96e3583da8e003fc25404ac00f764e
 set HTF=b925951bb94de1d15ec27404b3261476
 set REALH=b86206e5d4408e60dd8174f29050daa7
@@ -234,6 +234,11 @@ call :fresh
 call :run 135_tools_locked "%DB% --font %H1%"
 call :fresh
 call :run 136_strip_v20 "%DB% --font %H1%"
+call :fresh
+call :run 137_colour_font "%DB%"
+call :run 137b_colour_font_reload "%DB%"
+call :fresh
+call :run 138_symbolic "%DB%"
 
 echo.
 echo %RUNS% scripts run, %FAILS% failed

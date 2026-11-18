@@ -1513,6 +1513,20 @@ const char *outline_format(const Outline *f) { return f ? f->fmt : ""; }
 const char *outline_family(const Outline *f) { return f ? f->family : ""; }
 const char *outline_style(const Outline *f) { return f ? f->style : ""; }
 int outline_units_per_em(const Outline *f) { return f ? (f->t1 ? f->t1->upem : f->upem) : 0; }
+/* a symbol font (pixelglyphlib SYMBOLIC): an sfnt with a (3,0) cmap subtable, a Type 1 font whose Encoding is not StandardEncoding */
+int outline_symbolic(const Outline *f) {
+    unsigned n, i;
+    if (!f) return 0;
+    if (f->t1) return !f->t1->stdenc && f->t1->enc != NULL;
+    if (!f->cmap.len) return 0;
+    n = r16(f, f->cmap.off + 2);
+    if (n > 64) n = 64;
+    for (i = 0; i < n; i++) {
+        size_t rec = f->cmap.off + 4 + 8 * (size_t)i;
+        if (r16(f, rec) == 3 && r16(f, rec + 2) == 0) return 1;
+    }
+    return 0;
+}
 int outline_glyph_count(const Outline *f) { return !f ? 0 : f->t1 ? f->t1->ng + 1 : f->nglyphs; }
 
 void outline_metrics(const Outline *f, int *asc, int *desc, int *gap) {

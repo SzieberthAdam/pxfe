@@ -699,9 +699,7 @@ static bool ImportSheetCreate(void)
     f.monospaced = sh->layout == SHEET_GRID;
     if (!mono) {   /* the colours of the ink on a transparent background */
         f.hasPalette = true;
-        for (int k = 0; k < PX_NUM_PIXELS; k++) f.colorUsed[k] = false;
-        f.colorUsed[0] = true;
-        f.color[0] = 0x00000000u;
+        for (int k = 0; k < PX_NUM_PIXELS; k++) f.colorUsed[k] = false;   /* '.' has no colour */
         for (int k = 0; k < sh->npalette && k + 1 < PX_NUM_PIXELS; k++) if (used[k + 1]) { f.colorUsed[k + 1] = true; f.color[k + 1] = sh->palette[k]; }
     }
     PxtfTypeface tf;
@@ -749,6 +747,7 @@ static bool ImportFontCreate(void)
         f.has[PXM_ASCENT] = f.has[PXM_DESCENT] = true;
         f.m[PXM_ASCENT] = a;
         f.m[PXM_DESCENT] = d;
+        f.symbolic = outline_symbolic(l->ol) != 0;
     } else {
         BmStrikeInfo si;
         int n = bm_glyph_count(l->bm, l->strike);
@@ -769,6 +768,7 @@ static bool ImportFontCreate(void)
             px_font_add_glyph(&f, &g);
             px_glyph_free(&g);
         }
+        if (bm_strike_info(l->bm, l->strike, &si)) f.symbolic = si.symbolic != 0;
         if (bm_strike_info(l->bm, l->strike, &si) && si.ascent + si.descent > 0) {
             f.has[PXM_ASCENT] = f.has[PXM_DESCENT] = true;
             f.m[PXM_ASCENT] = si.ascent < 0 ? 0 : si.ascent;

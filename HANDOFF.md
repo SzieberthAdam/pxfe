@@ -1,6 +1,6 @@
-# pxfe handoff (2026-11-16)
+# pxfe handoff (2026-11-18)
 
-Versions 5 to 20 are implemented: Load, Save, Import, Export (5), navigation (6), views (7), the design system with Noto Sans and GNU Unifont (8), font layers (9), importing a font file (10), the default glyph as a glyph of its own (11), locks instead of duplicates (12), importing a picture of a font (13) and moving the baseline and editing a glyph's facts (14) the Colours filter, typing with the mouse away and press-and-release (15) selection and moving in the glyph view (16), line, curve and pixel-perfect (17), the tool strip (18), rectangle and ellipse (19), and fill, eyedropper, polygon and contour (20).
+Versions 5 to 21 are implemented: Load, Save, Import, Export (5), navigation (6), views (7), the design system with Noto Sans and GNU Unifont (8), font layers (9), importing a font file (10), the default glyph as a glyph of its own (11), locks instead of duplicates (12), importing a picture of a font (13) and moving the baseline and editing a glyph's facts (14) the Colours filter, typing with the mouse away and press-and-release (15) selection and moving in the glyph view (16), line, curve and pixel-perfect (17), the tool strip (18), rectangle and ellipse (19), fill, eyedropper, polygon and contour (20), and hex palettes, COLORS and SYMBOLIC of pixelglyphlib's spec commit 5dd97ca2c4 (21).
 The design is in [DESIGN.md](DESIGN.md), one section per version; "Version 5: Load, Save, Import, Export" replaces the storage tiers, the save pipeline and the drafts of version 4.
 pxfe is meant to run on Windows, macOS and Linux; today it builds on Windows only (`build.bat`, `vendor/sqlite3/libsqlite3.a`, `src/winfile.c`).
 The files of `handoff/` are the reports of the version 4 agents, kept for history.
@@ -8,8 +8,8 @@ The files of `handoff/` are the reports of the version 4 agents, kept for histor
 ## State
 
 - `build.bat e2e` builds with no warnings.
-- `build.bat test` passes: 138 pxfont, 44 selection, 110 raster, 248 outline, 143 bmsrc, 86 fit, 62 sheet, 120 fsettings, 101 pxtf and 172 store checks, 0 failed.
-- `tests\e2e\run_all.bat` passes: 109 scripts, 0 failed (version 11 added 104 and 104b, version 12 added 105 and 105b, version 13 added 106, version 14 added 107 and 108, version 15 added 109, 110, 110b and 111, version 16 added 112 to 116, version 17 added 117 to 122, version 18 added 124, version 19 added 125 to 129, version 20 added 130 to 136).
+- `build.bat test` passes: 177 pxfont, 44 selection, 110 raster, 249 outline, 148 bmsrc, 86 fit, 62 sheet, 120 fsettings, 101 pxtf and 193 store checks, 0 failed.
+- `tests\e2e\run_all.bat` passes: 112 scripts, 0 failed (version 11 added 104 and 104b, version 12 added 105 and 105b, version 13 added 106, version 14 added 107 and 108, version 15 added 109, 110, 110b and 111, version 16 added 112 to 116, version 17 added 117 to 122, version 18 added 124, version 19 added 125 to 129, version 20 added 130 to 136, version 21 added 137, 137b and 138).
 - `tests\e2e\run_reallib.bat` loads `pixelglyphlib\pxfdb.pxfdb` read-only and imports the folder into `tests\tmp\real.pxfdb`; see the report of the last run for its timings.
 - Plain `build.bat` fails only at the link step when a running `pxfe.exe` locks the file; closing it is enough.
 
@@ -200,7 +200,7 @@ Things to know:
 
 - A marker stands over a column between two glyphs; the column belongs to no glyph (the user's decision).
 - The first picture of a run takes about two seconds: the reference glyphs are made then.
-- A font of one ink colour is imported black on white; several colours give COLOR lines on a transparent background.
+- A font of one ink colour is imported black on white; several colours give a colour font (hex palettes since version 21) on a transparent background.
 - Not done: the picture as a layer under the font; photographs brought down to a pixel grid; kerning.
 
 ## Version 14: the baseline, and the facts of a glyph
@@ -438,3 +438,24 @@ Things to know:
 
 - A polygon being made is not in the undo stack and the glyph is unchanged until it is closed; Ctrl+Z throws it away, and the padlock, another tool and leaving the glyph close it.
 - Not done: vertex markers on the polygon being made, editing a drawn polygon, a Fill with a tolerance or a gradient, filling from a pattern, Contiguous kept in `pxfe.ini`.
+
+## Version 21: hex palettes, COLORS and SYMBOLIC
+
+The design is in the last section of [DESIGN.md](DESIGN.md), "Version 21: hex palettes, canonical colour glyphs, COLORS and SYMBOLIC".
+pxfe follows pixelglyphlib's spec commit 5dd97ca2c4: palettes are files of their own, glyph files number their colours in reading order, a colour font has `COLORS`, and `SYMBOLIC` is new.
+
+- `src/pxfont.c` and `.h`: hex palettes (`px_hex_parse`, `px_hex_text`), the canonical check, the font's palettes (`PxPalette`, `pals`, `px_font_adopt_palettes`, `px_glyph_from_canonical`, `px_font_finish_palette`), `px_font_colors`, the writer's palette per glyph (`px_font_write_palettes`, `px_font_glyph_pxgl`), `COLORS`, `SYMBOLIC`, `COLOR` refused, palettes in drafts.
+- `src/store.c` and `.h`: the schema of `pxfdb.md`, the `palette` table, `pxfm.symbolic` and `pxfm.colors`, the build from `palette/`, export, the deletion of orphan palettes, `store_palette_text`, the refusal of an old pxfdb, `StoreEntry.symbolic`, `StoreCounts.palettes`, `StoreDeletePlan.palettes`.
+- `src/library.c` and `.h`: `LibInfo.symbolic`, colours from `px_font_colors`.
+- `src/bmsrc.c` and `.h`, `src/outline.c` and `.h`: `BmStrikeInfo.symbolic`, `outline_symbolic`; `src/fitdoc.inc` sets `symbolic` on import, and a picture no longer gives `.` a colour.
+- `src/panel.inc`: the Symbolic switch; `src/browser.c`: the "Symbolic" tag; `src/editor.c`: pasting colours the font has not; `src/play.inc`: `colors`, `symbolic`.
+- `testdata`: regenerated by `tests/make_testdata.exe` (the grey font is now `408c4d7d`, the colour example of `pxfm.md`, with `palette/eb/ebbba949….hex`; `lib_colors.pxfdb` has real colour fonts), and `testdata/bitmap/symbol.bdf`.
+- Tests: `137_colour_font`, `137b_colour_font_reload`, `138_symbolic`.
+
+Things to know:
+
+- A colour font is read whole (every glyph and palette) when it is opened; fonts of one colour stay lazy.
+- A font of more than 36 colours is refused with a message; the editor's palette has 36 characters.
+- A pxfdb made before hex palettes is refused when it is opened ("made by an older pixelglyphlib … rebuild it"); pxfe does not migrate it.
+  In `pixelglyphlib`, `pxfdb.pxfdb` is of the new schema and opens; `pxfdb-with-symbols.pxfdb` and `pxfdb-without-symbols.pxfdb` are of the old one and are refused.
+- Not done: a glyph's palette is not shown or edited on its own.

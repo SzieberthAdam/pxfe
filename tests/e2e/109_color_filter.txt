@@ -1,6 +1,6 @@
-# 109. The Colours filter of the library views (version 15): the number of ink colours of a font (the palette entries other than ".", at least 1).
-# Database testdata/lib_colors.pxfdb: typeface b5fbcdd0 holds font fa96e358 (3 colours); typeface b925951b holds 0820dc69 (1 colour, no palette)
-# and e6109c13 (2 colours); font 03696f65 (2 colours) belongs to no typeface.
+# 109. The Colours filter of the library views (version 15; version 21: pxfm.colors, NULL counting as 1).
+# Database testdata/lib_colors.pxfdb (made by tests\make_testdata.exe): typeface 1ef166a0 holds font 211adf3f (3 colours); typeface 064be7ec
+# holds 0820dc69 (1 colour) and, italic, a11d96cd (2 colours, no ASCENT); font 408c4d7d (2 colours) belongs to no typeface.
 wait 10
 assert nav 0
 assert btab 0

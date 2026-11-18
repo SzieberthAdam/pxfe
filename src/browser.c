@@ -1106,6 +1106,7 @@ static void details_string(const LibEntry *e, char *out, size_t n)
         ADD("%s%d px", sep, e->info.above + e->info.below); strcpy(sep, "  \xC2\xB7  ");
         ADD("%s%d glyph%s", sep, e->info.glyphCount, e->info.glyphCount == 1 ? "" : "s");
         if (e->info.monospaced) ADD("%sMono", sep);
+        if (e->info.symbolic) ADD("%sSymbolic", sep);
         if (e->info.hasRatio) ADD("%s%d:%d", sep, e->info.ratioA, e->info.ratioB);
     } else if (!e->info.failed) ADD("%sloading\xE2\x80\xA6", sep);
     #undef ADD
@@ -1434,6 +1435,7 @@ static void variant_details(const LibEntry *e, char *out, size_t n)
         ADD("%d px", e->info.above + e->info.below); sep = "  \xC2\xB7  ";
         ADD("%s%d glyph%s", sep, e->info.glyphCount, e->info.glyphCount == 1 ? "" : "s");
         if (e->info.monospaced) ADD("%sMono", sep);
+        if (e->info.symbolic) ADD("%sSymbolic", sep);
         if (e->italic) ADD("%sItalic", sep);
         if (e->underlined) ADD("%sUnderlined", sep);
         if (e->struckout) ADD("%sStruck out", sep);

@@ -52,6 +52,8 @@ typedef struct BmStrikeInfo {
     int ascent, descent;     /* rows above and below the baseline (descent >= 0 usually) */
     int depth;               /* 1 or 8 */
     int glyph_count;         /* number of glyphs (also bm_glyph_count) */
+    int symbolic;            /* a symbol font (pixelglyphlib SYMBOLIC): BDF/PCF CHARSET_REGISTRY-CHARSET_ENCODING ending in "fontspecific"
+                                (any case), FNT dfCharSet 2, an sfnt with a (3,0) cmap subtable */
 } BmStrikeInfo;
 
 /* A glyph as a plain structure for the UI; the same fields and pixel characters as PxGlyph of pxfont.h ('.' none, '0'..'9',

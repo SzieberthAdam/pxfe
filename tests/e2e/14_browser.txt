@@ -33,7 +33,7 @@ assert bvisible 3
 click @Fonts
 wait 4
 click @Filter
-type 03696f
+type 408c4d
 wait 4
 assert bvisible 1
 click @Filter_Clear
@@ -173,7 +173,7 @@ assert bselpxfm $NEWPXFM
 click @Filter_Clear
 wait 4
 click @Filter
-type 03696f
+type 408c4d
 wait 4
 assert bvisible 1
 sleep 600

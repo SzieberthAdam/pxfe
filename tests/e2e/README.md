@@ -204,6 +204,7 @@ Then it unlocks the font, makes no edit, and asserts that nothing changes in the
 The fonts are chosen by hash, so the script depends on those fonts being in the library.
 
 - 109 (version 15, the Colours filter): runs on `testdata/lib_colors.pxfdb` (`run_all.bat` copies it over `e2e.pxfdb`).
+  Since version 21 that database is made by `tests\make_testdata.exe` from real colour fonts (1, 2, 2 and 3 colours), and the count is `pxfm.colors`.
   The Colours dropdown (`@Colours_Dropdown`, items `@1`, `@2`, `@3`, `@Any`) lists the counts that occur; `assert bcolors` is the chosen count (0 is Any), `assert bcolorvals` the number of counts listed and `assert bcolorval<i>` the i-th.
   A typeface box is shown when any of its variants matches.
 - 110 and 110b (version 15, typing with the mouse away): a focused field keeps taking keys when the mouse has left its region; `assert tfocus` is 1 while a text field has the keyboard.
@@ -235,7 +236,7 @@ The fonts are chosen by hash, so the script depends on those fonts being in the 
   `128_shape_locked`: a locked font refuses both tools; unlocked and locked again.
   `129_strip_order`: the strip reads Line, Curve, Rectangle, Ellipse while the Tool numbers stay; the buttons by name in a tall and a short window.
   The scripts also write screenshots to `tests\tmp\shots`: `125_rect_square_preview`, `125_rect_filled`, `126_ellipse_preview`, `126_circle_preview`, `126_ellipse_filled` and `129_strip`.
-- 130 to 136 (version 20, fill, eyedropper, polygon and contour): on glyph U+0020 of the first test font (132 on the font with two colours, 03696f65).
+- 130 to 136 (version 20, fill, eyedropper, polygon and contour): on glyph U+0020 of the first test font (132 on the font with two colours, 408c4d7d since version 21).
   Probes: `assert epoly N` (vertices of the polygon being made), `assert econtig 0|1` (the bar's Contiguous), `assert efilled 0|1`; `assert etool 4` is the fill, `11` the eyedropper, `12` the polygon, `13` the contour; `@Contiguous`, `@8-way`, `@Filled`, `@Eyedropper`, `@Polygon` and `@Contour` are the widgets.
   `alt` after a `click` holds Alt at the press; `mousedown right`, `move` and `mouseup right` make a right-button contour.
   `130_fill`: the options, empty space, contiguous and global, 4- and 8-way, the right button, a click that changes nothing, growth, undo.
@@ -246,4 +247,9 @@ The fonts are chosen by hash, so the script depends on those fonts being in the 
   `135_tools_locked`: a locked font refuses the fill, the eyedropper, the polygon and the contour; the padlock draws a half-made polygon.
   `136_strip_v20`: the strip's columns at 1110 x 600 (two), 1110 x 520 (two), 1110 x 480 (three) and 1400 x 900 (one), every button by name.
   The scripts also write screenshots to `tests\tmp\shots`: `130_fill_grown`, `132_eyedropper`, `133_polygon_midway`, `133_polygon_filled`, `134_contour_preview`, `134_contour_filled`, `136_strip_1110x600` and `136_strip_1110x480`.
+- 137, 137b and 138 (version 21, hex palettes and SYMBOLIC):
+  `137_colour_font`: a picture of three colours (`testdata/sheet/font-20x20-RPG.png`) imported, committed and saved; the pxfm row has `colors` 3, every glyph line with a glyph file names a palette, and the palettes are rows of the `palette` table.
+  `137b_colour_font_reload`: a second process finds the font with the filter, opens it, and it has three colours and is not modified.
+  `138_symbolic`: `testdata/bitmap/symbol.bdf` (Adobe-FontSpecific) is imported as symbolic and `font.bdf` as not; the Symbolic switch (`@symbolic`) and its undo; the saved row has `symbolic` 1.
+  Play: `assert colors N` is the `COLORS` of the open font (0 for one colour), `assert symbolic 0|1` its SYMBOLIC.
 - 123 (not in `run_all.bat`): screenshots of the bar for the Pencil, Line and Curve at 1400 x 900, 1110 x 600 and 1000 x 560 (`tests\tmp\shots\123_*.png`); the command is in the first lines of the script.

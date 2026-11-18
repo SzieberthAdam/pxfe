@@ -6,6 +6,7 @@
 #include <stdlib.h>
 #include <string.h>
 #include <time.h>
+#include <ctype.h>
 
 static int g_pass = 0, g_fail = 0;
 
@@ -17,7 +18,9 @@ static int g_pass = 0, g_fail = 0;
 #define LIB "testdata/lib"
 #define H_EXAMPLE "0820dc69a21b1cdb3a44d2cff7d884d8"
 #define H_NOASC "e6109c134eda8d747bac9a3c2a62d204"
-#define H_GREY "03696f658319e9dfddc2cb6ea2520592"
+#define H_GREY "408c4d7dd946543f8e9b4553dd1ba62e"            /* pxfm.md: the colour example */
+#define H_GREY_A "3ad25ae0043eddcc6bc11e8794fccdd3"
+#define H_GREY_PAL "ebbba94934da6897d86c5e8ea2ac5409"
 
 /* rows separated by newlines; a glyph at (x, y) = bottom-left corner */
 static PxGlyph make_glyph(int cp, int adv, int x, int y, const char *rows) {
@@ -104,8 +107,9 @@ static bool glyph_eq(const PxGlyph *a, const PxGlyph *b) {
 static bool font_eq(const PxFont *a, const PxFont *b) {
     for (int i = 0; i < PXM_COUNT; i++) if (a->has[i] != b->has[i] || a->m[i] != b->m[i]) return false;
     if (a->hasRatio != b->hasRatio || a->ratioA != b->ratioA || a->ratioB != b->ratioB || a->monospaced != b->monospaced) return false;
+    if (a->symbolic != b->symbolic) return false;
     if (a->hasPalette != b->hasPalette) return false;
-    for (int i = 0; i < PX_NUM_PIXELS; i++)
+    for (int i = 1; i < PX_NUM_PIXELS; i++)    /* '.' has no colour */
         if (a->colorUsed[i] != b->colorUsed[i] || (a->colorUsed[i] && a->color[i] != b->color[i])) return false;
     if (a->count != b->count || a->kernCount != b->kernCount) return false;
     for (int i = 0; i < a->count; i++) if (!glyph_eq(&a->glyphs[i], &b->glyphs[i])) return false;
@@ -171,12 +175,28 @@ static void test_spec_examples(void) {
     f.has[PXM_DESCENT] = true; f.m[PXM_DESCENT] = 2;
     f.hasPalette = true;
     memset(f.colorUsed, 0, sizeof f.colorUsed);
-    f.colorUsed[0] = f.colorUsed[1] = f.colorUsed[2] = true;
-    f.color[0] = 0x00000000u; f.color[1] = 0xFFFFFFFFu; f.color[2] = 0x808080FFu;
+    f.colorUsed[1] = f.colorUsed[2] = true;
+    f.color[1] = 0xFFFFFFFFu; f.color[2] = 0x808080FFu;
     add(&f, 0x20, 4, 0, 0, NULL);
     add(&f, 0x41, 6, 0, 0, ROWS_GREY_A);
     px_font_hash(&f, h2);
-    CHECK(strcmp(h2, H_GREY) == 0, "grey example: hash 03696f65...");
+    CHECK(strcmp(h2, H_GREY) == 0, "grey example: hash 408c4d7d... (pxfm.md)");
+    {
+        size_t gl;
+        char gh[33];
+        char *gt = px_font_glyph_pxgl(&f, &f.glyphs[px_font_find(&f, 0x41)], &gl, gh);
+        CHECK(gt && strcmp(gh, H_GREY_A) == 0 && strcmp(gt, "..0..\n.010.\n01.10\n11111\n1...1\n") == 0, "grey example: the A is canonical, 3ad25ae0...");
+        free(gt);
+        PxPalette *pals;
+        int np = px_font_write_palettes(&f, &pals);
+        CHECK(np == 1 && strcmp(pals[0].hash, H_GREY_PAL) == 0 && pals[0].n == 2 && pals[0].c[0] == 0x808080FFu, "grey example: one palette 808080 FFFFFF, ebbba949...");
+        px_palettes_free(pals, np);
+        CHECK(px_font_colors(&f) == 2, "grey example: COLORS 2");
+        char *t2 = text_of(&f, &n, hash);
+        CHECK(strcmp(t2, "ASCENT\t6\nCOLORS\t2\nDESCENT\t2\nGLYPH\t000020\t0,0\t4\n"
+                         "GLYPH\t000041\t0,0\t6\t3AD25AE0043EDDCC6BC11E8794FCCDD3\tEBBBA94934DA6897D86C5E8EA2AC5409\n") == 0, "grey example: the text of pxfm.md");
+        free(t2);
+    }
     px_font_free(&f);
 }
 
@@ -215,12 +235,17 @@ static void test_reader_strict(void) {
     CHECK(parse_fails("GLYPH\t000041\t0;0\t4\n", "x,y"), "bad offsets rejected");
     CHECK(parse_fails("GLYPH\t000041\t0,0\t4\tabe675527c81c31d04cda5e2aed7623a\n", "upper-case"), "lower-case hash rejected");
     CHECK(parse_fails("ASCENT\t6\xC3\xA9\n", "0x80"), "non-ASCII byte rejected");
-    CHECK(parse_fails("COLOR\t.\tFFFFFFFF\nCOLOR\t0\t000000FF\n", "default colours"), "default colour lines rejected");
-    CHECK(parse_fails("COLOR\t.\tFFFFFFFF\nCOLOR\t.\t000000FF\n", "two colours"), "two colours for a pixel rejected");
-    CHECK(parse_fails("COLOR\ta\tFFFFFFFF\n", "pixel"), "lower-case pixel char rejected");
-    CHECK(parse_fails("COLOR\t.\tffffffff\n", "hex"), "lower-case colour rejected");
+    CHECK(parse_fails("COLOR\t0\t808080FF\n", "older pixelglyphlib"), "COLOR (before hex palettes) rejected");
+    CHECK(parse_fails("COLORS\t1\n", "COLORS"), "COLORS 1 rejected");
+    CHECK(parse_fails("COLORS\t2\nCOLORS\t2\n", "two COLORS"), "two COLORS rejected");
+    CHECK(parse_fails("COLORS\t02\n", "integer"), "COLORS 02 rejected");
+    CHECK(parse_fails("COLORS\t2\nGLYPH\t000041\t0,0\t6\t3AD25AE0043EDDCC6BC11E8794FCCDD3\n", "no palette"), "a colour font's glyph line without palette rejected");
+    CHECK(parse_fails("GLYPH\t000041\t0,0\t6\t3AD25AE0043EDDCC6BC11E8794FCCDD3\tEBBBA94934DA6897D86C5E8EA2AC5409\n", "no COLORS"), "a palette without COLORS rejected");
+    CHECK(parse_fails("COLORS\t2\nGLYPH\t000041\t0,0\t6\t3AD25AE0043EDDCC6BC11E8794FCCDD3\tebbba94934da6897d86c5e8ea2ac5409\n", NULL), "lower-case palette hash rejected");
+    CHECK(parse_fails("SYMBOLIC\tx\n", "SYMBOLIC"), "SYMBOLIC with a field rejected");
+    CHECK(parse_fails("SYMBOLIC\nSYMBOLIC\n", "two SYMBOLIC"), "two SYMBOLIC rejected");
     CHECK(parse_fails("ASCENT\t6\t7\n", "exactly 1"), "too many fields rejected");
-    CHECK(parse_fails("GLYPH\t000041\t0,0\n", "3 or 4"), "too few glyph fields rejected");
+    CHECK(parse_fails("GLYPH\t000041\t0,0\n", "3, 4 or 5"), "too few glyph fields rejected");
     CHECK(parse_fails("ASCENT\t\n", NULL), "empty field rejected");
 
     /* accepted: whatever the line ends, trailing blanks, empty lines and order; fileHash is the canonical hash */
@@ -482,7 +507,8 @@ static void test_lazy_loading(void) {
     px_font_free(&full);
 
     /* palette font and no-ascent font */
-    CHECK(px_read_pxfm(LIB "/pxfm/03/" H_GREY ".pxfm", NULL, &f, err) && f.hasPalette && f.color[2] == 0x808080FFu, "grey font read with palette");
+    CHECK(px_read_pxfm(LIB "/pxfm/40/" H_GREY ".pxfm", NULL, &f, err) && f.hasPalette && f.color[1] == 0x808080FFu && f.color[2] == 0xFFFFFFFFu, "grey font read with its palette");
+    CHECK(px_font_colors(&f) == 2 && f.npals == 1 && strcmp(f.glyphs[px_font_find(&f, 0x41)].pal, H_GREY_PAL) == 0, "grey font: COLORS 2, the palette remembered");
     px_font_hash(&f, h);
     CHECK(strcmp(h, H_GREY) == 0, "grey font hash");
     px_font_free(&f);
@@ -490,6 +516,141 @@ static void test_lazy_loading(void) {
     CHECK(px_font_box(&f, &above, &below) && above == 5 && below == 2 && !f.has[PXM_ASCENT], "no-ascent font: derived box, nothing stated");
     CHECK(f.glyphs[px_font_find(&f, 0x41)].x == -1, "offset x -1 read");
     px_font_free(&f);
+}
+
+/* hex palettes (hex.md) and canonical pxgl colours (pxgl.md) */
+static void test_hex_and_canonical(void) {
+    uint32_t c[3] = {0x808080FFu, 0xFFFFFFFFu, 0x00000080u};
+    size_t n;
+    char h[33];
+    char *t = px_hex_text(c, 3, &n, h);
+    CHECK(t && strcmp(t, "808080\nFFFFFF\n00000080\n") == 0, "hex: text RRGGBB, RRGGBBAA when alpha is not FF");
+    CHECK(strcmp(h, "dd6506ef74468c7e3f9441cd0a29915f") == 0, "hex: the example of hex.md hashes to dd6506ef...");
+    uint32_t *pc;
+    int pn;
+    char err[PX_ERR_LEN];
+    CHECK(px_hex_parse(t, n, &pc, &pn, err) && pn == 3 && pc[0] == 0x808080FFu && pc[2] == 0x00000080u, "hex: parsed back");
+    free(pc);
+    free(t);
+    static const char *bad[] = {"808080\n808080\n", "80808\n", "80808G\n", "808080FF\n", "abcdef\n", "\n", "808080\n\nFFFFFF\n", ""};
+    for (size_t i = 0; i < sizeof bad / sizeof bad[0]; i++) {
+        char nm[80];
+        snprintf(nm, sizeof nm, "hex: '%.20s' rejected", bad[i]);
+        for (char *q = nm; *q; q++) if (*q == '\n') *q = '|';
+        bool ok = px_hex_parse(bad[i], strlen(bad[i]), &pc, &pn, err);
+        if (ok) free(pc);
+        CHECK(!ok, nm);
+    }
+    CHECK(px_pixels_canonical("..0.1.0..2", 10), "canonical: 0 1 2 in reading order");
+    CHECK(!px_pixels_canonical("..1.0", 5), "canonical: 1 before 0 is not");
+    CHECK(!px_pixels_canonical("0.2.1", 5), "canonical: 2 before 1 is not");
+    CHECK(px_pixels_canonical(".....", 5), "canonical: no ink");
+}
+
+static void write_text_file(const char *dir, const char *name, const char *text) {
+    char path[600];
+    px_mkdir_p(dir);
+    snprintf(path, sizeof path, "%s/%s", dir, name);
+    px_write_file(path, text, strlen(text));
+}
+
+/* colour fonts: shared palettes, COLORS, the reuse of a remembered palette, reading a glyph file that is not canonical, more
+ * than 36 colours, SYMBOLIC */
+static void test_colour_fonts(void) {
+    char err[PX_ERR_LEN], hash[33], path[1024];
+    PxFont f;
+    /* two glyphs: the A grey and white, the I grey only: one palette serves both (COLORS 2) */
+    px_font_init(&f);
+    f.has[PXM_ASCENT] = true; f.m[PXM_ASCENT] = 6;
+    f.has[PXM_DESCENT] = true; f.m[PXM_DESCENT] = 2;
+    f.hasPalette = true;
+    f.colorUsed[1] = f.colorUsed[2] = true;
+    f.color[1] = 0xFFFFFFFFu; f.color[2] = 0x808080FFu;
+    add(&f, 0x41, 6, 0, 0, ROWS_GREY_A);
+    add(&f, 0x49, 2, 0, 0, "1\n1\n1");
+    f.symbolic = true;
+    PxPalette *pals;
+    int np = px_font_write_palettes(&f, &pals);
+    CHECK(np == 1 && strcmp(pals[0].hash, H_GREY_PAL) == 0, "shared: the I (grey only) uses the A's palette");
+    px_palettes_free(pals, np);
+    CHECK(px_font_colors(&f) == 2, "shared: COLORS 2");
+    size_t n;
+    char *t = text_of(&f, &n, hash);
+    CHECK(strstr(t, "COLORS\t2\n") && strstr(t, "SYMBOLIC\n") && strstr(t, "GLYPH\t000049\t0,0\t2\t") && strstr(t, "\tEBBBA94934DA6897D86C5E8EA2AC5409\nSYMBOLIC"), "shared: COLORS, SYMBOLIC and the palette field written");
+    free(t);
+    CHECK(px_save_final(&f, TMP "/colourlib", hash, path, sizeof path, err), "shared: saved");
+    PxFont r;
+    CHECK(px_read_pxfm(path, NULL, &r, err), "shared: read back");
+    CHECK(r.symbolic && px_font_colors(&r) == 2, "shared: read back SYMBOLIC and COLORS 2");
+    char h2[33];
+    px_font_hash(&r, h2);
+    CHECK(strcmp(h2, hash) == 0, "shared: the same hash read back");
+    /* an edit that keeps the colours keeps the palette; a new colour on the I gives it a palette of its own */
+    PxGlyph *gi = &r.glyphs[px_font_find(&r, 0x49)];
+    gi->advance = 3;
+    px_glyph_touch(gi);
+    np = px_font_write_palettes(&r, &pals);
+    CHECK(np == 1, "reuse: an edit without new colours keeps the one palette");
+    px_palettes_free(pals, np);
+    {
+        int s3 = 3;
+        r.colorUsed[s3] = true; r.color[s3] = 0xFF0000FFu;
+        gi->pix[0] = '2';            /* font-wide character of slot 3 */
+        px_glyph_touch(gi);
+        np = px_font_write_palettes(&r, &pals);
+        bool own = false;
+        for (int i = 0; i < np; i++) if (pals[i].n >= 2 && pals[i].c[0] == 0xFF0000FFu && pals[i].c[1] == 0x808080FFu) own = true;
+        CHECK(np == 2 && own, "reuse: a new colour: the glyph's colours in reading order, then the rest of its palette");
+        px_palettes_free(pals, np);
+        CHECK(px_font_colors(&r) == 3, "reuse: COLORS 3");
+    }
+    px_font_free(&r);
+    px_font_free(&f);
+
+    /* the library checks: a glyph file whose colours are not in reading order, a palette with too few lines, more than 36 colours */
+    const char *L = TMP "/badcolourlib";
+    char pxgl[600], hexd[600], name[80];
+    char gh[33], ph[33];
+    px_hash128_hex("10\n", 3, gh, false);
+    snprintf(pxgl, sizeof pxgl, "%s/pxgl/%c%c", L, gh[0], gh[1]);
+    snprintf(name, sizeof name, "%s.pxgl", gh);
+    write_text_file(pxgl, name, "10\n");
+    uint32_t two[2] = {0x808080FFu, 0xFFFFFFFFu};
+    char *ht = px_hex_text(two, 2, &n, ph);
+    snprintf(hexd, sizeof hexd, "%s/palette/%c%c", L, ph[0], ph[1]);
+    snprintf(name, sizeof name, "%s.hex", ph);
+    write_text_file(hexd, name, ht);
+    free(ht);
+    char text[400], ug[33], up[33];
+    for (int i = 0; i < 33; i++) { ug[i] = (char)toupper((unsigned char)gh[i]); up[i] = (char)toupper((unsigned char)ph[i]); }
+    snprintf(text, sizeof text, "COLORS\t2\nGLYPH\t000041\t0,0\t2\t%s\t%s\n", ug, up);
+    PxFont g;
+    CHECK(px_parse_pxfm(text, strlen(text), "t", &g, err), "not canonical: the pxfm parses");
+    CHECK(!px_load_glyphs(&g, L, NULL, 0, err) && strstr(err, "reading order"), "not canonical: the glyph file '10' is rejected");
+    px_font_free(&g);
+
+    /* 37 one-pixel glyphs of 37 colours */
+    px_hash128_hex("0\n", 2, gh, false);
+    snprintf(pxgl, sizeof pxgl, "%s/pxgl/%c%c", L, gh[0], gh[1]);
+    snprintf(name, sizeof name, "%s.pxgl", gh);
+    write_text_file(pxgl, name, "0\n");
+    for (int i = 0; i < 33; i++) ug[i] = (char)toupper((unsigned char)gh[i]);
+    char *big = (char *)malloc(8000);
+    size_t o = (size_t)snprintf(big, 8000, "COLORS\t37\n");
+    for (int k = 0; k < 37; k++) {
+        uint32_t c1 = 0x000000FFu | ((uint32_t)(k + 1) << 8);
+        ht = px_hex_text(&c1, 1, &n, ph);
+        snprintf(hexd, sizeof hexd, "%s/palette/%c%c", L, ph[0], ph[1]);
+        snprintf(name, sizeof name, "%s.hex", ph);
+        write_text_file(hexd, name, ht);
+        free(ht);
+        for (int i = 0; i < 33; i++) up[i] = (char)toupper((unsigned char)ph[i]);
+        o += (size_t)snprintf(big + o, 8000 - o, "GLYPH\t%06X\t0,0\t2\t%s\t%s\n", 0x41 + k, ug, up);
+    }
+    CHECK(px_parse_pxfm(big, o, "t", &g, err) && px_font_colors(&g) == 37, "37 colours: the pxfm parses with COLORS 37");
+    CHECK(!px_load_glyphs(&g, L, NULL, 0, err) && strstr(err, "at most 36"), "37 colours: refused with a clear message");
+    px_font_free(&g);
+    free(big);
 }
 
 static void test_save_final(void) {
@@ -519,10 +680,11 @@ static void test_draft_roundtrip(void) {
     /* uncropped bitmaps, colours, dangling FFFFFF (default cleared), kerning, an as-drawn glyph */
     f.hasPalette = true;
     memset(f.colorUsed, 0, sizeof f.colorUsed);
-    f.colorUsed[0] = f.colorUsed[1] = f.colorUsed[2] = true;
-    f.color[0] = 0x00000000u; f.color[1] = 0xFFFFFFFFu; f.color[2] = 0x808080FFu;
+    f.colorUsed[1] = f.colorUsed[2] = true;
+    f.color[1] = 0xFFFFFFFFu; f.color[2] = 0x808080FFu;
     f.hasRatio = true; f.ratioA = 1; f.ratioB = 1;
     f.monospaced = true;
+    f.symbolic = true;
     add(&f, 0x61, 5, -1, -1, ".....\n..1..\n.1.1.\n.....");
     add_unc(&f, 3, 1, 0, "00\n00");
     px_font_set_kern(&f, 0xF00000, 0x41, -1);
@@ -619,6 +781,8 @@ int main(void) {
     test_glyph_helpers_and_hash_cache();
     test_change_detection();
     test_lazy_loading();
+    test_hex_and_canonical();
+    test_colour_fonts();
     test_save_final();
     test_draft_roundtrip();
     printf("\n%d passed, %d failed\n", g_pass, g_fail);

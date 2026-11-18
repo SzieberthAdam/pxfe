@@ -21,7 +21,9 @@ static int g_pass = 0, g_fail = 0;
 #define LIB "testdata/lib"
 #define DB "testdata/lib.pxfdb"
 #define H_EXAMPLE "0820dc69a21b1cdb3a44d2cff7d884d8"
-#define H_GREY "03696f658319e9dfddc2cb6ea2520592"
+#define H_GREY "408c4d7dd946543f8e9b4553dd1ba62e"
+#define G_GREY_A "3ad25ae0043eddcc6bc11e8794fccdd3"
+#define P_GREY "ebbba94934da6897d86c5e8ea2ac5409"
 #define H_NOASC "e6109c134eda8d747bac9a3c2a62d204"
 #define H_UNC "fa96e3583da8e003fc25404ac00f764e"
 #define T_SANS "b925951bb94de1d15ec27404b3261476"
@@ -29,7 +31,7 @@ static int g_pass = 0, g_fail = 0;
 #define G_A "c0fc54c2ec60cb8617b041d991da1622"
 #define G_H "abe675527c81c31d04cda5e2aed7623a"
 
-static const char *const TABLES[] = {"glyph", "pxfm", "pxfm_color", "pxfm_glyph", "pxfm_kerning", "pxtf", "pxtf_variant", "pxtf_field"};
+static const char *const TABLES[] = {"glyph", "pxfm", "palette", "pxfm_glyph", "pxfm_kerning", "pxtf", "pxtf_variant", "pxtf_field"};
 
 /* count and an order-independent... no: ordered FNV-1a content checksum of a table (the tables have primary keys, so the
  * scan order is the key order in both stores) */
@@ -163,7 +165,7 @@ static void test_text_from_rows(void) {
     CHECK(nseen == 2 && okt == 2 && okt2 == 2, "pxtf text from the rows, and from the loaded typeface, byte-equal to each file (2 of 2)");
     store_entry_list_free(&fl);
     store_entry_list_free(&tl);
-    const char *gl[] = {G_A, G_H, "3b6f6802f379f6a7483ecc861d556931", "41e0be1b2ef9b46f1f72092b18408ce2", "7c2001124fdbbcfee5cbf19cc5bc1911", "f83ad16c225c33bc1d6bfe2178677638"};
+    const char *gl[] = {G_A, G_H, G_GREY_A, "41e0be1b2ef9b46f1f72092b18408ce2", "7c2001124fdbbcfee5cbf19cc5bc1911", "f83ad16c225c33bc1d6bfe2178677638"};
     int okg = 0;
     for (int i = 0; i < 6; i++) {
         char path[300], h[33];
@@ -175,6 +177,14 @@ static void test_text_from_rows(void) {
         free(file); free(txt);
     }
     CHECK(okg == 6, "pxgl text from the rows is byte-equal to each file (6 of 6)");
+    {
+        size_t fn, tn;
+        char h[33];
+        char *file = px_read_file(LIB "/palette/eb/" P_GREY ".hex", &fn);
+        char *txt = store_palette_text(c, P_GREY, &tn, h);
+        CHECK(file && txt && fn == tn && memcmp(file, txt, fn) == 0 && strcmp(h, P_GREY) == 0, "palette text from the row is byte-equal to the file");
+        free(file); free(txt);
+    }
     store_conn_close(c);
     store_close(s);
 }
@@ -200,7 +210,7 @@ static void test_model(void) {
     CHECK(store_load_glyph_bitmaps(c, &f, NULL, 0, err) && !f.glyphs[px_font_find(&f, 0x48)].lazy, "store_load_glyph_bitmaps loads the rest");
     px_font_free(&f);
     CHECK(!store_load_font(c, "00000000000000000000000000000000", NULL, 0, &f, err) && err[0], "an unknown font is an error");
-    CHECK(store_load_font(c, H_GREY, NULL, 0, &f, err) && f.hasPalette && f.color[2] == 0x808080FFu, "grey font with its palette");
+    CHECK(store_load_font(c, H_GREY, NULL, 0, &f, err) && f.hasPalette && f.color[1] == 0x808080FFu && f.color[2] == 0xFFFFFFFFu && px_font_colors(&f) == 2 && strcmp(f.glyphs[px_font_find(&f, 0x41)].pal, P_GREY) == 0, "grey font with its palette");
     px_font_free(&f);
     CHECK(store_load_font(c, H_NOASC, NULL, 0, &f, err) && !f.has[PXM_ASCENT] && f.glyphs[px_font_find(&f, 0x41)].x == -1, "no-ascent font, offset -1");
     px_font_free(&f);
@@ -238,7 +248,7 @@ static void test_queries(void) {
     const char both[2][33] = {G_A, G_H};
     CHECK(store_fonts_with_glyphs(c, both, 2, &el, err) && el.count == 2, "fonts that hold both A and H: 2");
     store_entry_list_free(&el);
-    const char one[1][33] = {"3b6f6802f379f6a7483ecc861d556931"};
+    const char one[1][33] = {G_GREY_A};
     CHECK(store_fonts_with_glyphs(c, one, 1, &el, err) && el.count == 1 && strcmp(el.e[0].pxfm, H_GREY) == 0, "the grey A is only in the grey font");
     store_entry_list_free(&el);
     StoreCodeGlyphList cg;
@@ -414,7 +424,7 @@ static void test_import(void) {
 
     StoreFolderScan sc;
     store_scan_folder(LIB, &sc);
-    CHECK(sc.found.fonts == 4 && sc.found.typefaces == 2 && sc.found.glyphs == 6 && sc.other == 0 && store_scan_has_data(&sc), "scan of the testdata folder: 4 fonts, 2 typefaces, 6 glyphs");
+    CHECK(sc.found.fonts == 4 && sc.found.typefaces == 2 && sc.found.glyphs == 6 && sc.found.palettes == 1 && sc.other == 0 && store_scan_has_data(&sc), "scan of the testdata folder: 4 fonts, 2 typefaces, 6 glyphs, 1 palette");
     store_scan_folder(TMP "/imp_empty", &sc);
     CHECK(!store_scan_has_data(&sc), "scan of an empty folder: no data");
 }
@@ -548,30 +558,30 @@ static void test_export(void) {
     /* into an empty folder */
     rm_rf(TMP "/ex_a");
     CHECK(store_export_folder(s, TMP "/ex_a", STORE_EXPORT_APPEND, &prog, &res, err), "export into a new folder");
-    CHECK(res.written.fonts == 4 && res.written.typefaces == 2 && res.written.glyphs == 6 && res.skipped.fonts + res.skipped.typefaces + res.skipped.glyphs == 0 && prog.phase == 0, "wrote 4 fonts, 2 typefaces, 6 glyphs; nothing skipped");
-    CHECK(lib_differences(TMP "/ex_a") == 0 && snap_count_in(TMP "/ex_a") == lib_file_count(), "the 12 files are byte for byte the library's files");
+    CHECK(res.written.fonts == 4 && res.written.typefaces == 2 && res.written.glyphs == 6 && res.written.palettes == 1 && res.skipped.fonts + res.skipped.typefaces + res.skipped.glyphs == 0 && prog.phase == 0, "wrote 4 fonts, 2 typefaces, 6 glyphs, 1 palette; nothing skipped");
+    CHECK(lib_differences(TMP "/ex_a") == 0 && snap_count_in(TMP "/ex_a") == lib_file_count(), "the 13 files are byte for byte the library's files");
 
     /* Append on a partial folder: existing files untouched, missing ones added */
     rm_rf(TMP "/ex_b");
     copy_tree(LIB, TMP "/ex_b");
     DeleteFileA(TMP "/ex_b/pxfm/08/" H_EXAMPLE ".pxfm");
     DeleteFileA(TMP "/ex_b/pxgl/c0/" G_A ".pxgl");
-    px_write_file(TMP "/ex_b/pxfm/03/" H_GREY ".pxfm", "EDITED\n", 7);
+    px_write_file(TMP "/ex_b/pxfm/40/" H_GREY ".pxfm", "EDITED\n", 7);
     px_write_file(TMP "/ex_b/notes.txt", "mine\n", 5);
     px_mkdir_p(TMP "/ex_b/other");
     px_write_file(TMP "/ex_b/other/x.txt", "x", 1);
     Snap before = snap_take(TMP "/ex_b");
     CHECK(store_export_folder(s, TMP "/ex_b", STORE_EXPORT_APPEND, NULL, &res, err), "Append");
-    CHECK(res.written.fonts == 1 && res.written.glyphs == 1 && res.written.typefaces == 0 && res.skipped.fonts == 3 && res.skipped.typefaces == 2 && res.skipped.glyphs == 5 && res.deleted.fonts == 0, "Append: wrote the 2 missing files, skipped the 10 that were there, deleted nothing");
+    CHECK(res.written.fonts == 1 && res.written.glyphs == 1 && res.written.typefaces == 0 && res.skipped.fonts == 3 && res.skipped.typefaces == 2 && res.skipped.glyphs == 5 && res.skipped.palettes == 1 && res.deleted.fonts == 0, "Append: wrote the 2 missing files, skipped the 11 that were there, deleted nothing");
     CHECK(snap_changed(&before, NULL, 0) == 0 && snap_count_in(TMP "/ex_b") == before.n + 2, "Append: every earlier file is byte for byte the same (the edited one too); exactly 2 added");
     CHECK(same_file(TMP "/ex_b/pxfm/08/" H_EXAMPLE ".pxfm", LIB "/pxfm/08/" H_EXAMPLE ".pxfm") && same_file(TMP "/ex_b/pxgl/c0/" G_A ".pxgl", LIB "/pxgl/c0/" G_A ".pxgl"), "Append: the new files are the library's bytes");
     snap_free(&before);
 
     /* Overwrite: only the contents of pxtf/ pxfm/ pxgl/ go */
     CHECK(store_export_folder(s, TMP "/ex_b", STORE_EXPORT_OVERWRITE, &prog, &res, err), "Overwrite");
-    CHECK(res.deleted.fonts == 4 && res.deleted.typefaces == 2 && res.deleted.glyphs == 6 && res.written.fonts == 4 && res.written.typefaces == 2 && res.written.glyphs == 6 && res.skipped.fonts == 0, "Overwrite: deleted 12 files, wrote 12, skipped none");
+    CHECK(res.deleted.fonts == 4 && res.deleted.typefaces == 2 && res.deleted.glyphs == 6 && res.deleted.palettes == 1 && res.written.fonts == 4 && res.written.typefaces == 2 && res.written.glyphs == 6 && res.written.palettes == 1 && res.skipped.fonts == 0, "Overwrite: deleted 13 files, wrote 13, skipped none");
     CHECK(lib_differences(TMP "/ex_b") == 0 && dir_has(TMP "/ex_b", "notes.txt") && dir_has(TMP "/ex_b", "other/x.txt"), "Overwrite: pxtf/ pxfm/ pxgl/ equal the library; other files and folders of the folder stay");
-    CHECK(snap_count_in(TMP "/ex_b") == lib_file_count() + 2, "Overwrite: nothing else is in the folder (12 + the 2 other files)");
+    CHECK(snap_count_in(TMP "/ex_b") == lib_file_count() + 2, "Overwrite: nothing else is in the folder (13 + the 2 other files)");
 
     /* Overwrite removes stray files and folders inside the three folders */
     px_write_file(TMP "/ex_b/pxgl/stray.txt", "s", 1);
@@ -853,6 +863,151 @@ static void test_threads(void) {
     store_close(s);
 }
 
+/* hex palettes, COLORS and SYMBOLIC in the store; databases made before them */
+static void test_palettes(void) {
+    char err[PX_ERR_LEN];
+    Store *s = NULL;
+    CHECK(store_open_pxfdb(DB, NULL, &s, err), "palettes: open");
+    if (!s) return;
+    CHECK(count_rows(s, "palette") == 1, "palettes: one palette row");
+    StoreConn *c = store_conn_open(s);
+    sqlite3 *db = store_sqlite(c);
+    sqlite3_stmt *st;
+    int ncol = -1, nnull = -1;
+    if (sqlite3_prepare_v2(db, "SELECT (SELECT colors FROM pxfm WHERE hex(hash) = upper('" H_GREY "')), (SELECT COUNT(*) FROM pxfm WHERE colors IS NULL)", -1, &st, NULL) == SQLITE_OK) {
+        if (sqlite3_step(st) == SQLITE_ROW) { ncol = sqlite3_column_int(st, 0); nnull = sqlite3_column_int(st, 1); }
+        sqlite3_finalize(st);
+    }
+    CHECK(ncol == 2 && nnull == 3, "palettes: pxfm.colors is 2 for the grey font, NULL for the 3 others");
+    int pal = 0;
+    if (sqlite3_prepare_v2(db, "SELECT COUNT(*) FROM pxfm_glyph WHERE hex(palette) = upper('" P_GREY "') AND code = 65", -1, &st, NULL) == SQLITE_OK) {
+        if (sqlite3_step(st) == SQLITE_ROW) pal = sqlite3_column_int(st, 0);
+        sqlite3_finalize(st);
+    }
+    CHECK(pal == 1, "palettes: the A of the grey font names its palette");
+    if (sqlite3_prepare_v2(db, "SELECT hex(colors), hex(colorset) FROM palette", -1, &st, NULL) == SQLITE_OK) {
+        bool ok = sqlite3_step(st) == SQLITE_ROW && strcmp((const char *)sqlite3_column_text(st, 0), "808080FFFFFFFFFF") == 0 &&
+                  strcmp((const char *)sqlite3_column_text(st, 1), "808080FFFFFFFFFF") == 0;
+        sqlite3_finalize(st);
+        CHECK(ok, "palettes: colors and colorset as RGBA bytes");
+    }
+    StoreEntryList fl;
+    int c1 = 0, c2 = 0;
+    if (store_list_fonts(c, &fl, err)) {
+        for (int i = 0; i < fl.count; i++) { if (fl.e[i].colors == 1) c1++; if (fl.e[i].colors == 2 && strcmp(fl.e[i].pxfm, H_GREY) == 0) c2++; }
+        store_entry_list_free(&fl);
+    }
+    CHECK(c1 == 3 && c2 == 1, "palettes: the entries' colours from pxfm.colors (NULL is 1)");
+
+    /* a colour font of 3 colours and SYMBOLIC saved into memory, loaded back, exported */
+    PxFont f;
+    px_font_init(&f);
+    f.has[PXM_ASCENT] = true; f.m[PXM_ASCENT] = 6;
+    f.has[PXM_DESCENT] = true; f.m[PXM_DESCENT] = 2;
+    f.symbolic = true;
+    f.hasPalette = true;
+    f.colorUsed[1] = f.colorUsed[2] = f.colorUsed[3] = true;
+    f.color[1] = 0x000000FFu; f.color[2] = 0x808080FFu; f.color[3] = 0xFF000080u;
+    PxGlyph g;
+    memset(&g, 0, sizeof g);
+    g.codepoint = 0x41; g.advance = 4; g.w = 3; g.h = 2;
+    g.pix = (char *)malloc(6); memcpy(g.pix, "2.01.0", 6);
+    px_font_add_glyph(&f, &g);
+    g.codepoint = 0x42; memcpy(g.pix, "0.0.00", 6);
+    px_font_add_glyph(&f, &g);
+    px_glyph_free(&g);
+    StoreSaveResult sr;
+    CHECK(store_save_to_memory(s, &f, NULL, 0, &sr, err) && sr.newPxfm, "colour font: saved into memory");
+    CHECK(count_rows(s, "palette") == 3, "colour font: its 2 palettes added (the B shares none: it is black only)");
+    PxFont r;
+    CHECK(store_load_font(c, sr.pxfm, NULL, 0, &r, err), "colour font: loaded back");
+    char h[33];
+    px_font_hash(&r, h);
+    CHECK(strcmp(h, sr.pxfm) == 0 && r.symbolic && px_font_colors(&r) == 3, "colour font: same hash, SYMBOLIC, COLORS 3");
+    size_t tn;
+    char *txt = store_pxfm_text(c, sr.pxfm, &tn, h);
+    CHECK(txt && strstr(txt, "COLORS\t3\n") && strstr(txt, "SYMBOLIC\n") && strcmp(h, sr.pxfm) == 0, "colour font: the text from the rows has COLORS and SYMBOLIC and its hash");
+    free(txt);
+    px_font_free(&r);
+    px_font_free(&f);
+    StoreEntryList el;
+    bool sym = false;
+    if (store_list_fonts(c, &el, err)) {
+        for (int i = 0; i < el.count; i++) if (strcmp(el.e[i].pxfm, sr.pxfm) == 0) sym = el.e[i].symbolic && el.e[i].colors == 3;
+        store_entry_list_free(&el);
+    }
+    CHECK(sym, "colour font: the entry is symbolic with 3 colours");
+    rm_rf(TMP "/ex_pal");
+    StoreExportResult res;
+    CHECK(store_export_folder(s, TMP "/ex_pal", STORE_EXPORT_APPEND, NULL, &res, err) && res.written.palettes == 3, "colour font: exported with 3 palette files");
+    Store *b = NULL;
+    rm_rf(TMP "/imp_pal");
+    px_mkdir_p(TMP "/imp_pal");
+    CHECK(store_import_folder(TMP "/ex_pal", TMP "/imp_pal/x.pxfdb", NULL, &b, err) && same_content(s, b), "colour font: the exported folder imports to the same content");
+    store_close(b);
+
+    /* deleting the font deletes its palettes */
+    StoreDeletePlan plan;
+    CHECK(store_plan_delete_font(s, sr.pxfm, &plan, err) && plan.nPalettes == 2 && strstr(plan.summary, "2 palettes"), "colour font: the deletion plan names its 2 palettes");
+    CHECK(store_apply_delete(s, &plan, err) && count_rows(s, "palette") == 1, "colour font: deleted with its palettes; the grey one stays");
+    store_plan_free(&plan);
+    store_conn_close(c);
+    store_close(s);
+
+    /* the build checks of the files: COLORS that is not the count, a palette with too few lines */
+    rm_rf(TMP "/bad_pal");
+    copy_tree(TMP "/ex_pal", TMP "/bad_pal");
+    {
+        size_t n;
+        char *t = px_read_file(LIB "/pxfm/40/" H_GREY ".pxfm", &n);
+        char *q = t ? strstr(t, "COLORS\t2") : NULL;
+        if (q) q[7] = '3';
+        char hh[33];
+        px_hash128_hex(t, n, hh, false);
+        char path[400], dir[300];
+        snprintf(dir, sizeof dir, TMP "/bad_pal/pxfm/%.2s", hh);
+        snprintf(path, sizeof path, "%s/%s.pxfm", dir, hh);
+        px_mkdir_p(dir);
+        px_write_file(path, t, n);
+        free(t);
+        CHECK(!store_import_folder(TMP "/bad_pal", TMP "/imp_pal/y.pxfdb", NULL, &b, err) && strstr(err, "COLORS 3"), "build: COLORS that is not the number of colours is refused");
+        printf("      error was: %s\n", err);
+        DeleteFileA(path);
+    }
+
+    /* a pxfdb made before hex palettes (pxfm_color, no palette table) is refused with a clear message */
+    DeleteFileA(TMP "/old.pxfdb");
+    sqlite3 *odb;
+    if (sqlite3_open(TMP "/old.pxfdb", &odb) == SQLITE_OK) {
+        sqlite3_exec(odb, "CREATE TABLE meta (key TEXT PRIMARY KEY, value TEXT NOT NULL) WITHOUT ROWID;"
+                          "INSERT INTO meta VALUES ('format', 'PXFDB'), ('format_version', '1');"
+                          "CREATE TABLE pxfm (hash BLOB PRIMARY KEY, monospaced INTEGER) WITHOUT ROWID;"
+                          "CREATE TABLE pxfm_color (pxfm BLOB, pixel TEXT, color INTEGER, PRIMARY KEY (pxfm, pixel)) WITHOUT ROWID;", NULL, NULL, NULL);
+        sqlite3_close(odb);
+    }
+    s = NULL;
+    CHECK(!store_open_pxfdb(TMP "/old.pxfdb", NULL, &s, err) && strstr(err, "older pixelglyphlib") && strstr(err, "rebuild"), "a pxfdb made before hex palettes: refused, rebuild it");
+    printf("      error was: %s\n", err);
+}
+
+/* testdata/lib_colors.pxfdb: fonts of 1, 2, 2 and 3 colours (the Colours filter test) */
+static void test_lib_colors(void) {
+    char err[PX_ERR_LEN];
+    Store *s = NULL;
+    CHECK(store_open_pxfdb("testdata/lib_colors.pxfdb", NULL, &s, err), "lib_colors: open");
+    if (!s) return;
+    StoreConn *c = store_conn_open(s);
+    StoreEntryList fl;
+    int n[4] = {0, 0, 0, 0};
+    if (store_list_fonts(c, &fl, err)) {
+        for (int i = 0; i < fl.count; i++) if (fl.e[i].colors >= 1 && fl.e[i].colors <= 3) n[fl.e[i].colors]++;
+        store_entry_list_free(&fl);
+    }
+    CHECK(n[1] == 1 && n[2] == 2 && n[3] == 1, "lib_colors: one font of 1 colour, two of 2, one of 3");
+    store_conn_close(c);
+    store_close(s);
+}
+
 int main(void) {
     px_mkdir_p(TMP);
     test_open_pxfdb();
@@ -866,6 +1021,8 @@ int main(void) {
     test_default_glyph();
     test_similarity();
     test_threads();
+    test_palettes();
+    test_lib_colors();
     printf("\n%d passed, %d failed\n", g_pass, g_fail);
     return g_fail ? 1 : 0;
 }

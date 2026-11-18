@@ -95,6 +95,7 @@ static void info_from_store(LibEntry *e, const StoreEntry *se) {
     in->above = se->ascent;
     in->below = se->descent;
     in->monospaced = se->monospaced;
+    in->symbolic = se->symbolic;
     in->colors = se->colors;
     in->hasRatio = se->hasRatio;
     in->ratioA = se->ratioA;
@@ -289,6 +290,7 @@ static bool draft_quick(const char *path, Library *lib, LibEntry *e, char err[PX
             int x, y;
             if (sscanf(line + 6, "%d:%d", &x, &y) == 2) { in->hasRatio = true; in->ratioA = x; in->ratioB = y; }
         } else if (strcmp(line, "MONOSPACED") == 0) in->monospaced = true;
+        else if (strcmp(line, "SYMBOLIC") == 0) in->symbolic = true;
         else if (strncmp(line, "GLYPH\t", 6) == 0) {
             int x, y, w, h;
             if (strncmp(line + 6, "FFFFFF", 6) != 0) in->glyphCount++;
@@ -413,12 +415,9 @@ static void fill_info(const PxFont *f, LibInfo *in) {
     in->boxStated = f->has[PXM_ASCENT] && f->has[PXM_DESCENT];
     in->boxExact = px_font_box(f, &in->above, &in->below);
     in->monospaced = f->monospaced;
-    in->colors = 1;
-    if (f->hasPalette) {
-        int n = 0;
-        for (int i = 1; i < PX_NUM_PIXELS; i++) if (f->colorUsed[i]) n++;
-        if (n > 1) in->colors = n;
-    }
+    in->symbolic = f->symbolic;
+    in->colors = px_font_colors(f);      /* COLORS; 0 is one colour */
+    if (in->colors < 1) in->colors = 1;
     in->hasRatio = f->hasRatio;
     in->ratioA = f->ratioA;
     in->ratioB = f->ratioB;

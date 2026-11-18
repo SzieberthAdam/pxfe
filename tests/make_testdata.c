@@ -1,7 +1,10 @@
-/* make_testdata.c - writes testdata/lib (text folders pxgl/ pxfm/ pxtf/) and testdata/lib.pxfdb with pxfe's own code.
- * Run from the pxfe directory after deleting testdata/lib and testdata/lib.pxfdb:  tests\make_testdata.exe
- * The fonts are those of the spec examples plus one with uncoded glyphs, a kerning pair naming an F-code and a
- * default glyph.  The pxfdb is made from the files by the store (store_import_folder). */
+/* make_testdata.c - writes testdata/lib (text folders pxgl/ pxfm/ pxtf/ palette/), testdata/lib.pxfdb and testdata/lib_colors.pxfdb
+ * with pxfe's own code.
+ * Run from the pxfe directory after deleting testdata/lib, testdata/lib.pxfdb and testdata/lib_colors.pxfdb:  tests\make_testdata.exe
+ * The fonts of lib are those of the spec examples (the grey one is the colour example of pxfm.md) plus one with uncoded glyphs,
+ * a kerning pair naming an F-code and a default glyph.  lib_colors (for the Colours filter) has four fonts of 1, 2, 2 and 3
+ * colours: typeface 1 holds the 3-colour font, typeface 2 the 1-colour example and an italic 2-colour font without ASCENT,
+ * and the grey font belongs to no typeface.  Each pxfdb is made from its files by the store (store_import_folder). */
 #include "pxfont.h"
 #include "pxtf.h"
 #include "store.h"
@@ -11,6 +14,7 @@
 #include <string.h>
 
 #define LIB "testdata/lib"
+#define LIBC "tests/tmp/lib_colors"
 
 static PxGlyph make_glyph(int cp, int adv, int x, int y, const char *rows) {
     PxGlyph g;
@@ -56,9 +60,11 @@ static void upper(const char *lower, char *out) {
     out[32] = 0;
 }
 
+static const char *g_lib = LIB;
+
 static void save_font(PxFont *f, char hash[33]) {
     char err[PX_ERR_LEN], path[1024];
-    must(px_save_final(f, LIB, hash, path, sizeof path, err), "save font", err);
+    must(px_save_final(f, g_lib, hash, path, sizeof path, err), "save font", err);
     printf("pxfm %s\n", hash);
     px_font_free(f);
 }
@@ -67,7 +73,7 @@ static void save_typeface(const char *text) {
     PxtfTypeface c;
     char err[PX_ERR_LEN], hash[33], path[1024];
     must(pxtf_parse(text, strlen(text), &c, err), "parse typeface", err);
-    must(pxtf_save(&c, LIB, hash, path, sizeof path, err), "save typeface", err);
+    must(pxtf_save(&c, g_lib, hash, path, sizeof path, err), "save typeface", err);
     printf("pxtf %s\n", hash);
     pxtf_free(&c);
 }
@@ -99,8 +105,8 @@ int main(void) {
     f.has[PXM_DESCENT] = true; f.m[PXM_DESCENT] = 2;
     f.hasPalette = true;
     memset(f.colorUsed, 0, sizeof f.colorUsed);
-    f.colorUsed[0] = f.colorUsed[1] = f.colorUsed[2] = true;
-    f.color[0] = 0x00000000u; f.color[1] = 0xFFFFFFFFu; f.color[2] = 0x808080FFu;
+    f.colorUsed[1] = f.colorUsed[2] = true;
+    f.color[1] = 0xFFFFFFFFu; f.color[2] = 0x808080FFu;
     add(&f, 0x20, 4, 0, 0, NULL);
     add(&f, 0x41, 6, 0, 0, ROWS_GREY_A);
     save_font(&f, hex[1]);
@@ -150,5 +156,65 @@ int main(void) {
     must(store_import_folder(LIB, "testdata/lib.pxfdb", NULL, &s, err), "import the folder into testdata/lib.pxfdb", err);
     store_close(s);
     printf("testdata/lib.pxfdb written\n");
+
+    /* lib_colors: its files in tests/tmp/lib_colors, then the pxfdb */
+    g_lib = LIBC;
+    char hc[4][33], uc[4][33];
+    px_font_init(&f);           /* 1 colour: the pxfm example (as in lib) */
+    f.has[PXM_ASCENT] = true; f.m[PXM_ASCENT] = 6;
+    f.has[PXM_DESCENT] = true; f.m[PXM_DESCENT] = 2;
+    f.has[PXM_LINEGAP] = true; f.m[PXM_LINEGAP] = 1;
+    f.has[PXM_CAPHEIGHT] = true; f.m[PXM_CAPHEIGHT] = 5;
+    f.has[PXM_XHEIGHT] = true; f.m[PXM_XHEIGHT] = 4;
+    add(&f, 0x20, 4, 0, 0, NULL);
+    add(&f, 0x2C, 3, 0, -2, ROWS_COMMA);
+    add(&f, 0x41, 6, 0, 0, ROWS_A);
+    add(&f, 0x48, 6, 0, 0, ROWS_H);
+    add(&f, 0x4D, 6, 0, 0, ROWS_M);
+    add(&f, 0x78, 6, 0, 0, ROWS_X);
+    px_font_set_default_from(&f, px_font_find(&f, 0x20));
+    px_font_set_kern(&f, 0x41, 0x4D, -1);
+    save_font(&f, hc[0]);
+    px_font_init(&f);           /* 2 colours: the grey font, in no typeface */
+    f.has[PXM_ASCENT] = true; f.m[PXM_ASCENT] = 6;
+    f.has[PXM_DESCENT] = true; f.m[PXM_DESCENT] = 2;
+    f.hasPalette = true;
+    f.colorUsed[1] = f.colorUsed[2] = true;
+    f.color[1] = 0xFFFFFFFFu; f.color[2] = 0x808080FFu;
+    add(&f, 0x20, 4, 0, 0, NULL);
+    add(&f, 0x41, 6, 0, 0, ROWS_GREY_A);
+    save_font(&f, hc[1]);
+    px_font_init(&f);           /* 2 colours, no ASCENT / DESCENT: black and grey */
+    f.hasPalette = true;
+    f.colorUsed[1] = f.colorUsed[2] = true;
+    f.color[1] = 0x000000FFu; f.color[2] = 0x808080FFu;
+    add(&f, 0x20, 4, 0, 0, NULL);
+    add(&f, 0x2C, 3, 0, -2, ROWS_COMMA);
+    add(&f, 0x41, 6, -1, 0, ROWS_GREY_A);
+    save_font(&f, hc[2]);
+    px_font_init(&f);           /* 3 colours: black, grey and red, monospaced */
+    f.has[PXM_ASCENT] = true; f.m[PXM_ASCENT] = 6;
+    f.has[PXM_DESCENT] = true; f.m[PXM_DESCENT] = 2;
+    f.monospaced = true;
+    f.hasPalette = true;
+    f.colorUsed[1] = f.colorUsed[2] = f.colorUsed[3] = true;
+    f.color[1] = 0x000000FFu; f.color[2] = 0x808080FFu; f.color[3] = 0xC04040FFu;
+    add(&f, 0x20, 6, 0, 0, NULL);
+    add(&f, 0x41, 6, 0, 0, ROWS_GREY_A);
+    add(&f, 0x48, 6, 0, 0, "0...0\n0...0\n02220\n0...0\n0...0");
+    save_font(&f, hc[3]);
+    for (int i = 0; i < 4; i++) upper(hc[i], uc[i]);
+    snprintf(text, sizeof text,
+             "FORMAT\tRAW\nHASH\t0123456789ABCDEF0123456789ABCDEF\nTYPE\traw-msb\n"
+             "0001\n\tCELL\t6x8\n\tFAMILY\tThree Colours\n\tPXFM\t%s\n\tSTYLE\tRegular\n", uc[3]);
+    save_typeface(text);
+    snprintf(text, sizeof text,
+             "FORMAT\tBDF\nHASH\tBCC7A744D44F7F35CBFAA1EFB0048A63\nTYPE\tbdf\n"
+             "0001\n\tFAMILY\tTest Sans\n\tFULLNAME\tTest Sans Regular\n\tPXFM\t%s\n\tSTYLE\tRegular\n"
+             "0002\n\tFAMILY\tTest Sans\n\tITALIC\n\tPXFM\t%s\n\tSTYLE\tItalic\n", uc[0], uc[2]);
+    save_typeface(text);
+    must(store_import_folder(LIBC, "testdata/lib_colors.pxfdb", NULL, &s, err), "import the folder into testdata/lib_colors.pxfdb", err);
+    store_close(s);
+    printf("testdata/lib_colors.pxfdb written\n");
     return 0;
 }

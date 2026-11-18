@@ -1,0 +1,27 @@
+# 138. Version 21: SYMBOLIC.  A BDF font of CHARSET_REGISTRY "Adobe" / CHARSET_ENCODING "FontSpecific" (testdata/bitmap/symbol.bdf) is
+# imported as a symbolic font, one of "microsoft" / "437" (font.bdf) as not; the Symbolic switch of the Font panel (next to Monospaced)
+# changes it, and the saved database has the pxfm row with symbolic 1.
+wait 16
+assert storefonts 4
+importfont testdata/bitmap/symbol.bdf
+wait 10
+assert docnew 1
+assert readonly 0
+assert symbolic 1
+shot tests/tmp/shots/138_symbolic.png
+click @symbolic
+wait 4
+assert symbolic 0
+key z ctrl
+wait 4
+assert symbolic 1
+importfont testdata/bitmap/font.bdf
+wait 10
+assert docnew 1
+assert symbolic 0
+click @nav.0
+wait 10
+assert storefonts 6
+key s ctrl
+waitfor unsaved == 0 20000
+assert sql "SELECT COUNT(*) FROM pxfm WHERE symbolic = 1" 1

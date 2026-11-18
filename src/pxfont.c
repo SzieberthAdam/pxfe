@@ -258,8 +258,29 @@ const char *px_metric_label(PxMetric m) { return (m >= 0 && m < PXM_COUNT) ? MET
 void px_font_init(PxFont *f) {
     memset(f, 0, sizeof *f);
     for (int i = 0; i < PX_NUM_PIXELS; i++) f->color[i] = 0x000000FFu;
-    f->color[0] = 0xFFFFFFFFu;
-    f->colorUsed[0] = f->colorUsed[1] = true;
+    f->color[0] = 0x00000000u;      /* '.' is the background: no colour of its own */
+}
+
+void px_palettes_free(PxPalette *p, int n) {
+    if (!p) return;
+    for (int i = 0; i < n; i++) free(p[i].c);
+    free(p);
+}
+
+static bool copy_palettes(PxFont *dst, const PxFont *src) {
+    dst->pals = NULL;
+    dst->npals = dst->palCap = 0;
+    if (src->npals <= 0) return true;
+    dst->pals = (PxPalette *)calloc((size_t)src->npals, sizeof(PxPalette));
+    if (!dst->pals) return false;
+    for (int i = 0; i < src->npals; i++) {
+        dst->pals[i] = src->pals[i];
+        dst->pals[i].c = (uint32_t *)malloc(sizeof(uint32_t) * (size_t)(src->pals[i].n > 0 ? src->pals[i].n : 1));
+        if (!dst->pals[i].c) { px_palettes_free(dst->pals, i); dst->pals = NULL; return false; }
+        memcpy(dst->pals[i].c, src->pals[i].c, sizeof(uint32_t) * (size_t)src->pals[i].n);
+    }
+    dst->npals = dst->palCap = src->npals;
+    return true;
 }
 
 void px_glyph_free(PxGlyph *g) {
@@ -272,8 +293,10 @@ void px_font_free(PxFont *f) {
     for (int i = 0; i < f->count; i++) free(f->glyphs[i].pix);
     free(f->glyphs);
     free(f->kern);
-    f->glyphs = NULL; f->kern = NULL;
+    px_palettes_free(f->pals, f->npals);
+    f->glyphs = NULL; f->kern = NULL; f->pals = NULL;
     f->count = f->capacity = f->kernCount = f->kernCap = 0;
+    f->npals = f->palCap = 0;
 }
 
 bool px_glyph_copy(PxGlyph *dst, const PxGlyph *src) {
@@ -294,6 +317,7 @@ bool px_font_copy(PxFont *dst, const PxFont *src) {
     *dst = *src;
     dst->glyphs = NULL; dst->kern = NULL;
     dst->count = dst->capacity = dst->kernCount = dst->kernCap = 0;
+    if (!copy_palettes(dst, src)) return false;
     if (src->count > 0) {
         dst->glyphs = (PxGlyph *)malloc(sizeof(PxGlyph) * (size_t)src->count);
         if (!dst->glyphs) return false;
@@ -536,19 +560,40 @@ void px_glyph_crop(PxGlyph *g) {
     g->h = nh;
 }
 
-/* The pxgl text the glyph is written as (cropped, or as drawn); NULL when no ink. cdx/cdy: the crop shift. */
-static char *glyph_text(const PxGlyph *g, size_t *len, int *cdx, int *cdy) {
+/* The ink characters of n pixels in reading order (at most 36; a character that is no pixel counts as none); their number. */
+static int ink_order(const char *pix, size_t n, char order[36]) {
+    bool seen[128] = {false};
+    int k = 0;
+    for (size_t i = 0; i < n && k < 36; i++) {
+        unsigned char c = (unsigned char)pix[i];
+        if (c == '.' || c >= 128 || seen[c] || px_pixel_index((char)c) <= 0) continue;
+        seen[c] = true;
+        order[k++] = (char)c;
+    }
+    return k;
+}
+
+/* The pxgl text the glyph is written as (cropped, or as drawn), its colours renumbered in reading order ('0' for the first
+ * ink character, ...; mono: every ink pixel '0'); NULL when no ink. cdx/cdy: the crop shift. */
+static char *glyph_text(const PxGlyph *g, size_t *len, int *cdx, int *cdy, bool mono) {
     int x0, y0, x1, y1;
     if (!ink_bbox(g, &x0, &y0, &x1, &y1)) return NULL;
     if (g->asDrawn) { x0 = 0; y0 = 0; x1 = g->w - 1; y1 = g->h - 1; }
+    char map[128];
+    memset(map, '.', sizeof map);
+    {
+        char order[36];
+        int k = ink_order(g->pix, (size_t)g->w * (size_t)g->h, order);
+        for (int i = 0; i < k; i++) map[(unsigned char)order[i]] = mono ? '0' : PIXELS[1 + i];
+    }
     int nw = x1 - x0 + 1, nh = y1 - y0 + 1;
     size_t n = (size_t)(nw + 1) * (size_t)nh;
     char *t = (char *)malloc(n + 1);
     if (!t) return NULL;
     size_t o = 0;
     for (int y = 0; y < nh; y++) {
-        memcpy(t + o, g->pix + (size_t)(y + y0) * g->w + x0, (size_t)nw);
-        o += (size_t)nw;
+        const char *row = g->pix + (size_t)(y + y0) * g->w + x0;
+        for (int x = 0; x < nw; x++) t[o++] = map[(unsigned char)row[x] & 127];
         t[o++] = '\n';
     }
     t[o] = 0;
@@ -558,14 +603,19 @@ static char *glyph_text(const PxGlyph *g, size_t *len, int *cdx, int *cdy) {
     return t;
 }
 
+static void glyph_colors_cache(PxGlyph *g) {
+    g->ncol = g->pix ? ink_order(g->pix, (size_t)g->w * (size_t)g->h, g->order) : 0;
+}
+
 static void glyph_prepare(const PxGlyph *cg) {   /* mutable cache */
     PxGlyph *g = (PxGlyph *)cg;
     if (g->hashValid || g->lazy) return;
     size_t n;
     int dx = 0, dy = 0;
-    char *t = glyph_text(g, &n, &dx, &dy);
+    char *t = glyph_text(g, &n, &dx, &dy, false);
     if (!t) { g->hash[0] = 0; g->cdx = g->cdy = 0; }
     else { px_hash128_hex(t, n, g->hash, false); g->cdx = dx; g->cdy = dy; free(t); }
+    glyph_colors_cache(g);
     g->hashValid = true;
 }
 
@@ -584,7 +634,7 @@ void px_glyph_written_offset(const PxGlyph *g, int *x, int *y) {
 char *px_glyph_pxgl(const PxGlyph *g, size_t *len, char hash[33]) {
     if (g->lazy) { hash[0] = 0; return NULL; }
     size_t n;
-    char *t = glyph_text(g, &n, NULL, NULL);
+    char *t = glyph_text(g, &n, NULL, NULL, false);
     if (!t) { hash[0] = 0; return NULL; }
     px_hash128_hex(t, n, hash, false);
     if (len) *len = n;
@@ -619,18 +669,344 @@ bool px_library_root_of(const char *filePath, char *root, size_t rootSize) {
     return true;
 }
 
+/* ------------------------------------------------------------------ colours: hex palettes (spec/hex.md) */
+
+static int hexval(char c) {
+    if (c >= '0' && c <= '9') return c - '0';
+    if (c >= 'A' && c <= 'F') return c - 'A' + 10;
+    return -1;
+}
+
+bool px_hex_parse(const char *data, size_t len, uint32_t **colors, int *n, char err[PX_ERR_LEN]) {
+    *colors = NULL;
+    *n = 0;
+    for (size_t i = 0; i < len; i++)
+        if ((unsigned char)data[i] >= 0x80) return fail(err, "a byte of 0x80 or above");
+    /* the lines as in the canonical form (CR LF, CR, LF; trailing blanks cut), but an empty line is an error: only the end of
+     * the last line may be followed by nothing */
+    size_t cap = 16;
+    uint32_t *c = (uint32_t *)malloc(sizeof(uint32_t) * cap);
+    if (!c) return fail(err, "out of memory");
+    int count = 0;
+    size_t i = 0;
+    while (i < len) {
+        size_t s = i;
+        while (i < len && data[i] != '\n' && data[i] != '\r') i++;
+        size_t e = i;
+        if (i < len) { if (data[i] == '\r' && i + 1 < len && data[i + 1] == '\n') i += 2; else i++; }
+        while (e > s && (data[e - 1] == ' ' || data[e - 1] == '\t')) e--;
+        size_t l = e - s;
+        if (l == 0) { free(c); return fail(err, "an empty line"); }
+        if (l != 6 && l != 8) { free(c); return fail(err, "line %d is not RRGGBB or RRGGBBAA", count + 1); }
+        uint32_t v = 0;
+        for (size_t k = 0; k < l; k++) {
+            int d = hexval(data[s + k]);
+            if (d < 0) { free(c); return fail(err, "line %d is not RRGGBB or RRGGBBAA in upper-case hex digits", count + 1); }
+            v = v * 16 + (uint32_t)d;
+        }
+        if (l == 6) v = (v << 8) | 0xFFu;
+        else if ((v & 0xFFu) == 0xFFu) { free(c); return fail(err, "line %d writes the alpha FF (an opaque colour has six digits)", count + 1); }
+        for (int k = 0; k < count; k++)
+            if (c[k] == v) { free(c); return fail(err, "the colour of line %d is in the palette twice", count + 1); }
+        if ((size_t)count == cap) {
+            cap *= 2;
+            uint32_t *nc = (uint32_t *)realloc(c, sizeof(uint32_t) * cap);
+            if (!nc) { free(c); return fail(err, "out of memory"); }
+            c = nc;
+        }
+        c[count++] = v;
+    }
+    if (count == 0) { free(c); return fail(err, "no colour"); }
+    *colors = c;
+    *n = count;
+    return true;
+}
+
+char *px_hex_text(const uint32_t *colors, int n, size_t *len, char hash[33]) {
+    if (n <= 0) return NULL;
+    for (int i = 0; i < n; i++)
+        for (int k = 0; k < i; k++) if (colors[k] == colors[i]) return NULL;
+    char *t = (char *)malloc((size_t)n * 9 + 1);
+    if (!t) return NULL;
+    size_t o = 0;
+    for (int i = 0; i < n; i++) {
+        uint32_t v = colors[i];
+        if ((v & 0xFFu) == 0xFFu) o += (size_t)sprintf(t + o, "%06X\n", (unsigned)(v >> 8));
+        else o += (size_t)sprintf(t + o, "%08X\n", (unsigned)v);
+    }
+    if (len) *len = o;
+    if (hash) px_hash128_hex(t, o, hash, false);
+    return t;
+}
+
+bool px_pixels_canonical(const char *pix, size_t n) {
+    int seen = 0;
+    for (size_t i = 0; i < n; i++) {
+        if (pix[i] == '.') continue;
+        int num = px_pixel_index(pix[i]) - 1;
+        if (num < 0 || num > seen) return false;
+        if (num == seen) seen++;
+    }
+    return true;
+}
+
+bool px_font_add_palette(PxFont *f, const char *hash, const uint32_t *colors, int n) {
+    if (px_font_find_palette(f, hash)) return true;
+    if (f->npals == f->palCap) {
+        int nc = f->palCap ? f->palCap * 2 : 8;
+        PxPalette *np = (PxPalette *)realloc(f->pals, sizeof(PxPalette) * (size_t)nc);
+        if (!np) return false;
+        f->pals = np;
+        f->palCap = nc;
+    }
+    PxPalette *p = &f->pals[f->npals];
+    memset(p, 0, sizeof *p);
+    snprintf(p->hash, sizeof p->hash, "%s", hash);
+    p->c = (uint32_t *)malloc(sizeof(uint32_t) * (size_t)(n > 0 ? n : 1));
+    if (!p->c) return false;
+    memcpy(p->c, colors, sizeof(uint32_t) * (size_t)n);
+    p->n = n;
+    f->npals++;
+    return true;
+}
+
+const PxPalette *px_font_find_palette(const PxFont *f, const char *hash) {
+    if (!hash || !hash[0]) return NULL;
+    for (int i = 0; i < f->npals; i++) if (strcmp(f->pals[i].hash, hash) == 0) return &f->pals[i];
+    return NULL;
+}
+
+bool px_font_has_glyph_palettes(const PxFont *f) {
+    for (int i = 0; i < f->count; i++) if (f->glyphs[i].pal[0]) return true;
+    return false;
+}
+
+/* the font-wide slot (1..36) of a colour, 0 if none */
+static int slot_of(const PxFont *f, uint32_t c) {
+    for (int s = 1; s < PX_NUM_PIXELS; s++) if (f->colorUsed[s] && f->color[s] == c) return s;
+    return 0;
+}
+
+/* adds a colour to the font-wide palette (the next free slot); false when all 36 are taken */
+static bool slot_add(PxFont *f, uint32_t c, int *next) {
+    if (slot_of(f, c)) return true;
+    if (*next >= PX_NUM_PIXELS) return false;
+    f->colorUsed[*next] = true;
+    f->color[*next] = c;
+    (*next)++;
+    return true;
+}
+
+static void slots_clear(PxFont *f) {
+    for (int s = 0; s < PX_NUM_PIXELS; s++) { f->colorUsed[s] = false; f->color[s] = s ? 0x000000FFu : 0x00000000u; }
+}
+
+bool px_font_adopt_palettes(PxFont *f, char err[PX_ERR_LEN]) {
+    slots_clear(f);
+    f->hasPalette = false;
+    f->palDeferred = false;
+    if (!px_font_has_glyph_palettes(f)) return true;
+    int next = 1;
+    bool fits = true;
+    for (int i = 0; i < f->count && fits; i++) {
+        const PxGlyph *g = &f->glyphs[i];
+        if (!g->pal[0]) continue;
+        const PxPalette *p = px_font_find_palette(f, g->pal);
+        if (!p) return fail(err, "code %06X: no palette file %s", (unsigned)g->code, g->pal);
+        for (int k = 0; k < p->n && fits; k++) fits = slot_add(f, p->c[k], &next);
+    }
+    for (int i = 0; i < f->count; i++)
+        if (f->glyphs[i].pal[0] && !px_font_find_palette(f, f->glyphs[i].pal))
+            return fail(err, "code %06X: no palette file %s", (unsigned)f->glyphs[i].code, f->glyphs[i].pal);
+    f->hasPalette = true;
+    if (!fits) { slots_clear(f); f->palDeferred = true; }    /* only the lines the glyphs use, once all are loaded */
+    return true;
+}
+
+/* maps the canonical pixels of a glyph with a palette onto the font-wide characters */
+static bool map_canonical(PxFont *f, PxGlyph *g, const PxPalette *p, char err[PX_ERR_LEN]) {
+    char map[128];
+    memset(map, 0, sizeof map);
+    map['.'] = '.';
+    for (int i = 0; i < 36 && i < p->n; i++) {
+        int s = slot_of(f, p->c[i]);
+        map[(unsigned char)PIXELS[1 + i]] = s ? PIXELS[s] : 0;
+    }
+    size_t n = (size_t)g->w * (size_t)g->h;
+    for (size_t k = 0; k < n; k++) {
+        char m = map[(unsigned char)g->pix[k] & 127];
+        if (!m) return fail(err, "code %06X: a colour of palette %s is not in the font's palette", (unsigned)g->code, p->hash);
+        g->pix[k] = m;
+    }
+    return true;
+}
+
+bool px_glyph_from_canonical(PxFont *f, PxGlyph *g, char err[PX_ERR_LEN]) {
+    size_t n = (size_t)g->w * (size_t)g->h;
+    if (!g->pix || !n) { g->ncol = 0; return true; }
+    if (!px_pixels_canonical(g->pix, n))
+        return fail(err, "code %06X: glyph file %s: the colours are not numbered in reading order from 0", (unsigned)g->code, g->hash);
+    char order[36];
+    int k = ink_order(g->pix, n, order);
+    if (g->pal[0]) {
+        const PxPalette *p = px_font_find_palette(f, g->pal);
+        if (!p) return fail(err, "code %06X: no palette file %s", (unsigned)g->code, g->pal);
+        if (p->n < k) return fail(err, "code %06X: the glyph uses %d colours, its palette %s has %d", (unsigned)g->code, k, g->pal, p->n);
+        if (!f->palDeferred && !map_canonical(f, g, p, err)) return false;
+    } else if (k > 1) {
+        return fail(err, "code %06X: glyph file %s has %d colours, but the font has no COLORS line", (unsigned)g->code, g->hash, k);
+    }
+    glyph_colors_cache(g);
+    return true;
+}
+
+bool px_font_finish_palette(PxFont *f, char err[PX_ERR_LEN]) {
+    for (int i = 0; i < f->count; i++) if (f->glyphs[i].lazy) return true;
+    if (f->palDeferred) {
+        slots_clear(f);
+        int next = 1;
+        uint32_t extra[64];
+        int nextra = 0;
+        for (int i = 0; i < f->count; i++) {
+            const PxGlyph *g = &f->glyphs[i];
+            if (!g->pal[0] || !g->pix) continue;
+            const PxPalette *p = px_font_find_palette(f, g->pal);
+            int k = g->ncol;
+            for (int c = 0; p && c < k && c < p->n; c++)
+                if (!slot_add(f, p->c[c], &next)) {
+                    bool seen = false;
+                    for (int e = 0; e < nextra; e++) if (extra[e] == p->c[c]) seen = true;
+                    if (!seen && nextra < 64) extra[nextra++] = p->c[c];
+                }
+        }
+        if (nextra > 0)
+            return fail(err, "the font uses %s%d colours; pxfe can edit a font of at most 36 colours", nextra == 64 ? "more than " : "", 36 + nextra);
+        for (int i = 0; i < f->count; i++) {
+            PxGlyph *g = &f->glyphs[i];
+            if (!g->pal[0] || !g->pix) continue;
+            if (!map_canonical(f, g, px_font_find_palette(f, g->pal), err)) return false;
+            glyph_colors_cache(g);
+        }
+        f->palDeferred = false;
+    }
+    int n = px_font_colors(f);
+    if (f->colorsRead && n != f->colorsRead) return fail(err, "COLORS is %d, the glyph lines refer to %d colours", f->colorsRead, n);
+    return true;
+}
+
+static bool any_lazy_palette(const PxFont *f) {
+    for (int i = 0; i < f->count; i++) if (f->glyphs[i].lazy && f->glyphs[i].pal[0] && f->glyphs[i].hash[0]) return true;
+    return false;
+}
+
+int px_font_colors(const PxFont *f) {
+    if (any_lazy_palette(f)) return f->colorsRead;
+    if (!f->hasPalette || f->palDeferred) return 0;
+    bool used[PX_NUM_PIXELS] = {false};
+    for (int i = 0; i < f->count; i++) {
+        const PxGlyph *g = &f->glyphs[i];
+        if (g->lazy) continue;
+        glyph_prepare(g);
+        for (int k = 0; k < g->ncol; k++) { int s = px_pixel_index(g->order[k]); if (s > 0) used[s] = true; }
+    }
+    uint32_t seen[PX_NUM_PIXELS];
+    int n = 0;
+    for (int s = 1; s < PX_NUM_PIXELS; s++) {
+        if (!used[s]) continue;
+        uint32_t c = f->color[s];
+        bool dup = false;
+        for (int k = 0; k < n; k++) if (seen[k] == c) dup = true;
+        if (!dup) seen[n++] = c;
+    }
+    return n >= 2 ? n : 0;
+}
+
+static bool color_in(const uint32_t *v, int n, uint32_t c) {
+    for (int i = 0; i < n; i++) if (v[i] == c) return true;
+    return false;
+}
+
+/* The palette a loaded glyph with ink is written with in a colour font: its colours (malloc'd, *n of them) and hash; see
+ * PALETTES in pxfont.h.  NULL on out of memory or a glyph whose colours are no palette. */
+static uint32_t *glyph_write_palette(const PxFont *f, const PxGlyph *g, int *n, char hash[33]) {
+    glyph_prepare(g);
+    int k = g->ncol;
+    uint32_t c[36];
+    for (int i = 0; i < k; i++) { int s = px_pixel_index(g->order[i]); c[i] = f->color[s > 0 ? s : 1]; }
+    const PxPalette *p = px_font_find_palette(f, g->pal);
+    if (p && p->n >= k && memcmp(p->c, c, sizeof(uint32_t) * (size_t)k) == 0) {   /* the palette it was read with */
+        uint32_t *out = (uint32_t *)malloc(sizeof(uint32_t) * (size_t)p->n);
+        if (!out) return NULL;
+        memcpy(out, p->c, sizeof(uint32_t) * (size_t)p->n);
+        *n = p->n;
+        memcpy(hash, p->hash, 33);
+        return out;
+    }
+    /* store.canonical_pixels: the glyph's colours in reading order, then the rest of its old palette (or of the font's) */
+    uint32_t fontPal[PX_NUM_PIXELS];
+    const uint32_t *base = fontPal;
+    int nb = 0;
+    bool all = p != NULL;
+    for (int i = 0; i < k && all; i++) if (!color_in(p->c, p->n, c[i])) all = false;
+    if (all) { base = p->c; nb = p->n; }
+    else for (int s = 1; s < PX_NUM_PIXELS; s++) if (f->colorUsed[s]) fontPal[nb++] = f->color[s];
+    uint32_t *out = (uint32_t *)malloc(sizeof(uint32_t) * (size_t)(k + nb + 1));
+    if (!out) return NULL;
+    int m = 0;
+    for (int i = 0; i < k; i++) out[m++] = c[i];
+    for (int i = 0; i < nb; i++) if (!color_in(out, m, base[i])) out[m++] = base[i];
+    char *t = px_hex_text(out, m, NULL, hash);
+    if (!t) { free(out); return NULL; }
+    free(t);
+    *n = m;
+    return out;
+}
+
+int px_font_write_palettes(const PxFont *f, PxPalette **out) {
+    *out = NULL;
+    if (!px_font_colors(f)) return 0;
+    PxPalette *v = NULL;
+    int n = 0, cap = 0;
+    for (int i = 0; i < f->count; i++) {
+        const PxGlyph *g = &f->glyphs[i];
+        if (g->lazy) continue;
+        glyph_prepare(g);
+        if (!g->hash[0]) continue;
+        int pn;
+        char h[33];
+        uint32_t *c = glyph_write_palette(f, g, &pn, h);
+        if (!c) { px_palettes_free(v, n); return -1; }
+        bool have = false;
+        for (int k = 0; k < n && !have; k++) if (strcmp(v[k].hash, h) == 0) have = true;
+        if (have) { free(c); continue; }
+        if (n == cap) {
+            cap = cap ? cap * 2 : 8;
+            PxPalette *nv = (PxPalette *)realloc(v, sizeof(PxPalette) * (size_t)cap);
+            if (!nv) { free(c); px_palettes_free(v, n); return -1; }
+            v = nv;
+        }
+        memcpy(v[n].hash, h, 33);
+        v[n].c = c;
+        v[n].n = pn;
+        n++;
+    }
+    *out = v;
+    return n;
+}
+
+char *px_font_glyph_pxgl(const PxFont *f, const PxGlyph *g, size_t *len, char hash[33]) {
+    if (g->lazy) { hash[0] = 0; return NULL; }
+    size_t n;
+    char *t = glyph_text(g, &n, NULL, NULL, px_font_colors(f) == 0);
+    if (!t) { hash[0] = 0; return NULL; }
+    px_hash128_hex(t, n, hash, false);
+    if (len) *len = n;
+    return t;
+}
+
 /* ------------------------------------------------------------------ writer */
 
 static int cmp_lineptr(const void *a, const void *b) { return strcmp(*(const char *const *)a, *(const char *const *)b); }
-
-static bool palette_is_default(const PxFont *f) {
-    if (!f->hasPalette) return true;
-    for (int i = 0; i < PX_NUM_PIXELS; i++) {
-        bool want = (i <= 1);
-        if (f->colorUsed[i] != want) return false;
-    }
-    return f->color[0] == 0xFFFFFFFFu && f->color[1] == 0x000000FFu;
-}
 
 /* a kerning pair may name a code point, an F-code of a glyph the font has, or FFFFFF when the file has the line */
 static bool kern_code_ok(const PxFont *f, int32_t c) {
@@ -638,37 +1014,58 @@ static bool kern_code_ok(const PxFont *f, int32_t c) {
     return (px_code_is_uncoded(c) || c == PX_CODE_DEFAULT) && px_font_find(f, c) >= 0;
 }
 
-static void glyph_fields(const PxGlyph *g, char *out) { /* "x,y\tadvance[\tHASH]" */
+/* "x,y\tadvance[\tHASH[\tPALETTE]]"; ncolors: the font's COLORS (0: one colour) */
+static void glyph_fields(const PxFont *f, const PxGlyph *g, int ncolors, char *out) {
     int x, y;
     px_glyph_written_offset(g, &x, &y);
     int n = sprintf(out, "%d,%d\t%d", x, y, g->advance);
-    if (g->hash[0]) { out[n++] = '\t'; hash_upper(g->hash, out + n); }
+    if (!g->hash[0]) return;
+    char h[33];
+    memcpy(h, g->hash, 33);
+    if (!g->lazy && !ncolors && g->ncol > 1) {      /* a font of one colour: every ink pixel is '0' */
+        size_t tl;
+        char *t = glyph_text(g, &tl, NULL, NULL, true);
+        if (t) { px_hash128_hex(t, tl, h, false); free(t); }
+    }
+    out[n++] = '\t';
+    hash_upper(h, out + n);
+    n += 32;
+    if (!ncolors) return;
+    char ph[33] = "";
+    if (g->lazy) memcpy(ph, g->pal, 33);
+    else {
+        int pn;
+        uint32_t *c = glyph_write_palette(f, g, &pn, ph);
+        if (!c) ph[0] = 0;
+        free(c);
+    }
+    if (ph[0]) { out[n++] = '\t'; hash_upper(ph, out + n); }
 }
 
 char *px_pxfm_text(const PxFont *f, size_t *len, char hashOut[33]) {
     Buf b = {0};
-    /* key order: ASCENT CAPHEIGHT COLOR DESCENT GLYPH INTERNALLEADING KERNING LINEGAP MONOSPACED QUADWIDTH RATIO
-     * STRIKEOUTPOSITION STRIKEOUTTHICKNESS UNDERLINEPOSITION UNDERLINETHICKNESS XHEIGHT */
+    int ncolors = px_font_colors(f);
+    /* key order: ASCENT CAPHEIGHT COLORS DESCENT GLYPH INTERNALLEADING KERNING LINEGAP MONOSPACED QUADWIDTH RATIO
+     * STRIKEOUTPOSITION STRIKEOUTTHICKNESS SYMBOLIC UNDERLINEPOSITION UNDERLINETHICKNESS XHEIGHT */
 #define NUM(id) do { if (f->has[id]) buf_printf(&b, "%s\t%d\n", METRIC_KEY[id], f->m[id]); } while (0)
     NUM(PXM_ASCENT);
     NUM(PXM_CAPHEIGHT);
-    if (!palette_is_default(f))
-        for (int i = 0; i < PX_NUM_PIXELS; i++)
-            if (f->colorUsed[i]) buf_printf(&b, "COLOR\t%c\t%08X\n", PIXELS[i], (unsigned)f->color[i]);
+    if (ncolors) buf_printf(&b, "COLORS\t%d\n", ncolors);
     NUM(PXM_DESCENT);
     /* glyph lines */
     {
+        enum { LINE = 176 };
         size_t cap = (size_t)f->count + 2;
-        char *pool = (char *)malloc(cap * 112);
+        char *pool = (char *)malloc(cap * LINE);
         char **lines = (char **)malloc(cap * sizeof(char *));
         if (!pool || !lines) { free(pool); free(lines); free(b.p); return NULL; }
         int nl = 0;
         for (int i = 0; i < f->count; i++) {
             const PxGlyph *g = &f->glyphs[i];
-            char *line = pool + (size_t)nl * 112;
+            char *line = pool + (size_t)nl * LINE;
             int n;
             n = sprintf(line, "GLYPH\t%06X\t", (unsigned)g->code);
-            glyph_fields(g, line + n);
+            glyph_fields(f, g, ncolors, line + n);
             lines[nl++] = line;
         }
         qsort(lines, (size_t)nl, sizeof(char *), cmp_lineptr);
@@ -701,6 +1098,7 @@ char *px_pxfm_text(const PxFont *f, size_t *len, char hashOut[33]) {
     if (f->hasRatio) buf_printf(&b, "RATIO\t%d:%d\n", f->ratioA, f->ratioB);
     NUM(PXM_STRIKEOUTPOSITION);
     NUM(PXM_STRIKEOUTTHICKNESS);
+    if (f->symbolic) buf_str(&b, "SYMBOLIC\n");
     NUM(PXM_UNDERLINEPOSITION);
     NUM(PXM_UNDERLINETHICKNESS);
     NUM(PXM_XHEIGHT);
@@ -711,7 +1109,6 @@ char *px_pxfm_text(const PxFont *f, size_t *len, char hashOut[33]) {
     if (hashOut) px_hash128_hex(b.p, b.n, hashOut, false);
     return b.p;
 }
-
 void px_font_hash(const PxFont *f, char out[33]) {
     size_t n;
     char *t = px_pxfm_text(f, &n, out);
@@ -837,28 +1234,43 @@ static int cmp_i32(const void *a, const void *b) {
     return x < y ? -1 : x > y;
 }
 
-static bool check_palette(const PxFont *f, char err[PX_ERR_LEN]) {
-    bool used[PX_NUM_PIXELS] = {false};
-    used[0] = true;
+/* the hex palettes the glyph lines name, from <libRoot>/palette, each read once and checked (hex.md, hash == name); then the
+ * font-wide palette is made from them */
+static bool load_palettes(PxFont *f, const char *libRoot, char err[PX_ERR_LEN]) {
     for (int i = 0; i < f->count; i++) {
         const PxGlyph *g = &f->glyphs[i];
-        if (!g->pix) continue;
-        size_t n = (size_t)g->w * (size_t)g->h;
-        for (size_t k = 0; k < n; k++) used[px_pixel_index(g->pix[k]) < 0 ? 0 : px_pixel_index(g->pix[k])] = true;
+        if (!g->pal[0] || px_font_find_palette(f, g->pal)) continue;
+        char path[1100];
+        snprintf(path, sizeof path, "%s/palette/%c%c/%s.hex", libRoot, g->pal[0], g->pal[1], g->pal);
+        size_t rawLen;
+        char *raw = px_read_file(path, &rawLen);
+        if (!raw) return fail(err, "code %06X: palette file %s not found (%s)", (unsigned)g->code, g->pal, path);
+        uint32_t *c;
+        int n;
+        char e2[PX_ERR_LEN];
+        if (!px_hex_parse(raw, rawLen, &c, &n, e2)) { free(raw); return fail(err, "palette file %s: %s", g->pal, e2); }
+        size_t cl;
+        char *can = px_canonical(raw, rawLen, &cl);
+        free(raw);
+        if (!can) { free(c); return fail(err, "out of memory"); }
+        char h[33];
+        px_hash128_hex(can, cl, h, false);
+        free(can);
+        if (strcmp(h, g->pal) != 0) { free(c); return fail(err, "palette file %s: content hash is %s, not its name", g->pal, h); }
+        bool ok = px_font_add_palette(f, g->pal, c, n);
+        free(c);
+        if (!ok) return fail(err, "out of memory");
     }
-    if (f->hasPalette) {
-        for (int i = 0; i < PX_NUM_PIXELS; i++) {
-            if (used[i] && !f->colorUsed[i]) return fail(err, "no COLOR line for pixel '%c' used by the glyphs", PIXELS[i]);
-            if (!used[i] && f->colorUsed[i]) return fail(err, "COLOR line for pixel '%c' that no glyph uses", PIXELS[i]);
-        }
-    } else {
-        for (int i = 2; i < PX_NUM_PIXELS; i++)
-            if (used[i]) return fail(err, "no COLOR lines, but the glyph files use pixel '%c'", PIXELS[i]);
-    }
-    return true;
+    return px_font_adopt_palettes(f, err);
 }
 
 bool px_load_glyphs(PxFont *f, const char *libRoot, const int32_t *cps, int n, char err[PX_ERR_LEN]) {
+    if (px_font_has_glyph_palettes(f)) {
+        /* a colour font: its palettes first (once), then every bitmap at once */
+        if (!f->hasPalette && !load_palettes(f, libRoot, err)) return false;
+        cps = NULL;
+        n = 0;
+    }
     int32_t *want = NULL;
     if (cps) {
         want = (int32_t *)malloc(sizeof(int32_t) * (size_t)(n > 0 ? n : 1));
@@ -910,14 +1322,10 @@ bool px_load_glyphs(PxFont *f, const char *libRoot, const int32_t *cps, int n, c
             g->lazy = false;
             g->hashValid = true;     /* hash is the file's; the crop shift is none, the bitmap is as the file has it */
             g->cdx = g->cdy = 0;
+            if (!px_glyph_from_canonical(f, g, err)) goto done;
         }
     }
-    ok = true;
-    {
-        bool anyLazy = false;
-        for (int i = 0; i < f->count; i++) if (f->glyphs[i].lazy) { anyLazy = true; break; }
-        if (!anyLazy && !check_palette(f, err)) ok = false;
-    }
+    ok = px_font_finish_palette(f, err);
 done:
     if (jobs) for (long i = 0; i < njobs; i++) free(jobs[i].pix);
     free(jobs);
@@ -990,10 +1398,9 @@ bool px_parse_pxfm(const char *data, size_t len, const char *where, PxFont *out,
     PxFont f;
     px_font_init(&f);
     px_hash128_hex(can, cl, f.fileHash, false);   /* before the lines are split in place */
-    bool anyColor = false, seenRatio = false, seenMono = false, seen[PXM_COUNT] = {false};
+    bool seenRatio = false, seenMono = false, seenSym = false, seenColors = false, seen[PXM_COUNT] = {false};
     int lineNo = 0;
     char msg[2 * PX_ERR_LEN];
-    bool colorSeen[PX_NUM_PIXELS] = {false};
     char *p = can;
 
 #define LFAIL(...) do { snprintf(msg, sizeof msg, __VA_ARGS__); fail(err, "%.150s:%d: %.300s", where, lineNo, msg); goto bad; } while (0)
@@ -1049,20 +1456,21 @@ bool px_parse_pxfm(const char *data, size_t len, const char *where, PxFont *out,
             if (seenMono) LFAIL("two MONOSPACED lines");
             seenMono = true;
             f.monospaced = true;
+        } else if (strcmp(key, "SYMBOLIC") == 0) {
+            if (na != 0) LFAIL("SYMBOLIC takes no field");
+            if (seenSym) LFAIL("two SYMBOLIC lines");
+            seenSym = true;
+            f.symbolic = true;
+        } else if (strcmp(key, "COLORS") == 0) {
+            int v;
+            if (na != 1) LFAIL("COLORS takes exactly 1 field");
+            if (seenColors) LFAIL("two COLORS lines");
+            seenColors = true;
+            if (!parse_int(fld[1], &v)) LFAIL("COLORS '%s' is not an integer", fld[1]);
+            if (v < 2) LFAIL("COLORS is written only for more than one colour");
+            f.colorsRead = v;
         } else if (strcmp(key, "COLOR") == 0) {
-            if (na != 2) LFAIL("COLOR takes exactly 2 fields");
-            int pi = (fld[1][1] == 0) ? px_pixel_index(fld[1][0]) : -1;
-            uint32_t c;
-            if (pi < 0) LFAIL("COLOR pixel '%s' is not a pixel character", fld[1]);
-            if (!parse_color(fld[2], &c)) LFAIL("COLOR '%s' is not 8 upper-case hex digits", fld[2]);
-            if (colorSeen[pi]) LFAIL("two colours for '%s'", fld[1]);
-            if (!anyColor) {
-                for (int i = 0; i < PX_NUM_PIXELS; i++) f.colorUsed[i] = false;
-                anyColor = true;
-            }
-            colorSeen[pi] = true;
-            f.colorUsed[pi] = true;
-            f.color[pi] = c;
+            LFAIL("a COLOR line: the colours of a pxfm file before hex palettes (the file was made by an older pixelglyphlib)");
         } else if (strcmp(key, "KERNING") == 0) {
             if (na != 3) LFAIL("KERNING takes exactly 3 fields");
             int32_t a, b;
@@ -1082,7 +1490,7 @@ bool px_parse_pxfm(const char *data, size_t len, const char *where, PxFont *out,
             f.kern[f.kernCount].value = v;
             f.kernCount++;
         } else if (strcmp(key, "GLYPH") == 0) {
-            if (na != 3 && na != 4) LFAIL("GLYPH takes 3 or 4 fields, not %d", na);
+            if (na < 3 || na > 5) LFAIL("GLYPH takes 3, 4 or 5 fields, not %d", na);
             if (strchr(fld[2], 'x') || (!strchr(fld[2], ',') && strchr(fld[3], ','))) LFAIL("pxfm version 1 file (GLYPH line '%s')", fld[2]);
             PxGlyph g;
             memset(&g, 0, sizeof g);
@@ -1093,10 +1501,14 @@ bool px_parse_pxfm(const char *data, size_t len, const char *where, PxFont *out,
             *comma = 0;
             if (!parse_int(fld[2], &g.x) || !parse_int(comma + 1, &g.y)) LFAIL("offsets '%s,%s' are not integers", fld[2], comma + 1);
             if (!parse_int(fld[3], &g.advance)) LFAIL("advance '%s' is not an integer", fld[3]);
-            if (na == 4) {
+            if (na >= 4) {
                 if (!px_is_hash(fld[4], true, false)) LFAIL("glyph hash '%s' is not 32 upper-case hex digits", fld[4]);
                 hash_lower(fld[4], g.hash);
                 g.lazy = true;
+                if (na == 5) {
+                    if (!px_is_hash(fld[5], true, false)) LFAIL("palette hash '%s' is not 32 upper-case hex digits", fld[5]);
+                    hash_lower(fld[5], g.pal);
+                }
             } else {
                 if (g.x != 0 || g.y != 0) LFAIL("a glyph without a glyph file must be at 0,0");
                 g.hash[0] = 0;
@@ -1109,12 +1521,11 @@ bool px_parse_pxfm(const char *data, size_t len, const char *where, PxFont *out,
     }
 #undef LFAIL
 
-    if (anyColor) {
-        f.hasPalette = true;
-        bool dflt = f.colorUsed[0] && f.colorUsed[1] && f.color[0] == 0xFFFFFFFFu && f.color[1] == 0x000000FFu;
-        for (int i = 2; i < PX_NUM_PIXELS && dflt; i++) if (f.colorUsed[i]) dflt = false;
-        if (dflt) { fail(err, "%s: colour lines of the default colours", where); goto bad; }
-        if (!f.colorUsed[0]) { fail(err, "%s: no COLOR line for '.'", where); goto bad; }
+    for (int i = 0; i < f.count; i++) {    /* a colour font has a palette on every line with a glyph file, any other none */
+        const PxGlyph *g = &f.glyphs[i];
+        if (!g->hash[0]) continue;
+        if (seenColors && !g->pal[0]) { fail(err, "%s: a GLYPH line with a glyph file has no palette in a colour font (code %06X)", where, (unsigned)g->code); goto bad; }
+        if (!seenColors && g->pal[0]) { fail(err, "%s: a GLYPH line has a palette in a font with no COLORS line (code %06X)", where, (unsigned)g->code); goto bad; }
     }
     px_font_sort(&f);
     for (int i = 1; i < f.count; i++)
@@ -1183,12 +1594,13 @@ bool px_save_final(const PxFont *f, const char *libRoot, char hashOut[33], char 
     char *text = px_pxfm_text(f, &len, hash);
     if (!text) return fail(err, "out of memory");
     char path[2048], dir[1024];
+    bool mono = px_font_colors(f) == 0;
 
     for (int i = 0; i < f->count; i++) {
         const PxGlyph *gl = &f->glyphs[i];
         if (gl->lazy) continue;
         size_t n;
-        char *g = glyph_text(gl, &n, NULL, NULL);
+        char *g = glyph_text(gl, &n, NULL, NULL, mono);
         if (!g) continue;
         char h[33];
         px_hash128_hex(g, n, h, false);
@@ -1199,6 +1611,23 @@ bool px_save_final(const PxFont *f, const char *libRoot, char hashOut[33], char 
             if (!px_write_file(path, g, n)) { free(g); free(text); return fail(err, "cannot write %s", path); }
         }
         free(g);
+    }
+    {
+        PxPalette *pals;
+        int np = px_font_write_palettes(f, &pals);
+        if (np < 0) { free(text); return fail(err, "out of memory"); }
+        for (int i = 0; i < np; i++) {
+            size_t n;
+            char h[33];
+            char *t = px_hex_text(pals[i].c, pals[i].n, &n, h);
+            if (!t) continue;
+            snprintf(dir, sizeof dir, "%s/palette/%c%c", libRoot, h[0], h[1]);
+            snprintf(path, sizeof path, "%s/%s.hex", dir, h);
+            bool ok = px_file_exists(path) || (px_mkdir_p(dir) && px_write_file(path, t, n));
+            free(t);
+            if (!ok) { px_palettes_free(pals, np); free(text); return fail(err, "cannot write %s", path); }
+        }
+        px_palettes_free(pals, np);
     }
     snprintf(dir, sizeof dir, "%s/pxfm/%c%c", libRoot, hash[0], hash[1]);
     snprintf(path, sizeof path, "%s/%s.pxfm", dir, hash);
@@ -1262,9 +1691,17 @@ bool px_save_draft(const PxFont *f, const PxDraftInfo *info, const char *path, c
         if (f->has[m]) buf_printf(&b, "%s\t%d\n", METRIC_KEY[m], f->m[m]);
     if (f->hasRatio) buf_printf(&b, "RATIO\t%d:%d\n", f->ratioA, f->ratioB);
     if (f->monospaced) buf_str(&b, "MONOSPACED\n");
+    if (f->symbolic) buf_str(&b, "SYMBOLIC\n");
     if (f->hasPalette)
-        for (int i = 0; i < PX_NUM_PIXELS; i++)
+        for (int i = 1; i < PX_NUM_PIXELS; i++)
             if (f->colorUsed[i]) buf_printf(&b, "COLOR\t%c\t%08X\n", PIXELS[i], (unsigned)f->color[i]);
+    for (int i = 0; i < f->npals; i++) {
+        char up[33];
+        hash_upper(f->pals[i].hash, up);
+        buf_printf(&b, "PALETTE\t%s\t", up);
+        for (int k = 0; k < f->pals[i].n; k++) buf_printf(&b, "%s%08X", k ? "," : "", (unsigned)f->pals[i].c[k]);
+        buf_str(&b, "\n");
+    }
     for (int i = 0; i < f->kernCount; i++)
         if (f->kern[i].value != 0)
             buf_printf(&b, "KERNING\t%06X\t%06X\t%d\n", (unsigned)f->kern[i].first, (unsigned)f->kern[i].second, f->kern[i].value);
@@ -1273,7 +1710,9 @@ bool px_save_draft(const PxFont *f, const PxDraftInfo *info, const char *path, c
         bool has = g->pix && g->w > 0 && g->h > 0;
         char cp[16];
         snprintf(cp, sizeof cp, "%06X", (unsigned)g->code);
-        buf_printf(&b, "GLYPH\t%s\t%d,%d\t%d\t%dx%d\t%d\n", cp, g->x, g->y, g->advance, has ? g->w : 0, has ? g->h : 0, g->asDrawn ? 1 : 0);
+        buf_printf(&b, "GLYPH\t%s\t%d,%d\t%d\t%dx%d\t%d", cp, g->x, g->y, g->advance, has ? g->w : 0, has ? g->h : 0, g->asDrawn ? 1 : 0);
+        if (g->pal[0]) { char up[33]; hash_upper(g->pal, up); buf_printf(&b, "\t%s", up); }
+        buf_str(&b, "\n");
         if (has)
             for (int y = 0; y < g->h; y++) {
                 buf_str(&b, "\t");
@@ -1370,20 +1809,34 @@ bool px_load_draft(const char *path, PxFont *out, PxDraftInfo *info, char err[PX
             f.hasRatio = true; f.ratioA = a; f.ratioB = b;
         } else if (strcmp(key, "MONOSPACED") == 0) {
             f.monospaced = true;
+        } else if (strcmp(key, "SYMBOLIC") == 0) {
+            f.symbolic = true;
         } else if (strcmp(key, "COLOR") == 0) {
             uint32_t c;
             int pi = (na == 2 && fld[1][1] == 0) ? px_pixel_index(fld[1][0]) : -1;
             if (pi < 0 || !parse_color(fld[2], &c)) LFAIL("bad COLOR");
-            if (!anyColor) { for (int i = 0; i < PX_NUM_PIXELS; i++) f.colorUsed[i] = false; anyColor = true; }
-            f.colorUsed[pi] = true;
-            f.color[pi] = c;
+            if (pi > 0) { f.colorUsed[pi] = true; f.color[pi] = c; anyColor = true; }   /* '.' (older drafts) has no colour */
+        } else if (strcmp(key, "PALETTE") == 0) {
+            char h[33];
+            uint32_t c[256];
+            int nc = 0;
+            if (na != 2 || !px_is_hash(fld[1], true, false)) LFAIL("bad PALETTE");
+            hash_lower(fld[1], h);
+            for (char *q = fld[2]; *q && nc < 256;) {
+                char *e = strchr(q, ',');
+                if (e) *e = 0;
+                if (!parse_color(q, &c[nc])) LFAIL("bad PALETTE colour '%s'", q);
+                nc++;
+                q = e ? e + 1 : q + strlen(q);
+            }
+            if (nc == 0 || !px_font_add_palette(&f, h, c, nc)) LFAIL("bad PALETTE");
         } else if (strcmp(key, "KERNING") == 0) {
             int32_t a, b;
             int v;
             if (na != 3 || !parse_code(fld[1], &a) || !parse_code(fld[2], &b) || !parse_int(fld[3], &v)) LFAIL("bad KERNING");
             px_font_set_kern(&f, a, b, v);
         } else if (strcmp(key, "GLYPH") == 0) {
-            if (na != 5) LFAIL("GLYPH takes 5 fields");
+            if (na != 5 && na != 6) LFAIL("GLYPH takes 5 or 6 fields");
             PxGlyph g;
             memset(&g, 0, sizeof g);
             if (!parse_code(fld[1], &g.code)) LFAIL("bad code '%s'", fld[1]);
@@ -1396,6 +1849,10 @@ bool px_load_draft(const char *path, PxFont *out, PxDraftInfo *info, char err[PX
             *xs = 0;
             if (!parse_int(fld[4], &g.w) || !parse_int(xs + 1, &g.h) || g.w < 0 || g.h < 0 || (g.w == 0) != (g.h == 0)) LFAIL("bad size");
             g.asDrawn = fld[5][0] == '1';
+            if (na == 6) {
+                if (!px_is_hash(fld[6], true, false)) LFAIL("bad palette hash '%s'", fld[6]);
+                hash_lower(fld[6], g.pal);
+            }
             if (g.w > 0) {
                 g.pix = (char *)malloc((size_t)g.w * (size_t)g.h);
                 if (!g.pix) LFAIL("out of memory");
@@ -1420,6 +1877,7 @@ bool px_load_draft(const char *path, PxFont *out, PxDraftInfo *info, char err[PX
 #undef LFAIL
     if (!header) { fail(err, "%s: empty draft", path); goto bad; }
     if (anyColor) f.hasPalette = true;
+    for (int i = 0; i < f.count; i++) if (f.glyphs[i].pal[0] && !px_font_find_palette(&f, f.glyphs[i].pal)) f.glyphs[i].pal[0] = 0;
     if (pxtfText.p) {
         PxtfTypeface *c = (PxtfTypeface *)calloc(1, sizeof *c);
         char e2[PX_ERR_LEN];

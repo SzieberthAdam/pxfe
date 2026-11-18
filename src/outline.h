@@ -62,6 +62,7 @@ const char *outline_style(const Outline *f);            /* name table (ID 17, el
 int outline_units_per_em(const Outline *f);
 /* ascender (positive up), descender (negative, down) and line gap in font units; any pointer may be NULL */
 void outline_metrics(const Outline *f, int *ascender, int *descender, int *line_gap);
+int outline_symbolic(const Outline *f);                 /* 1: a symbol font (a (3,0) cmap subtable; a Type 1 Encoding other than StandardEncoding) */
 int outline_glyph_count(const Outline *f);
 
 /* ---- lookup ---- */

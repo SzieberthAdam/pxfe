@@ -1,0 +1,19 @@
+# 137b. Second process after 137: the colour font comes back from the database file with its three colours, unmodified (its glyphs
+# and palettes give the hash it was saved under).
+wait 16
+assert storefonts 5
+assert sql "SELECT COUNT(*) FROM pxfm WHERE colors = 3" 1
+click @Filter
+type RPG
+wait 8
+assert bvisible 1
+dblclick @card:0
+wait 12
+assert infont 1
+assert title font-20x20-RPG Regular
+assert colors 3
+assert palette 3
+assert glyphs 118
+assert glyph U+0041 exists
+assert modified 0
+shot tests/tmp/shots/137b_colour_font_reload.png

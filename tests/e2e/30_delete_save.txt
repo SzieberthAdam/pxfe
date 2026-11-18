@@ -6,7 +6,7 @@ copyfile tests/tmp/e2e.pxfdb tests/tmp/e2e_before.pxfdb
 click @Fonts
 wait 4
 click @Filter
-type 03696f
+type 408c4d
 wait 4
 assert bvisible 1
 sleep 600
@@ -20,6 +20,7 @@ click @Delete
 wait 6
 assert modal none
 assert storefonts 3
+assert sql "select count(*) from palette" 0
 assert dbmodified 1
 assert wtitle modified
 assert statusdb modified

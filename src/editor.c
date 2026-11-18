@@ -768,6 +768,22 @@ static void clip_paste(Editor *e)
     const SelMask *s = &g_clip.shape;
     if (e->cv.width > 0 && (s->x < vx0 || s->y < vy0 || s->x + s->w - 1 > vx1 || s->y + s->h - 1 > vy1)) { dx = vx0 - s->x; dy = vy0 - s->y; }
     if (!selfloat_copy(&e->fl, &g_clip)) return;
+    {   /* pixels of a colour this font does not have (copied from another font) take the ink, or the font's first colour */
+        const PxFont *f = e->font;
+        char sub = '0';
+        if (f->hasPalette) {
+            int ii = px_pixel_index(e->ink);
+            if (ii > 0 && f->colorUsed[ii]) sub = e->ink;
+            else for (int i = 1; i < PX_NUM_PIXELS; i++) if (f->colorUsed[i]) { sub = PX_PIXELS[i]; break; }
+        }
+        size_t n = (size_t)e->fl.shape.w * (size_t)e->fl.shape.h;
+        for (size_t k = 0; k < n; k++) {
+            char c = e->fl.pix[k];
+            if (c == '.') continue;
+            int pi = px_pixel_index(c);
+            if (f->hasPalette ? !(pi > 0 && f->colorUsed[pi]) : c != '0') e->fl.pix[k] = sub;
+        }
+    }
     selfloat_shift(&e->fl, dx, dy);
     sel_copy(&e->sel, &e->fl.shape);
     sel_free(&e->src);

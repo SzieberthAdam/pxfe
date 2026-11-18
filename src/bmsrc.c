@@ -308,6 +308,14 @@ static void x11_info(BmStrikeInfo *in, const Props *p, int ascent, int descent) 
     if ((s = props_get(p, "FACE_NAME")) != NULL) copy_str(in->name, sizeof in->name, s, strlen(s));
     else if ((s = props_get(p, "FONT")) != NULL) copy_str(in->name, sizeof in->name, s, strlen(s));
     else snprintf(in->name, sizeof in->name, "%s", in->family);
+    {   /* registry-encoding, lower case, ends in "fontspecific" */
+        const char *reg = props_get(p, "CHARSET_REGISTRY"), *enc = props_get(p, "CHARSET_ENCODING");
+        char re[200];
+        snprintf(re, sizeof re, "%s-%s", reg ? reg : "", enc ? enc : "");
+        size_t l = strlen(re);
+        for (size_t i = 0; i < l; i++) if (re[i] >= 'A' && re[i] <= 'Z') re[i] = (char)(re[i] + 32);
+        in->symbolic = l >= 12 && strcmp(re + l - 12, "fontspecific") == 0;
+    }
 }
 
 /* ------------------------------------------------------------------------------------------------ BDF */
@@ -789,6 +797,7 @@ static int fnt_parse(BmSource *src, const Buf *b, char *err, size_t en) {
     in->ascent = ascent;
     in->descent = height - ascent;
     in->pixel_size = height;
+    in->symbolic = charset == 2;     /* SYMBOL_CHARSET */
     if (pix_width) snprintf(in->label, sizeof in->label, "%dx%d", pix_width, height);
     else snprintf(in->label, sizeof in->label, "%dpx", height);
     if (face && face < b->n) {
@@ -1169,6 +1178,17 @@ static void name_get(const Buf *nm, unsigned id, char *out, size_t cap) {
 
 typedef struct { int cp, gid; } CmapPair;
 
+/* an sfnt with a (3,0) cmap subtable: a symbol font */
+static int sfnt_symbolic(const Buf *b) {
+    Buf cm;
+    if (!sfnt_table(b, "cmap", &cm)) return 0;
+    unsigned nsub = rd16(&cm, 2, 1);
+    if (nsub > 256) nsub = 256;
+    for (unsigned i = 0; i < nsub; i++)
+        if (rd16(&cm, 4 + 8ull * i, 1) == 3 && rd16(&cm, 6 + 8ull * i, 1) == 0) return 1;
+    return 0;
+}
+
 /* the best cmap subtable (fontTools' order) as (code point, glyph id) pairs; *pairs malloc'd, may be NULL with n 0 */
 static int cmap_load(const Buf *b, CmapPair **pairs, int *np) {
     Buf cm;
@@ -1317,6 +1337,7 @@ static int load_sbit_pair(BmSource *src, const Buf *b, const char *loc_tag, cons
         copy_str(in->family, sizeof in->family, family, strlen(family));
         copy_str(in->style, sizeof in->style, style, strlen(style));
         copy_str(in->name, sizeof in->name, full[0] ? full : family, strlen(full[0] ? full : family));
+        in->symbolic = sfnt_symbolic(b);
         strike_finish(st);
     }
     return 1;

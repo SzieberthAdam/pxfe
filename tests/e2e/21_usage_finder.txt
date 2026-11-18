@@ -1,5 +1,5 @@
 # 21. Insight and the glyph finder on testdata/lib (copy in tests/tmp/e2elib).
-# Glyph A (C0FC54C2...) is in 3 fonts (0820dc69, e6109c13, fa96e358), a second A bitmap (3B6F6802...) is in 1 font (03696f65);
+# Glyph A (C0FC54C2...) is in 3 fonts (0820dc69, e6109c13, fa96e358), a second A bitmap (3AD25AE0...) is in 1 font (408c4d7d);
 # the bitmap of x (F83AD16C...) is in 0820dc69 and, uncoded, in fa96e358.
 waitfor loading = 0 60000
 wait 5

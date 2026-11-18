@@ -10,6 +10,8 @@ the files were also read back with those Python readers to check that both agree
 Shapes: A and B are 5x7 letters, the apostrophe is 2x3 raised 4 rows, p is 4x5 with a descender, "E" is a 3x3 stand-in for e-acute.
 
 font.bdf              BDF, ENCODING by CHARSET_REGISTRY "microsoft" / "437" (code 130 = U+00E9), 6 glyphs, one without encoding
+symbol.bdf            font.bdf with FAMILY_NAME "Tiny Symbol" and CHARSET_REGISTRY "Adobe" / "FontSpecific": a symbol font (SYMBOLIC);
+                        made from font.bdf by hand (not by the script)
 font_lsb.pcf          PCF, uncompressed metrics, LSB byte and bit order, pad 1, ISO8859-1, with accelerators and glyph names
 font_msb.pcf          PCF, compressed metrics, MSB byte and bit order, pad 2, ISO10646 (U+263A), sparse two-row encoding table
 font_mix.pcf          PCF, MSB bits with LSB bytes, pad 4, scan unit 4 (the scan-unit byte swap), no accelerators, no names

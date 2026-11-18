@@ -143,7 +143,7 @@ static void part_a(const char *root, bool quick, const Names *pxfm, const Names 
 /* ---- C. checksums per table */
 
 static const char *const TABLES[8][2] = {
-    {"glyph", "hash"}, {"pxfm", "hash"}, {"pxfm_color", "pxfm, pixel"}, {"pxfm_glyph", "pxfm, code"},
+    {"glyph", "hash"}, {"pxfm", "hash"}, {"palette", "hash"}, {"pxfm_glyph", "pxfm, code"},
     {"pxfm_kerning", "pxfm, first, second"}, {"pxtf", "hash"}, {"pxtf_variant", "pxtf, number"},
     {"pxtf_field", "pxtf, number, key, value"}};
 

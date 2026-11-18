@@ -37,7 +37,7 @@ struct sqlite3;
 typedef struct Store Store;
 typedef struct StoreConn StoreConn;
 
-typedef struct StoreCounts { int fonts, typefaces, glyphs; } StoreCounts;
+typedef struct StoreCounts { int fonts, typefaces, glyphs, palettes; } StoreCounts;
 
 typedef struct StoreProgress {
     volatile long phase;        /* 0 idle, 1 listing, 3 reading files, 4 inserting, 5 indexing, 7 loading the pxfdb, 8 writing the database,
@@ -96,7 +96,8 @@ typedef struct StoreEntry {
     bool hasAscent, hasDescent; int ascent, descent;
     bool hasHeight; int height;             /* ascent + descent when both are stated */
     bool monospaced;
-    int  colors;                             /* ink colours: palette entries other than ".", at least 1 */
+    bool symbolic;                           /* SYMBOLIC: the codes are not the characters' code points */
+    int  colors;                             /* pxfm.colors, 1 when NULL (a font of one colour) */
     bool hasRatio; int ratioA, ratioB;
     int  glyphCount;                         /* glyph lines of the font without the FFFFFF line */
     bool hasDefault;                         /* has a FFFFFF line */
@@ -130,6 +131,7 @@ bool store_load_glyph_bitmaps(StoreConn *c, PxFont *f, const int32_t *codes, int
 char *store_pxfm_text(StoreConn *c, const char *pxfmHash, size_t *len, char hashOut[33]);
 char *store_pxtf_text(StoreConn *c, const char *pxtfHash, size_t *len, char hashOut[33]);
 char *store_pxgl_text(StoreConn *c, const char *glyphHash, size_t *len, char hashOut[33]);
+char *store_palette_text(StoreConn *c, const char *paletteHash, size_t *len, char hashOut[33]);   /* hex.md */
 
 /* ------------------------------------------------------------------ saving a font into memory */
 
@@ -158,7 +160,7 @@ bool store_edit_in_place(Store *s, const char *oldPxfm, const PxFont *font, cons
 /* ------------------------------------------------------------------ export to folders */
 
 typedef struct StoreFolderScan {
-    StoreCounts found;          /* files of pxtf/ pxfm/ pxgl/ named <hash>.<ext> under their prefix folder */
+    StoreCounts found;          /* files of pxtf/ pxfm/ pxgl/ palette/ named <hash>.<ext> under their prefix folder */
     int other;                  /* other entries in those folders */
 } StoreFolderScan;
 /* What the folder holds of the three library folders (a missing folder holds nothing). */
@@ -167,14 +169,14 @@ bool store_scan_has_data(const StoreFolderScan *s);
 
 typedef enum StoreExportMode {
     STORE_EXPORT_APPEND = 0,    /* write the files the folder lacks, leave the others, delete nothing */
-    STORE_EXPORT_OVERWRITE = 1  /* delete the contents of pxtf/ pxfm/ pxgl/ (nothing else), then write every file */
+    STORE_EXPORT_OVERWRITE = 1  /* delete the contents of pxtf/ pxfm/ pxgl/ palette/ (nothing else), then write every file */
 } StoreExportMode;
 
 typedef struct StoreExportResult {
     StoreCounts written, skipped, deleted;
 } StoreExportResult;
 
-/* Writes every typeface, font and glyph of memory to <folder>/pxtf|pxfm|pxgl/xx/<hash>.<ext> (the text made from the rows must hash to its
+/* Writes every typeface, font, glyph and palette of memory to <folder>/pxtf|pxfm|pxgl|palette/xx/<hash>.<ext> (the text made from the rows must hash to its
  * name).  prog may be NULL.  Uses its own connection: call it from any thread while the UI does not change the store. */
 bool store_export_folder(Store *s, const char *folder, StoreExportMode mode, StoreProgress *prog, StoreExportResult *res, char err[PX_ERR_LEN]);
 
@@ -192,6 +194,7 @@ typedef struct StoreDeletePlan {
     StoreRewrite *rw; int nRw;              /* typefaces that lose variants and are rewritten */
     PxtfTypeface *newTf;                    /* the rewritten typefaces (parallel to rw) */
     char (*glyphs)[33]; int nGlyphs;        /* pxgl rows the deletion leaves named by no pxfm */
+    char (*palettes)[33]; int nPalettes;    /* palette rows the deletion leaves named by no pxfm_glyph */
     char summary[900];                       /* "1 font, 1 typeface, 14 glyphs; Typeface b925951b loses variant 0002 and is rewritten" */
 } StoreDeletePlan;
 

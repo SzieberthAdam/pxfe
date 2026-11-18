@@ -174,7 +174,7 @@ static void test_save(void) {
 }
 
 #define H_EXAMPLE "0820dc69a21b1cdb3a44d2cff7d884d8"
-#define H_GREY "03696f658319e9dfddc2cb6ea2520592"
+#define H_GREY "408c4d7dd946543f8e9b4553dd1ba62e"
 #define H_NOASC "e6109c134eda8d747bac9a3c2a62d204"
 #define H_UNC "fa96e3583da8e003fc25404ac00f764e"
 #define T_SANS "b925951bb94de1d15ec27404b3261476"
@@ -215,7 +215,7 @@ static void test_library(void) {
     library_entry_title(&lib.e[c1], title, sizeof title);
     CHECK(strcmp(title, "Test Sans Regular") == 0, "title");
     library_entry_title(&lib.e[gi], title, sizeof title);
-    CHECK(strcmp(title, "03696f65") == 0, "title of an unnamed font is its short hash");
+    CHECK(strcmp(title, "408c4d7d") == 0, "title of an unnamed font is its short hash");
 
     /* the loader */
     LibLoader *L = libloader_create(st, 3, 2);

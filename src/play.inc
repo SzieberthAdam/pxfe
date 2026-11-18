@@ -309,6 +309,8 @@ static bool GetInt(const char *name, long *v)
     else if (!strcmp(name, "ifcellh")) *v = fimp.sheet ? fimp.sh.cellH : 0;
     else if (!strcmp(name, "ifcolours")) *v = fimp.sheet ? fimp.sh.npalette : 0;
     else if (!strcmp(name, "ifblocks")) *v = fimp.sheet ? fimp.sh.blocks : 0;
+    else if (!strcmp(name, "colors")) *v = hasFont ? px_font_colors(&font) : -1;                       /* COLORS of the open font (0: one colour) */
+    else if (!strcmp(name, "symbolic")) *v = hasFont ? font.symbolic : -1;                              /* SYMBOLIC of the open font */
     else if (!strcmp(name, "palette")) { int n = 0; if (hasFont && font.hasPalette) for (int i = 1; i < PX_NUM_PIXELS; i++) n += font.colorUsed[i]; *v = n; }   /* ink colours of the open font (0: the default black) */
     else if (!strcmp(name, "ifpixel")) *v = fimp.pixel;                                              /* its choice: a pixel font */
     else if (!strcmp(name, "ifgrid")) *v = fimp.hasGrid ? (fimp.grid.sure ? 1 : 2) : 0;              /* a grid was found (2: only a guess) */
