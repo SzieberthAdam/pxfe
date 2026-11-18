@@ -155,16 +155,16 @@ wait 3
 assert glyph U+0020 empty
 
 # the option is shown for the Pencil, the Line and the Curve, not for the Eraser, and a click on it again switches it off
-key l
-wait 3
-assert w.Pixel-perfect 1
 key l shift
 wait 3
 assert w.Pixel-perfect 1
-key e
+key u shift
+wait 3
+assert w.Pixel-perfect 1
+key e shift
 wait 3
 assert w.Pixel-perfect 0
-key b
+key b shift
 wait 3
 click @Pixel-perfect
 wait 3

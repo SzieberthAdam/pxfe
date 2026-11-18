@@ -697,11 +697,12 @@ static bool ImportSheetCreate(void)
     f.m[PXM_ASCENT] = sh->ascent < 0 ? 0 : sh->ascent;
     f.m[PXM_DESCENT] = sh->descent < 0 ? 0 : sh->descent;
     f.monospaced = sh->layout == SHEET_GRID;
-    if (!mono) {   /* the colours of the ink on a transparent background */
-        f.hasPalette = true;
-        for (int k = 0; k < PX_NUM_PIXELS; k++) f.colorUsed[k] = false;   /* '.' has no colour */
-        for (int k = 0; k < sh->npalette && k + 1 < PX_NUM_PIXELS; k++) if (used[k + 1]) { f.colorUsed[k + 1] = true; f.color[k + 1] = sh->palette[k]; }
+    if (!mono) {   /* the colours of the ink on a transparent background: each glyph gets the palette of its own colours */
+        uint32_t cc[PX_NUM_PIXELS];
+        for (int k = 0; k < PX_NUM_PIXELS; k++) cc[k] = k >= 1 && k - 1 < sh->npalette ? sh->palette[k - 1] : 0x000000FFu;
+        for (int i = 0; i < f.count; i++) px_glyph_set_colors(&f, &f.glyphs[i], cc);
     }
+    (void)used;
     PxtfTypeface tf;
     bool haveTf = fimp.typeface && ImpTypeface(&tf);
     char t[300];

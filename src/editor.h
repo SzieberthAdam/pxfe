@@ -36,7 +36,14 @@ bool    Editor_AdvanceHandle(const Editor *e, Vector2 *out);
 int     Editor_Tool(const Editor *e);
 int     Editor_ToolCols(const Editor *e);   /* columns of the tool strip */
 int     Editor_StripTool(int slot);          /* test hook: the Tool number of the strip's button at slot (0 first, in the strip's order), -1 past the last */
+/* The ink: '.' the transparent ink, else its slot in the edited glyph's palette as a pixel character (its key in the palette bar: '0', ..., 'Z'),
+ * '?' when the glyph has not got the colour; Editor_InkColor its colour (0xRRGGBBAA, 0 for '.').  The ink is a colour: drawing with one the
+ * glyph has not adds it to its palette.  Test hooks of the palette bar (version 23): its rows (1 + the rows of the font's other colours) and
+ * the number of those colours. */
 char    Editor_Ink(const Editor *e);
+int     Editor_BarRows(const Editor *e);
+int     Editor_BarExtras(const Editor *e);
+uint32_t Editor_InkColor(const Editor *e);
 int     Editor_Zoom(const Editor *e);
 
 /* A read-only editor is a viewer of a locked font: no tool, advance or move command changes the glyph. */

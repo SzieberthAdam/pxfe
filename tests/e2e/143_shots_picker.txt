@@ -1,0 +1,40 @@
+# 143. Version 23, screenshots only: the palette bar of a one-colour font ('.', black '0' and '+') and the colour picker in each of its
+# models, on a duplicate of font 0820dc69, glyph U+0048, at 1110x600.
+resize 1110 600
+wait 5
+click @Unlock
+wait 4
+dblclick @cell:U+0048
+wait 6
+assert ebarrows 1
+assert w.pal:0 1
+assert w.pal:+ 1
+shot tests/tmp/shots/143_bar_one_colour.png
+click @pal:+
+wait 3
+assert epicker 1
+click @cp.hex
+wait 2
+type 3080E0C0
+wait 2
+key tab
+wait 2
+click @cpmode_HSV
+wait 3
+shot tests/tmp/shots/143_picker_hsv.png
+click @cpmode_Wheel
+wait 3
+shot tests/tmp/shots/143_picker_wheel.png
+click @cpmode_RGB
+wait 3
+shot tests/tmp/shots/143_picker_rgb.png
+click @cpmode_HSL
+wait 3
+shot tests/tmp/shots/143_picker_hsl.png
+click @cpmode_Lab
+wait 3
+shot tests/tmp/shots/143_picker_lab.png
+assert epickerrgb 0x3080E0
+click @cp.cancel
+wait 3
+assert epicker 0

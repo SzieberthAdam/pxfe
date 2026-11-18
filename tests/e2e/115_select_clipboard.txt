@@ -16,7 +16,7 @@ drag @ecell:1,2 @ecell:3,2
 wait 3
 assert glyph U+0020 ink 6
 assert undo 2
-key m
+key m shift
 wait 2
 
 # Delete clears the selected cells; one undo step; the bitmap is cropped to what is left

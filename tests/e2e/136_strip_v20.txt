@@ -32,9 +32,10 @@ click @Pencil
 wait 2
 assert etool 0
 
+# version 23: three columns, the palette bar under the strip takes some of its height
 resize 1110 520
 wait 8
-assert etoolcols 2
+assert etoolcols 3
 resize 1110 480
 wait 8
 assert etoolcols 3

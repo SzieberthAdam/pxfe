@@ -21,7 +21,7 @@ assert glyph U+0020 ink 9
 assert undo 3
 
 # the marquee tool: key M, the toolbar button, the status line
-key m
+key m shift
 wait 2
 assert etool 5
 click @Pencil
@@ -30,8 +30,8 @@ assert etool 0
 click @Marquee
 wait 2
 assert etool 5
-key b
-key m
+key b shift
+key m shift
 wait 2
 assert etool 5
 
@@ -94,7 +94,7 @@ assert undo 3
 assert glyph U+0020 pixel 1 1 0
 
 # --- Esc during a move drag cancels it: the glyph and the selection are as they were
-key m
+key m shift
 drag @ecell:0,0 @ecell:4,4
 wait 3
 assert esel bounds 0 0 5 5
@@ -179,7 +179,7 @@ assert glyph U+0020 ink 9
 key d ctrl
 wait 2
 assert esel none
-key v
+key v shift
 wait 2
 assert etool 8
 drag @ecell:6,6 @ecell:7,6
@@ -195,12 +195,12 @@ assert glyph U+0020 left 5
 assert glyph U+0020 ink 9
 
 # --- another tool drops a floating selection
-key m
+key m shift
 drag @ecell:4,0 @ecell:8,4
 key left
 wait 2
 assert efloating 1
-key b
+key b shift
 wait 3
 assert etool 0
 assert efloating 0
@@ -208,7 +208,7 @@ assert undo 7
 assert glyph U+0020 left 4
 
 # --- Esc: a float is cancelled, then the selection goes, then the glyph view closes
-key m
+key m shift
 drag @ecell:3,0 @ecell:7,4
 key right
 wait 2

@@ -20,6 +20,7 @@
 #include "sample.h"
 #include "theme.h"
 #include "editor.h"
+#include "colorpick.h"
 #include "layers.h"
 #include "flayers.h"
 #include "fit.h"
@@ -311,7 +312,8 @@ static void PushUndo(int key)
     lastUndoTime = now;
     StackClear(redoStack, &redoN);
     PxFont *s = (PxFont *)malloc(sizeof(PxFont));
-    if (!px_font_copy(s, &font)) { free(s); return; }
+    if (!px_font_copy(s, &font)) { free(s); return; }     /* the snapshot's palette table is compacted */
+    px_font_compact_palettes(&font);                        /* the palettes no glyph names any more go (between edits) */
     if (undoN == UNDO_MAX) {
         px_font_free(undoStack[0]); free(undoStack[0]);
         FlLayer_Free(undoFit[0]);
@@ -1803,6 +1805,7 @@ static Rectangle Intersect(Rectangle a, Rectangle b)
 }
 
 /* (ox, baseY) is the pen on the baseline line; y is up, so the top row sits (y + h) rows above it */
+_Static_assert(sizeof(Color) == 4, "PxPalette.draw is read as raylib Colors");
 static void DrawGlyphPixels(const PxGlyph *g, float ox, float baseY, int z, const Color *pal)
 {
     if (!g->pix || g->w <= 0 || g->h <= 0) return;
@@ -1822,7 +1825,7 @@ static void DrawGlyphPixels(const PxGlyph *g, float ox, float baseY, int z, cons
     }
 }
 
-static void DrawCell(int i, float cx, float cy, float cw, Rectangle area, const Color *pal, bool selected, bool hovered)
+static void DrawCell(int i, float cx, float cy, float cw, Rectangle area, bool selected, bool hovered)
 {
     const PxGlyph *g = &font.glyphs[i];
     float boxPx = (float)(BoxRows() * zoom);
@@ -1851,7 +1854,7 @@ static void DrawCell(int i, float cx, float cy, float cw, Rectangle area, const 
             Th_HLine(x0, x1, by, TH_M_BASELINE);
             Th_DashedVLine(ox + advPx, oy, oy + boxPx, 3, TH_M_ADVANCE);
         }
-        DrawGlyphPixels(g, ox, by, zoom, pal);
+        DrawGlyphPixels(g, ox, by, zoom, (const Color *)px_glyph_palette(&font, g)->draw);   /* the glyph's own palette, ready to draw */
         EndScissorMode();
     }
 
@@ -1964,9 +1967,6 @@ static void UpdateDrawGrid(Rectangle area)
     revealIdx = -1;
     bool overBar = Th_ScrollBar(area, &scrollY, contentH, ctrl || ctx.open ? 0 : 72, true);
 
-    Color pal[PX_NUM_PIXELS];
-    for (int i = 0; i < PX_NUM_PIXELS; i++) pal[i] = Th_FromRGBA(font.color[i]);
-
     hoverIdx = -1;
     Vector2 m = Mouse();
     for (int i = 0; i < font.count; i++) {
@@ -1977,7 +1977,7 @@ static void UpdateDrawGrid(Rectangle area)
         Rectangle cr = {cx, cy, lw[i], rowH};
         bool hv = inArea && !overBar && CheckCollisionPointRec(m, cr) && m.y >= area.y;
         if (hv) hoverIdx = i;
-        DrawCell(i, cx, cy, lw[i], area, pal, i < selN && sel[i], hv);
+        DrawCell(i, cx, cy, lw[i], area, i < selN && sel[i], hv);
     }
 
     if (inArea && !overBar && IsMouseButtonPressed(MOUSE_BUTTON_LEFT)) {
@@ -2664,7 +2664,7 @@ static void DrawModal(int W, int H)
  * ---------------------------------------------------------------------------------------------- */
 static void HandleShortcuts(void)
 {
-    if (modal.kind != M_NONE || xd.open || nf.open || fimp.open || (Th_TextIs(NULL) && !Th_TextIs("Filter") && !Th_TextIs("finder.search")) || Sample_TextFocused()) return;   /* a text field owns the keyboard (the library and finder searches leave the navigation keys) */
+    if (modal.kind != M_NONE || xd.open || nf.open || fimp.open || Th_ColorPickIsOpen() || (Th_TextIs(NULL) && !Th_TextIs("Filter") && !Th_TextIs("finder.search")) || Sample_TextFocused()) return;   /* a text field owns the keyboard (the library and finder searches leave the navigation keys) */
     bool ctrl = IsKeyDown(KEY_LEFT_CONTROL) || IsKeyDown(KEY_RIGHT_CONTROL);
     bool shift = IsKeyDown(KEY_LEFT_SHIFT) || IsKeyDown(KEY_RIGHT_SHIFT);
     bool alt = IsKeyDown(KEY_LEFT_ALT) || IsKeyDown(KEY_RIGHT_ALT);
@@ -2779,6 +2779,7 @@ int main(int argc, char **argv)
     { char v[8]; if (IniGetApp("pixelPerfect", v, sizeof v)) pixelPerfect = atoi(v) != 0; }
     { char v[8]; if (IniGetApp("filled", v, sizeof v)) filledShapes = atoi(v) != 0; }
     { char v[8]; if (IniGetApp("fontTab", v, sizeof v)) { int t = atoi(v); panelTab = t < 0 || t > 3 ? 0 : t; } }
+    { char v[8]; if (IniGetApp("pickerMode", v, sizeof v)) Th_ColorPickSetMode(atoi(v)); }
 
     px_font_init(&font);
     pxtf_init(&cont);
@@ -2822,7 +2823,7 @@ int main(int argc, char **argv)
         ClearBackground(TH_BG);
         /* the mouse button that opened a document (a double click) is still down: its release must not hit the new view */
         if (swallowMouse && !IsMouseButtonDown(MOUSE_BUTTON_LEFT) && !IsMouseButtonReleased(MOUSE_BUTTON_LEFT)) swallowMouse = false;
-        bool baseBlocked = modal.kind != M_NONE || xd.open || nf.open || fimp.open || job.active || swallowMouse;
+        bool baseBlocked = modal.kind != M_NONE || xd.open || nf.open || fimp.open || job.active || swallowMouse || Th_ColorPickIsOpen();
         uiBlocked = baseBlocked || fileMenu.open || moreMenu.open;   /* an open menu owns the mouse: nothing below it reacts */
         Th_SetInputBlocked(uiBlocked);
         hintText = NULL;
@@ -2930,6 +2931,13 @@ int main(int argc, char **argv)
         DrawNewFontDialog(W, H);
         DrawImportFontDialog(W, H);
         DrawModal(W, H);
+        if (Th_ColorPickIsOpen()) {   /* the colour picker: modal over everything (version 23) */
+            int pm = Th_ColorPickMode();
+            uiBlocked = false;
+            Th_SetInputBlocked(false);
+            Th_ColorPickDraw(W, H);
+            if (Th_ColorPickMode() != pm) { char v[8]; snprintf(v, sizeof v, "%d", Th_ColorPickMode()); IniSetApp("pickerMode", v); }
+        }
         UpdateTitle();
         EndDrawing();
         if (play.active) PlayEndFrame();

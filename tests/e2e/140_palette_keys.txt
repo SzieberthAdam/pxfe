@@ -1,0 +1,261 @@
+# 140. Version 23: the keys of the palette bar and the colour picker, on a duplicate of font 0820dc69 (one colour, black), glyph U+0048.
+# Plain '.', 0-9 and A-Z pick a slot (typed: `type 3`); the tools are Shift+letter; typing into a text field leaves the ink alone.
+# '+' opens the picker; the colour chosen is added as an unused slot (dashed); drawing with it makes the glyph canonical again (it becomes
+# slot 0 when its pixel comes first in reading order); a double-click on a slot changes its colour; each change is one undo step.
+wait 5
+click @Unlock
+wait 4
+dblclick @cell:U+0048
+wait 5
+assert editor 1
+assert editor_glyph U+0048
+assert epal 1
+assert ebarrows 1
+assert ebarextras 0
+assert einkrgb 0x000000
+assert eink '0
+assert w.pal:. 1
+assert w.pal:0 1
+assert w.pal:+ 1
+assert w.pal:1 0
+
+# --- slot keys: '.', a slot the glyph has, a key without a slot (nothing)
+type .
+wait 2
+assert eink '.
+type 0
+wait 2
+assert eink '0
+type .
+wait 2
+type 5
+wait 2
+assert eink '.
+type z
+wait 2
+assert eink '.
+type 0
+wait 2
+assert eink '0
+
+# --- the tools are Shift+letter; a plain letter picks no tool
+assert etool 0
+key e shift
+wait 2
+assert etool 1
+key l shift
+wait 2
+assert etool 2
+key u shift
+wait 2
+assert etool 9
+key r shift
+wait 2
+assert etool 3
+key o shift
+wait 2
+assert etool 10
+key d shift
+wait 2
+assert etool 12
+key c shift
+wait 2
+assert etool 13
+key f shift
+wait 2
+assert etool 4
+key i shift
+wait 2
+assert etool 11
+key m shift
+wait 2
+assert etool 5
+key q shift
+wait 2
+assert etool 6
+key w shift
+wait 2
+assert etool 7
+key v shift
+wait 2
+assert etool 8
+key b shift
+wait 2
+assert etool 0
+key e
+wait 2
+type e
+wait 2
+assert etool 0
+assert eink '0
+
+# --- typing into a text field (the Glyph tab's code) changes neither the ink nor the tool
+type .
+wait 2
+assert eink '.
+click @g.code
+wait 3
+type 0B.
+wait 2
+assert eink '.
+assert etool 0
+key esc
+wait 3
+assert editor 1
+assert glyph U+0048 exists 1
+type 0
+wait 2
+assert eink '0
+
+# --- '+': the picker opens on the ink; Esc cancels and nothing changes
+click @pal:+
+wait 3
+assert epicker 1
+assert epickerrgb 0x000000
+assert undo 0
+key esc
+wait 3
+assert epicker 0
+assert editor 1
+assert epal 1
+assert undo 0
+
+# --- '+', a colour typed in hex, Enter: the new slot is unused (after the used ones) and is the ink
+click @pal:+
+wait 3
+assert epicker 1
+click @cp.hex
+wait 2
+type FF0000
+wait 2
+assert epickerrgb 0xFF0000
+key enter
+wait 3
+assert epicker 0
+assert epal 2
+assert eunused 1
+assert eslotof:FF0000 1
+assert eslotused:0 1
+assert eslotused:1 0
+assert einkrgb 0xFF0000
+assert eink '1
+assert undo 1
+shot tests/tmp/shots/140_unused_slot.png
+
+# --- drawn at the top-left corner, before every black pixel in reading order: red becomes slot 0, black slot 1
+assert glyph U+0048 color 0 0 none
+click @ecell:0,0
+wait 3
+assert glyph U+0048 color 0 0 FF0000
+assert glyph U+0048 pixel 0 0 0
+assert eslotof:FF0000 0
+assert eslotof:000000 1
+assert eunused 0
+assert eink '0
+assert undo 2
+shot tests/tmp/shots/140_reordered.png
+type 1
+wait 2
+assert einkrgb 0x000000
+
+# --- undo: the stroke, then the added slot
+key z ctrl
+wait 3
+assert glyph U+0048 color 0 0 none
+assert eslotof:FF0000 1
+assert eunused 1
+key z ctrl
+wait 3
+assert epal 1
+assert eslotof:FF0000 -1
+key y ctrl
+wait 3
+key y ctrl
+wait 3
+assert glyph U+0048 color 0 0 FF0000
+assert eslotof:FF0000 0
+assert epal 2
+
+# --- a double-click on a slot changes its colour in this glyph (one undo step); Cancel keeps it
+dblclick @pal:0
+wait 3
+assert epicker 1
+assert epickerrgb 0xFF0000
+click @cp.cancel
+wait 3
+assert epicker 0
+assert glyph U+0048 color 0 0 FF0000
+dblclick @pal:0
+wait 3
+assert epicker 1
+click @cp.hex
+wait 2
+type 00C000
+wait 2
+click @cp.ok
+wait 3
+assert epicker 0
+assert glyph U+0048 color 0 0 00C000
+assert eslotof:00C000 0
+assert eslotof:FF0000 -1
+assert epal 2
+assert undo 3
+key z ctrl
+wait 3
+assert glyph U+0048 color 0 0 FF0000
+
+# --- the picker's models: each one shown, the last kept in pxfe.ini [app] pickerMode; hex with alpha
+click @pal:+
+wait 3
+assert epicker 1
+assert epickermode 0
+click @cpmode_Wheel
+wait 2
+assert epickermode 1
+click @cpmode_RGB
+wait 2
+assert epickermode 2
+click @cpmode_HSL
+wait 2
+assert epickermode 3
+click @cpmode_Lab
+wait 2
+assert epickermode 4
+assert file tests/tmp/e2e.ini contains pickerMode=4
+click @cp.hex
+wait 2
+type 11223380
+wait 2
+assert epickerrgb 0x112233
+assert epickera 0x80
+# the old colour (the ink, red) takes the new one back
+click @cp.old
+wait 2
+assert epickerrgb 0xFF0000
+assert epickera 0xFF
+click @cp.hex
+wait 2
+type 11223380
+wait 2
+click @cp.ok
+wait 3
+assert epicker 0
+assert eslotof:11223380 2
+assert eunused 1
+assert epal 3
+# the unused slot goes when the view leaves the glyph: the glyph keeps only the colours its pixels use
+click @Back
+wait 4
+assert editor 0
+dblclick @cell:U+0048
+wait 5
+assert epal 2
+assert eunused 0
+assert eslotof:11223380 -1
+# the mode is remembered: the next picker opens in Lab
+click @pal:+
+wait 3
+assert epickermode 4
+key esc
+wait 3
+assert epicker 0

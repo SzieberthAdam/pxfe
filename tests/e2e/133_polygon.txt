@@ -12,13 +12,13 @@ assert editor_glyph U+0020
 assert glyph U+0020 empty
 assert undo 0
 
-key d
+key d shift
 wait 2
 assert etool 12
 assert w.Filled 1
 assert w.Pixel-perfect 0
 assert efilled 0
-key b
+key b shift
 wait 2
 click @Polygon
 wait 2
@@ -120,7 +120,7 @@ assert glyph U+0020 empty
 click @ecell:0,0
 click @ecell:3,0
 click @ecell:3,3
-key b
+key b shift
 wait 3
 assert epoly 0
 assert glyph U+0020 ink 9
@@ -128,7 +128,7 @@ assert undo 1
 key z ctrl
 wait 3
 assert glyph U+0020 empty
-key d
+key d shift
 wait 2
 
 # two vertices are a line; Shift makes the edge a clean angle: 5 right and 1 down goes to the 4:1 slope (as the Line)
@@ -187,12 +187,12 @@ wait 3
 assert glyph U+0020 empty
 
 # the right button draws '.': a hole in a solid rectangle
-key r
+key r shift
 wait 2
 drag @ecell:0,0 @ecell:3,7
 wait 3
 assert glyph U+0020 ink 32
-key d
+key d shift
 wait 2
 click @ecell:1,2 right
 click @ecell:2,2 right
@@ -211,11 +211,11 @@ wait 3
 assert glyph U+0020 empty
 
 # clipped to the selection, and the bitmap grows outside the box
-key m
+key m shift
 drag @ecell:1,1 @ecell:2,2
 wait 3
 assert eselcount 4
-key d
+key d shift
 click @ecell:0,0
 click @ecell:3,0
 click @ecell:3,3
@@ -228,9 +228,9 @@ assert glyph U+0020 pixel 2 2 0
 assert glyph U+0020 pixel 0 0 .
 key z ctrl
 wait 3
-key m
+key m shift
 click @ecell:3,3
-key d
+key d shift
 click @ecell:5,5
 click @ecell:7,5
 click @ecell:7,7

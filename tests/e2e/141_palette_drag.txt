@@ -1,0 +1,134 @@
+# 141. Version 23: the font's other colours in the palette bar, on testdata/lib_many.pxfdb, font cd17ae6d of COLORS 40, unlocked
+# (A: 20F040 25EB70; W: 36 colours, one per pixel in reading order, so its slot i is the colour of pixel i, row 0 holds slots 0-5).
+# A colour of the font dragged onto a slot replaces that slot's colour, also in a glyph of 36 colours; dropped onto '+' it is added as
+# an unused slot; each is one undo step.  A locked font lets the ink be picked and changes nothing.
+wait 5
+click @Unlock
+wait 4
+assert palettes 22
+
+# --- W: 36 colours, no '+'; D43C40 (S's first colour) is in the rows of the font's other colours
+dblclick @cell:U+0057
+wait 5
+assert editor_glyph U+0057
+assert epal 36
+assert w.pal:+ 0
+assert w.pal:Z 1
+assert ebarrows 2
+assert ebarextras 4
+assert eslotof:D43C40 -1
+assert glyph U+0057 color 0 0 20F040
+assert eslotof:20F040 0
+assert eslotof:25EB70 1
+# dropped onto slot 1: the pixel of colour 1 is drawn in D43C40, 25EB70 joins the other colours
+drag @pal:#D43C40 @pal:1
+wait 3
+assert eslotof:D43C40 1
+assert eslotof:25EB70 -1
+assert glyph U+0057 color 1 0 D43C40
+assert glyph U+0057 color 0 0 20F040
+assert epal 36
+assert ecolors 36
+assert ebarextras 4
+assert undo 1
+shot tests/tmp/shots/141_replaced.png
+key z ctrl
+wait 3
+assert glyph U+0057 color 1 0 25EB70
+assert eslotof:D43C40 -1
+assert eslotof:25EB70 1
+assert undo 0
+key y ctrl
+wait 3
+assert glyph U+0057 color 1 0 D43C40
+# slot 0 changed (double-click, the picker) to a colour the glyph has already: the two slots become one, so '+' comes back
+dblclick @pal:0
+wait 3
+assert epicker 1
+assert epickerrgb 0x20F040
+click @cp.hex
+wait 2
+type D43C40
+wait 2
+key enter
+wait 3
+assert epicker 0
+assert glyph U+0057 color 0 0 D43C40
+assert glyph U+0057 color 1 0 D43C40
+assert ecolors 35
+assert epal 35
+assert w.pal:+ 1
+key z ctrl
+wait 3
+assert epal 36
+assert glyph U+0057 color 0 0 20F040
+assert glyph U+0057 color 1 0 D43C40
+key z ctrl
+wait 3
+assert glyph U+0057 color 1 0 25EB70
+
+# --- A: a colour dropped onto '+' is added as an unused slot; drawing with it puts it in its canonical place
+click @Back
+wait 4
+sleep 600
+dblclick @cell:U+0041
+wait 5
+assert editor_glyph U+0041
+assert epal 2
+assert w.pal:+ 1
+drag @pal:#D43C40 @pal:+
+wait 3
+assert epal 3
+assert eslotof:D43C40 2
+assert eslotused:2 0
+assert eunused 1
+assert undo 1
+key z ctrl
+wait 3
+assert epal 2
+assert eslotof:D43C40 -1
+key y ctrl
+wait 3
+assert eslotof:D43C40 2
+# a click on a colour of the other rows makes it the ink without adding it; drawing adds it
+click @pal:#2AE6A0
+wait 2
+assert einkrgb 0x2AE6A0
+assert eink '?
+assert epal 3
+click @ecell:1,0
+wait 3
+assert glyph U+0041 color 1 0 2AE6A0
+assert eslotof:2AE6A0 0
+assert eink '0
+assert eunused 1
+# the unused-slot rule: leaving the glyph drops the unused D43C40
+click @Back
+wait 4
+sleep 600
+dblclick @cell:U+0041
+wait 5
+assert epal 3
+assert eunused 0
+assert eslotof:D43C40 -1
+assert eslotof:2AE6A0 0
+
+# --- locked: the ink can be picked; no '+', a drop and a double-click change nothing
+click @Lock
+wait 4
+assert readonly 1
+assert w.pal:+ 0
+type 1
+wait 2
+assert eink '1
+click @pal:#D43C40
+wait 2
+assert einkrgb 0xD43C40
+drag @pal:#2FE1D0 @pal:0
+wait 3
+assert eslotof:2AE6A0 0
+assert eslotof:2FE1D0 -1
+dblclick @pal:0
+wait 3
+assert epicker 0
+assert eslotof:2AE6A0 0

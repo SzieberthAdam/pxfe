@@ -68,7 +68,7 @@ wait 3
 assert glyph U+0020 size 7x4
 assert undo 3
 # line tool (key L): horizontal on the baseline row and a diagonal
-key l
+key l shift
 wait 2
 assert etool 2
 drag @ecell:0,5 @ecell:3,5
@@ -86,7 +86,7 @@ assert glyph U+0020 ink 11
 assert undo 5
 shot tests/tmp/shots/06_editor_line.png
 # rectangle tool (key R): outline, then filled with the bar's Filled toggle
-key r
+key r shift
 wait 2
 assert etool 3
 drag @ecell:5,0 @ecell:7,3
@@ -109,7 +109,7 @@ wait 2
 assert efilled 0
 shot tests/tmp/shots/06_editor_rect.png
 # eraser (key E) with a left drag, then fill (key F) of the enclosed hole
-key e
+key e shift
 wait 2
 assert etool 1
 drag @ecell:6,1 @ecell:6,2
@@ -117,7 +117,7 @@ wait 3
 assert glyph U+0020 pixel 6 1 .
 assert glyph U+0020 pixel 6 2 .
 assert undo 8
-key f
+key f shift
 wait 2
 assert etool 4
 click @ecell:6,1
@@ -135,7 +135,7 @@ wait 3
 assert glyph U+0020 pixel 6 1 .
 assert glyph U+0020 pixel 6 2 .
 assert glyph U+0020 pixel 5 1 .
-key b
+key b shift
 wait 2
 assert etool 0
 shot tests/tmp/shots/06_editor_fill.png
@@ -235,17 +235,17 @@ click @Fill
 wait 2
 assert etool 4
 click @Pencil
-click @ink:.
+click @pal:.
 wait 2
 assert eink '.
 click @ecell:0,0
 wait 3
 assert glyph U+0020 pixel 0 0 .
-click @ink:0
+click @pal:0
 wait 2
 assert eink '0
-# digits are not selectable when the font has no palette
-key 3
+# a key picks only a slot the glyph has (a one-colour font: 0, black)
+type 3
 wait 2
 assert eink '0
 

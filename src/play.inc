@@ -311,7 +311,14 @@ static bool GetInt(const char *name, long *v)
     else if (!strcmp(name, "ifblocks")) *v = fimp.sheet ? fimp.sh.blocks : 0;
     else if (!strcmp(name, "colors")) *v = hasFont ? px_font_colors(&font) : -1;                       /* COLORS of the open font (0: one colour) */
     else if (!strcmp(name, "symbolic")) *v = hasFont ? font.symbolic : -1;                              /* SYMBOLIC of the open font */
-    else if (!strcmp(name, "palette")) { int n = 0; if (hasFont && font.hasPalette) for (int i = 1; i < PX_NUM_PIXELS; i++) n += font.colorUsed[i]; *v = n; }   /* ink colours of the open font (0: the default black) */
+    else if (!strcmp(name, "palette")) { const uint32_t *l; int n = hasFont ? px_font_color_list(&font, &l) : 0; *v = hasFont && px_font_is_colour(&font) ? n : 0; }   /* colours of the open font's colour list, the ink chooser's (0: a one-colour font, black) */
+    else if (!strcmp(name, "palettes")) *v = hasFont ? font.npals : 0;                                 /* entries of the open font's palette table (0: none, every glyph has the default) */
+    else if (!strcmp(name, "epal") || !strcmp(name, "ecolors")) {                                    /* the edited glyph: entries of its palette / colours its pixels use */
+        int gi = inEditor && ed ? Editor_GlyphIndex(ed) : -1;
+        if (gi < 0 || gi >= font.count) *v = -1;
+        else if (name[1] == 'p') *v = px_glyph_palette(&font, &font.glyphs[gi])->n;
+        else { char h[33]; px_glyph_hash(&font.glyphs[gi], h); *v = font.glyphs[gi].ncol; }
+    }
     else if (!strcmp(name, "ifpixel")) *v = fimp.pixel;                                              /* its choice: a pixel font */
     else if (!strcmp(name, "ifgrid")) *v = fimp.hasGrid ? (fimp.grid.sure ? 1 : 2) : 0;              /* a grid was found (2: only a guess) */
     else if (!strcmp(name, "ifoutline")) *v = fimp.outline;
@@ -422,7 +429,27 @@ static bool GetInt(const char *name, long *v)
     else if (!strcmp(name, "etool")) *v = ed ? Editor_Tool(ed) : -1;
     else if (!strncmp(name, "etoolslot", 9)) *v = Editor_StripTool(atoi(name + 9));                    /* etoolslot3: the tool number of the strip's 4th button, in the strip's order */
     else if (!strcmp(name, "etoolcols")) *v = ed ? Editor_ToolCols(ed) : -1;
-    else if (!strcmp(name, "eink")) *v = ed ? Editor_Ink(ed) : -1;
+    else if (!strcmp(name, "eink")) *v = ed ? Editor_Ink(ed) : -1;                                    /* '.' the transparent ink, else the ink's slot in the edited glyph as a pixel character (its key), '?' when the glyph has not got it */
+    else if (!strcmp(name, "einkrgb")) *v = ed ? (long)(Editor_InkColor(ed) >> 8) : -1;               /* the ink colour as 0xRRGGBB (the alpha left out) */
+    else if (!strcmp(name, "ebarrows")) *v = ed ? Editor_BarRows(ed) : -1;                           /* rows of the palette bar: 1 + the rows of the font's other colours */
+    else if (!strcmp(name, "ebarextras")) *v = ed ? Editor_BarExtras(ed) : -1;                       /* tiles of the font's other colours in the palette bar */
+    else if (!strcmp(name, "eunused") || !strncmp(name, "eslotof:", 8) || !strncmp(name, "eslotused:", 10)) {   /* the edited glyph's slots: unused ones; the slot of a colour (-1); slot N used */
+        int gi = inEditor && ed ? Editor_GlyphIndex(ed) : -1;
+        if (gi < 0 || gi >= font.count) *v = -1;
+        else {
+            const PxGlyph *g = &font.glyphs[gi];
+            const PxPalette *p = px_glyph_palette(&font, g);
+            int n = p->n < PX_GLYPH_MAX_COLORS ? p->n : PX_GLYPH_MAX_COLORS, k = px_glyph_used_colors(g);
+            if (!(g->pi > 0) && !g->pix) k = 0;
+            if (name[1] == 'u') *v = n - k;
+            else if (name[5] == 'o') { uint32_t c = (uint32_t)strtoul(name + 8, NULL, 16); if (strlen(name + 8) <= 6) c = c << 8 | 0xFFu; *v = -1; for (int i = 0; i < n; i++) if (p->c[i] == c) *v = i; }
+            else { int i = atoi(name + 10); *v = i < 0 || i >= n ? -1 : i < k; }
+        }
+    }
+    else if (!strcmp(name, "epicker")) *v = Th_ColorPickIsOpen();                                   /* the colour picker is open */
+    else if (!strcmp(name, "epickermode")) *v = Th_ColorPickMode();                                 /* its model: 0 HSV, 1 Wheel, 2 RGB, 3 HSL, 4 Lab */
+    else if (!strcmp(name, "epickerrgb")) *v = (long)(Th_ColorPickValue() >> 8);                    /* the colour it shows, 0xRRGGBB */
+    else if (!strcmp(name, "epickera")) *v = (long)(Th_ColorPickValue() & 0xFFu);                   /* and its alpha */
     else if (!strcmp(name, "ezoom")) *v = ed ? Editor_Zoom(ed) : -1;
     else if (!strcmp(name, "eselcount")) *v = ed ? Editor_SelCount(ed) : -1;                        /* cells selected in the glyph view */
     else if (!strcmp(name, "efloating")) *v = ed ? Editor_Floating(ed) : -1;                        /* selected pixels are lifted and float over the glyph */
@@ -617,7 +644,7 @@ static void DoAssert(char **t, int n)
         return;
     }
     if (!strcmp(k, "glyph")) {
-        /* assert glyph U+0041 exists|pixel x y C|advance V|left N|top N|size WxH|empty */
+        /* assert glyph U+0041 exists|pixel x y C (its own character)|color x y RRGGBB[AA]|none|advance V|left N|top N|size WxH|empty */
         if (n < 4) { PLAY_FAIL("assert glyph needs a property"); return; }
         int gi = GlyphByTok(t[2]);
         const char *p = t[3];
@@ -639,6 +666,14 @@ static void DoAssert(char **t, int n)
             else if (!strcmp(p, "origchanged") && n >= 5) { const char *oh = OrigGlyphHash(g->codepoint); char h[33]; px_glyph_hash(g, h); ok = (oh && strcmp(oh, h) != 0) == (atoi(t[4]) != 0); }
             else if (!strcmp(p, "size") && n >= 5) { int w = 0, h = 0; sscanf(t[4], "%dx%d", &w, &h); ok = g->w == w && g->h == h; if (!ok) PlayLog("  actual size %dx%d", g->w, g->h); }
             else if (!strcmp(p, "empty")) ok = g->w == 0;
+            else if (!strcmp(p, "color") && n >= 7) {   /* assert glyph U+0041 color x y RRGGBB|RRGGBBAA|none: the colour of the pixel (none: '.') */
+                char c = px_glyph_get(g, atoi(t[4]) - g->x, atoi(t[5]) - px_glyph_box_row(g, ab));
+                uint32_t have = c == '.' ? 0 : px_glyph_color(&font, g, c), want = (uint32_t)strtoul(t[6], NULL, 16);
+                if (strlen(t[6]) == 6) want = want << 8 | 0xFFu;
+                if (!strcmp(t[6], "none")) want = 0;
+                ok = c == '.' ? !strcmp(t[6], "none") : have == want;
+                if (!ok) PlayLog("  actual colour %08X (pixel '%c')", (unsigned)have, c);
+            }
             else if (!strcmp(p, "ink") && n >= 5) { int c = 0; for (int i = 0; i < g->w * g->h; i++) c += g->pix[i] != '.'; ok = c == atoi(t[4]); if (!ok) PlayLog("  actual ink %d", c); }
             else { PLAY_FAIL("bad glyph property '%s'", p); return; }
         }

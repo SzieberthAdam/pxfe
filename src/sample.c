@@ -278,6 +278,8 @@ bool Sample_Render(const PxFont *f, const SampleLayout *L, Color ink, int maxW, 
     if (H < 1) H = 1;
     unsigned char *px = (unsigned char *)calloc((size_t)W * (size_t)H, 4);
     if (!px) return false;
+    bool colour = px_font_is_colour(f);
+    const uint8_t inkRgba[4] = {ink.r, ink.g, ink.b, ink.a};
     for (int line = 0; line < L->nlines; line++) {
         int baseRow = top + line * L->lineH;
         for (int i = L->lineStart[line]; i < L->lineStart[line + 1]; i++) {
@@ -285,6 +287,7 @@ bool Sample_Render(const PxFont *f, const SampleLayout *L, Color ink, int maxW, 
             if (r->gi >= 0) {
                 const PxGlyph *g = &f->glyphs[r->gi];
                 if (g->w <= 0 || g->h <= 0 || !g->pix) continue;
+                const uint8_t (*pal)[4] = px_glyph_palette(f, g)->draw;   /* the glyph's own colours, ready to draw */
                 for (int row = 0; row < g->h; row++) {
                     int y = baseRow - (g->y + g->h) + row;
                     if (y < 0 || y >= H) continue;
@@ -293,9 +296,10 @@ bool Sample_Render(const PxFont *f, const SampleLayout *L, Color ink, int maxW, 
                         if (ch == '.') continue;
                         int x = r->x + g->x + col;
                         if (x < 0 || x >= W) continue;
-                        Color k = f->hasPalette ? Th_FromRGBA(f->color[px_pixel_index(ch)]) : ink;
+                        int pi = px_pixel_index(ch);
+                        const uint8_t *k = colour && pi > 0 ? pal[pi] : inkRgba;
                         unsigned char *d = px + ((size_t)y * (size_t)W + (size_t)x) * 4;
-                        d[0] = k.r; d[1] = k.g; d[2] = k.b; d[3] = k.a;
+                        d[0] = k[0]; d[1] = k[1]; d[2] = k[2]; d[3] = k[3];
                     }
                 }
             } else if (r->gi == -1) {
@@ -336,8 +340,8 @@ float Sample_Draw(SampleCache *c, const PxFont *f, const char *text, float x, fl
     unsigned key = 2166136261u;
     key = mix(key, (unsigned)L.above); key = mix(key, (unsigned)L.below); key = mix(key, (unsigned)L.lineH);
     key = mix(key, ink.r | (unsigned)ink.g << 8 | (unsigned)ink.b << 16 | (unsigned)ink.a << 24);
-    key = mix(key, f->hasPalette);
-    if (f->hasPalette) for (int i = 0; i < PX_NUM_PIXELS; i++) key = mix(key, f->color[i]);
+    key = mix(key, px_font_is_colour(f));
+    key = mix(key, f->palGen);              /* with each glyph's pi below: its palette (entries never change) */
     key = mix(key, (unsigned)L.nlines);
     for (int ln = 0; ln < L.nlines; ln++) key = mix(key, (unsigned)L.lineStart[ln + 1]);
     for (int i = 0; i < L.nrun; i++) {
@@ -345,7 +349,7 @@ float Sample_Draw(SampleCache *c, const PxFont *f, const char *text, float x, fl
         key = mix(key, (unsigned)r->gi); key = mix(key, (unsigned)r->x); key = mix(key, (unsigned)r->w); key = mix(key, (unsigned)r->h);
         if (r->gi >= 0) {
             const PxGlyph *g = &f->glyphs[r->gi];
-            key = mix(key, (unsigned)g->x); key = mix(key, (unsigned)g->y);
+            key = mix(key, (unsigned)g->x); key = mix(key, (unsigned)g->y); key = mix(key, (unsigned)g->pi);
             if (g->pix) for (int k = 0; k < g->w * g->h; k++) key = mix(key, (unsigned char)g->pix[k]);
         }
     }

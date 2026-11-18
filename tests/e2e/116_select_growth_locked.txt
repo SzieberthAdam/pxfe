@@ -12,11 +12,11 @@ assert editor_glyph U+0020
 click @Marquee
 wait 2
 assert etool 0
-key m
+key m shift
 wait 2
 assert etool 0
-key w
-key v
+key w shift
+key v shift
 wait 2
 assert etool 0
 key a ctrl
@@ -50,7 +50,7 @@ repeat 30 click @ezoom-
 wait 4
 
 # Shift+arrow moves the selection by 8 cells: down out of the box (the bitmap grows to take it), then left and up
-key m
+key m shift
 drag @ecell:0,0 @ecell:4,4
 wait 3
 assert eselcount 25
@@ -104,7 +104,7 @@ assert glyph U+0020 top 1
 assert glyph U+0020 ink 9
 
 # leaving the glyph drops the floating pixels: the next glyph (PageDown)
-key m
+key m shift
 drag @ecell:0,0 @ecell:4,4
 key right
 wait 2
@@ -134,7 +134,7 @@ assert glyph U+0020 left 3
 sleep 600
 dblclick @cell:U+0020
 wait 5
-key m
+key m shift
 drag @ecell:0,0 @ecell:5,4
 key right
 wait 2

@@ -19,7 +19,7 @@ wait 3
 assert glyph U+0020 ink 5
 assert undo 5
 
-key w
+key w shift
 wait 2
 assert etool 7
 click @ecell:1,1
@@ -80,7 +80,7 @@ wait 2
 click @ecell:1,1
 wait 3
 assert eselcount 3
-key v
+key v shift
 wait 2
 drag @ecell:1,1 @ecell:1,5
 wait 3

@@ -12,7 +12,7 @@ assert glyph U+0020 empty
 assert ecurve 0
 
 # Shift+L is the curve tool; the bar shows Line / Curve with Curve selected
-key l shift
+key u shift
 wait 3
 assert etool 9
 assert ecurve 0
@@ -139,7 +139,7 @@ assert undo 0
 drag @ecell:0,6 @ecell:5,6
 drag @ecell:2,6 @ecell:2,3
 wait 2
-key b
+key b shift
 wait 3
 assert etool 0
 assert ecurve 0
@@ -151,7 +151,7 @@ wait 3
 assert glyph U+0020 empty
 
 # Shift constrains the end points, Ctrl makes the press cell the middle (as for the line)
-key l shift
+key u shift
 drag @ecell:2,3 @ecell:6,4 shift ctrl
 wait 3
 assert ecurve 1
@@ -165,12 +165,12 @@ wait 3
 assert glyph U+0020 empty
 
 # the right button draws with '.': a curve over ink erases it
-key l
+key l shift
 drag @ecell:0,4 @ecell:6,4
 drag @ecell:0,5 @ecell:6,5
 wait 3
 assert glyph U+0020 ink 14
-key l shift
+key u shift
 drag @ecell:0,4 @ecell:6,4 right
 wait 3
 assert ecurve 1

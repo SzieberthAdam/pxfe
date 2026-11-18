@@ -11,6 +11,8 @@
 #include <string.h>
 
 #include "editor.h"
+#include "colormath.h"
+#include "colorpick.h"
 #include "layers.h"
 #include "raster.h"
 #include "sample.h"
@@ -24,14 +26,15 @@
 #define MAX_BITMAP 4096
 
 /* The tool table: a new tool is a row here (name, shortcut, icon, bar group), a Tool value and, when it works with the mouse, a branch in canvas_input.
+ * Version 23: a tool's shortcut is Shift and its letter (the plain letters, digits and '.' pick the slots of the palette bar).
  * The selection tools (`select`) share the selection state of the editor (see "selection" below); the drawing tools paint with the ink. */
 typedef enum { T_PENCIL = 0, T_ERASER, T_LINE, T_RECT, T_FILL, T_MARQUEE, T_LASSO, T_WAND, T_MOVE, T_CURVE, T_ELLIPSE, T_PICK, T_POLY, T_CONTOUR, T_COUNT } Tool;
 typedef enum { M_NONE = 0, M_PAINT, M_SHAPE, M_PAN, M_ADVANCE, M_LAYER, M_SELBOX, M_SELLASSO, M_SELMOVE, M_CURVE, M_CONTOUR } DragMode;
 
 typedef struct ToolInfo {
-    const char *name;   /* the tooltip and the script name ("Pencil  (B)" registers @Pencil) */
+    const char *name;   /* the tooltip and the script name ("Pencil  (Shift+B)" registers @Pencil) */
     const char *key;    /* the shortcut as shown */
-    int keycode;        /* raylib key */
+    int keycode;        /* raylib key, pressed with Shift */
     int icon;           /* TH_IC_* */
     int group;          /* the tool strip leaves a gap between groups: 0 draw, 1 shapes, 2 fill, 3 selection (the order of the buttons is kStrip) */
     bool select;        /* a selection tool */
@@ -39,20 +42,20 @@ typedef struct ToolInfo {
 } ToolInfo;
 
 static const ToolInfo kTool[T_COUNT] = {
-    {"Pencil",     "B", KEY_B, TH_IC_PENCIL,  0, false},
-    {"Eraser",     "E", KEY_E, TH_IC_ERASER,  0, false},
-    {"Line",       "L", KEY_L, TH_IC_LINE,    1, false},
-    {"Rectangle",  "R", KEY_R, TH_IC_RECT,    1, false},
-    {"Fill",       "F", KEY_F, TH_IC_FILL,    2, false},
-    {"Marquee",    "M", KEY_M, TH_IC_MARQUEE, 3, true},
-    {"Lasso",      "Q", KEY_Q, TH_IC_LASSO,   3, true},
-    {"Magic Wand", "W", KEY_W, TH_IC_WAND,    3, true},
-    {"Move",       "V", KEY_V, TH_IC_MOVE,    3, true},
-    {"Curve",      "Shift+L", 0, TH_IC_CURVE, 1, false},
-    {"Ellipse",    "O", KEY_O, TH_IC_ELLIPSE, 1, false},
-    {"Eyedropper", "I", KEY_I, TH_IC_PICK,    2, false},
-    {"Polygon",    "D", KEY_D, TH_IC_POLY,    1, false},
-    {"Contour",    "C", KEY_C, TH_IC_CONTOUR, 1, false},
+    {"Pencil",     "Shift+B", KEY_B, TH_IC_PENCIL,  0, false},
+    {"Eraser",     "Shift+E", KEY_E, TH_IC_ERASER,  0, false},
+    {"Line",       "Shift+L", KEY_L, TH_IC_LINE,    1, false},
+    {"Rectangle",  "Shift+R", KEY_R, TH_IC_RECT,    1, false},
+    {"Fill",       "Shift+F", KEY_F, TH_IC_FILL,    2, false},
+    {"Marquee",    "Shift+M", KEY_M, TH_IC_MARQUEE, 3, true},
+    {"Lasso",      "Shift+Q", KEY_Q, TH_IC_LASSO,   3, true},
+    {"Magic Wand", "Shift+W", KEY_W, TH_IC_WAND,    3, true},
+    {"Move",       "Shift+V", KEY_V, TH_IC_MOVE,    3, true},
+    {"Curve",      "Shift+U", KEY_U, TH_IC_CURVE,   1, false},
+    {"Ellipse",    "Shift+O", KEY_O, TH_IC_ELLIPSE, 1, false},
+    {"Eyedropper", "Shift+I", KEY_I, TH_IC_PICK,    2, false},
+    {"Polygon",    "Shift+D", KEY_D, TH_IC_POLY,    1, false},
+    {"Contour",    "Shift+C", KEY_C, TH_IC_CONTOUR, 1, false},
 };
 
 /* the order of the strip's buttons (the table keeps the Tool numbers the scripts use): a group's tools are together */
@@ -74,9 +77,9 @@ struct Editor {
 
     Tool tool;
     int toolCols;       /* columns of the tool strip (test hook) */
-    char ink;
+    bool inkErase;      /* the ink is '.', the eraser ink (the last swatch) */
+    uint32_t inkColor;  /* else the ink: a colour (0xRRGGBBAA), which the glyph may not have yet (drawing adds it to its palette) */
     bool checker;
-    bool showAll;       /* all-37-characters popup open */
     bool showMetrics;   /* the metric lines are drawn */
     bool layersActive;  /* the Layers tab of the right panel is showing (set by main.c; lights the bar's Layers toggle) */
     bool layersReq;     /* the Layers toggle was clicked (main.c selects the tab) */
@@ -119,7 +122,9 @@ struct Editor {
     SelMode selMode;    /* the bar's choice of how a new shape meets the selection */
     bool wandDiag;      /* the wand also joins diagonal neighbours */
     bool floating;
-    SelFloat fl;        /* the lifted pixels ('.' = transparent) */
+    SelFloat fl;        /* the lifted pixels ('.' = transparent), characters of flPal */
+    uint32_t flPal[PX_GLYPH_MAX_COLORS];   /* the colours of the float's characters ('0' = flPal[0]): the drop maps them into the glyph's palette */
+    int flPalN;
     SelMask src;        /* where they were lifted from (empty for a paste) */
     bool flCopy;        /* the original stays (Ctrl+drag) */
     bool flPaste;       /* from the clipboard: nothing to clear */
@@ -139,7 +144,27 @@ struct Editor {
     EditorResult result;
     const char *tip;
     Rectangle tipRect;
-    Rectangle popupRect; /* all-chars popup, valid while showAll */
+    /* the palette bar under the canvas (version 23, see "palette bar" below) */
+    Rectangle bar;       /* where it was drawn last frame */
+    int barRows;         /* its rows: 1, or more with the font's other colours (test hook) */
+    int barExtras;       /* tiles of the font's other colours */
+    float barScroll;     /* the scroll of the extra rows */
+    int pressKind;       /* the tile pressed: 0 none, 1 '.', 2 a slot, 3 '+', 4 a colour of the font */
+    uint32_t pressCol;   /* its colour */
+    int pressSlot;
+    Vector2 pressAt;
+    bool barDrag;        /* a colour of the font is dragged towards a slot or '+' */
+    double lastClick;    /* a double click on a slot opens the picker */
+    uint32_t lastClickCol;
+    int pickTag;         /* the question the colour picker answers (PICK_*), 0 none */
+    uint32_t pickCol;    /* the colour of the slot it edits */
+    uint32_t *p0;        /* the glyph's palette when the view opened it (the unused-slot rule, see leave_glyph) */
+    int p0n;             /* 0: the default palette */
+    int p0gi; const PxFont *p0font; int32_t p0code;
+    struct { uint32_t c; float from, to; double t0; bool flash; } anim[PX_GLYPH_MAX_COLORS];   /* the slots sliding to new places */
+    int nanim;
+    struct { uint32_t c; float x; } shown[PX_GLYPH_MAX_COLORS];   /* where each slot was drawn last frame */
+    int nshown, shownGi; float shownStep, shownX0;
     Rectangle cv;        /* canvas rectangle of the last frame (for scripted input) */
 };
 
@@ -165,11 +190,28 @@ static bool locked(const Editor *e) { return e->readOnly || e->curHidden; }
 static void box_update(Editor *e) { px_font_box(e->font, &e->above, &e->below); }
 static int box_h(const Editor *e) { return e->above + e->below; }
 
-static Color pixcol(const PxFont *f, char c)
+/* The ink stands for a colour the glyph has not got yet: put() and the fill add it to the glyph's palette as they paint (copy on write). */
+#define INK_NEW '*'
+
+/* the colour of a pixel character of the edited glyph (INK_NEW: the ink) */
+static Color pixcol(const Editor *e, char c)
 {
+    if (c == INK_NEW) return Th_FromRGBA(e->inkColor);
+    const PxGlyph *g = (e->font && e->gi >= 0 && e->gi < e->font->count) ? &e->font->glyphs[e->gi] : NULL;
     int i = px_pixel_index(c);
-    if (i < 0) return BLACK;
-    return Th_FromRGBA(f->color[i]);
+    if (i < 0 || !g) return BLACK;
+    return ((const Color *)px_glyph_palette(e->font, g)->draw)[i];
+}
+
+/* the character the tools paint with: '.' for the eraser ink, the glyph's character of the ink colour, or INK_NEW */
+static char ink_ch(const Editor *e)
+{
+    if (e->inkErase) return '.';
+    const PxGlyph *g = (e->font && e->gi >= 0 && e->gi < e->font->count) ? &e->font->glyphs[e->gi] : NULL;
+    int s = g ? px_glyph_find_color(e->font, g, e->inkColor) : -1;
+    if (s >= 0 && g->pi > 0) return PX_PIXELS[1 + s];
+    if (s >= 0 && !px_font_is_colour(e->font)) return PX_PIXELS[1 + s];   /* black in a font of one colour: the default palette is enough */
+    return INK_NEW;
 }
 
 static Color fade(Color c, int a) { c.a = (unsigned char)((c.a * a) / 255); return c; }
@@ -212,14 +254,28 @@ static bool ensure(PxGlyph *g, int x0, int y0, int x1, int y1)
 /* With a selection, the drawing tools (pencil, eraser, line, curve, rectangle, ellipse, polygon, contour) and the fill paint only inside it. */
 static bool clipped_out(const Editor *e, int x, int y) { return !sel_empty(&e->sel) && !sel_get(&e->sel, x, y); }
 
-/* Set one cell. Painting outside the bitmap grows it; erasing never does.  A cell outside the selection (when there is one) is left alone. */
+/* The ink colour into the glyph's palette (after touch(): the change is in the undo step): its character, or 0 when the glyph has 36 colours in use
+ * already (a toast says so, once a second) or memory ran out. */
+static char ink_add(Editor *e, PxGlyph *g)
+{
+    int s = px_glyph_add_color(e->font, g, e->inkColor);
+    if (s >= 0) return PX_PIXELS[1 + s];
+    static double last = -10;
+    if (s == PX_COLOR_FULL && GetTime() - last > 1.0) { Th_Toast(2, "This glyph has 36 colours: drop the colour onto a slot of the palette bar to replace one"); last = GetTime(); }
+    return 0;
+}
+
+/* Set one cell. Painting outside the bitmap grows it; erasing never does.  A cell outside the selection (when there is one) is left alone.
+ * INK_NEW paints the ink colour, which joins the glyph's palette. */
 static void put(Editor *e, int x, int y, char c)
 {
     PxGlyph *g = G(e);
-    if (!g || locked(e) || px_pixel_index(c) < 0) return;
+    if (!g || locked(e) || (c != INK_NEW && px_pixel_index(c) < 0)) return;
     if (clipped_out(e, x, y)) return;
     if (gget(g, x, y) == c) return;
     touch(e);
+    if (c == INK_NEW && !(c = ink_add(e, g))) return;
+    if (gget(g, x, y) == c) return;
     if (c != '.' && !ensure(g, x, y, x, y)) return;
     g->pix[(size_t)(y - gtop(g)) * g->w + (x - g->x)] = c;
     g->asDrawn = false;
@@ -335,6 +391,33 @@ static void set_advance(Editor *e, int v)
  * they do not erase what they land on. */
 
 static SelFloat g_clip;     /* the in-app clipboard: the pixels and the cells they had, kept for the whole session (also across glyphs and fonts) */
+static uint32_t g_clipPal[PX_GLYPH_MAX_COLORS];   /* the colours of its characters ('0' = g_clipPal[0]): a paste maps them into the glyph's palette */
+static int g_clipPalN;
+
+/* the colours of the glyph's characters '0'..'Z' (its palette's first 36 entries) */
+static int glyph_pal36(const PxFont *f, const PxGlyph *g, uint32_t out[PX_GLYPH_MAX_COLORS])
+{
+    const PxPalette *p = px_glyph_palette(f, g);
+    int n = p->n < PX_GLYPH_MAX_COLORS ? p->n : PX_GLYPH_MAX_COLORS;
+    memcpy(out, p->c, sizeof(uint32_t) * (size_t)n);
+    return n;
+}
+
+/* The colours the float's pixels use (in flPal order) and, per character, its index among them; their count. */
+static int float_colors(const Editor *e, uint32_t cols[PX_GLYPH_MAX_COLORS], int idx[PX_NUM_PIXELS])
+{
+    bool usedc[PX_NUM_PIXELS] = {false};
+    size_t n = e->fl.pix ? (size_t)e->fl.shape.w * (size_t)e->fl.shape.h : 0;
+    for (size_t k = 0; k < n; k++) { int i = px_pixel_index(e->fl.pix[k]); if (i > 0) usedc[i] = true; }
+    int m = 0;
+    for (int i = 1; i < PX_NUM_PIXELS; i++) {
+        idx[i] = -1;
+        if (!usedc[i]) continue;
+        idx[i] = m;
+        cols[m++] = i - 1 < e->flPalN ? e->flPal[i - 1] : 0x000000FFu;
+    }
+    return m;
+}
 
 static SelBitmap bm_of(const PxGlyph *g)
 {
@@ -400,7 +483,7 @@ static void fill_at(Editor *e, int cx, int cy, char c)
 {
     PxGlyph *g = G(e);
     int x0, y0, bw, bh;
-    if (!g || locked(e) || px_pixel_index(c) < 0) return;
+    if (!g || locked(e) || (c != INK_NEW && px_pixel_index(c) < 0)) return;
     char *mem = region_pix(e, &x0, &y0, &bw, &bh);
     if (!mem) return;
     unsigned char *clip = NULL;
@@ -417,7 +500,8 @@ static void fill_at(Editor *e, int cx, int cy, char c)
         int minx = r.p[0].x, maxx = minx, miny = r.p[0].y, maxy = miny;
         for (int i = 1; i < r.n; i++) { minx = imin(minx, r.p[i].x); maxx = imax(maxx, r.p[i].x); miny = imin(miny, r.p[i].y); maxy = imax(maxy, r.p[i].y); }
         touch(e);
-        if (c == '.' || ensure(g, minx, miny, maxx, maxy)) {
+        if (c == INK_NEW) c = ink_add(e, g);
+        if (c && (c == '.' || ensure(g, minx, miny, maxx, maxy))) {
             for (int i = 0; i < r.n; i++) g->pix[(size_t)(r.p[i].y - gtop(g)) * g->w + (r.p[i].x - g->x)] = c;
             g->asDrawn = false;
             px_glyph_touch(g);
@@ -479,10 +563,28 @@ static void float_drop(Editor *e)
         float_cancel(e);
         return;
     }
+    /* the float's colours into the glyph's palette: those it has keep their characters, a new one takes an entry no pixel uses or a new entry */
+    uint32_t cols[PX_GLYPH_MAX_COLORS];
+    int idx[PX_NUM_PIXELS], ncols = ink ? float_colors(e, cols, idx) : 0;
+    if (ncols && !px_glyph_colors_fit(e->font, g, cols, ncols)) {
+        Th_Toast(2, "A glyph has at most 36 colours: the pixels bring too many new ones");
+        float_cancel(e);
+        return;
+    }
     if (clears || ink) {
         touch(e);
         if (clears) { SelBitmap cb = bm_of(g); selbm_clear(&cb, &e->src); }
-        if (ink && ensure(g, x0, y0, x1, y1)) { SelBitmap sb = bm_of(g); selbm_stamp(&sb, &e->fl); }
+        int slots[PX_GLYPH_MAX_COLORS];
+        if (ink && ncols && px_glyph_add_colors(e->font, g, cols, ncols, slots) != 0) ink = false;
+        if (ink && ensure(g, x0, y0, x1, y1)) {
+            size_t n = (size_t)e->fl.shape.w * (size_t)e->fl.shape.h;
+            for (size_t k = 0; k < n; k++) {      /* the float's characters become the glyph's */
+                int i = px_pixel_index(e->fl.pix[k]);
+                if (i > 0 && idx[i] >= 0) e->fl.pix[k] = PX_PIXELS[1 + slots[idx[i]]];
+            }
+            SelBitmap sb = bm_of(g);
+            selbm_stamp(&sb, &e->fl);
+        }
         g->asDrawn = false;
         if (g->pix) px_glyph_crop(g);
         px_glyph_touch(g);
@@ -500,6 +602,7 @@ static bool float_lift(Editor *e, bool copy)
     if (!g || locked(e) || sel_empty(&e->sel)) return false;
     SelBitmap b = bm_of(g);
     if (!selfloat_lift(&e->fl, &e->sel, &b)) return false;
+    e->flPalN = glyph_pal36(e->font, g, e->flPal);
     sel_copy(&e->src, &e->sel);
     e->floating = true;
     e->flCopy = copy;
@@ -530,7 +633,7 @@ static void curve_commit(Editor *e)
     if (e->curveStage == 0) return;
     e->curveStage = 0;
     if (locked(e)) return;
-    plot_curve(e, put, e->curveBtn == MOUSE_BUTTON_RIGHT ? '.' : e->ink);
+    plot_curve(e, put, e->curveBtn == MOUSE_BUTTON_RIGHT ? '.' : ink_ch(e));
     e->editOpen = false;
 }
 
@@ -588,7 +691,7 @@ static void poly_commit(Editor *e)
     if (n == 0 || locked(e)) return;
     RasPath r = {0};
     if (ras_polygon(&r, e->poly, n, true, e->filled))
-        for (int i = 0; i < r.n; i++) put(e, r.p[i].x, r.p[i].y, e->polyBtn == MOUSE_BUTTON_RIGHT ? '.' : e->ink);
+        for (int i = 0; i < r.n; i++) put(e, r.p[i].x, r.p[i].y, e->polyBtn == MOUSE_BUTTON_RIGHT ? '.' : ink_ch(e));
     ras_free(&r);
     e->editOpen = false;
 }
@@ -654,7 +757,7 @@ static void cont_drag(Editor *e, int cx, int cy)
     e->mode = M_NONE;
     RasPath r = {0};
     if (!locked(e) && cont_cells(e, &r))
-        for (int i = 0; i < r.n; i++) put(e, r.p[i].x, r.p[i].y, e->btn == MOUSE_BUTTON_RIGHT ? '.' : e->ink);
+        for (int i = 0; i < r.n; i++) put(e, r.p[i].x, r.p[i].y, e->btn == MOUSE_BUTTON_RIGHT ? '.' : ink_ch(e));
     ras_free(&r);
     ras_free(&e->cont);
     e->editOpen = false;
@@ -743,10 +846,17 @@ static bool clip_copy(Editor *e)
 {
     PxGlyph *g = G(e);
     if (!g) return false;
-    if (e->floating) return selfloat_copy(&g_clip, &e->fl);
+    if (e->floating) {
+        if (!selfloat_copy(&g_clip, &e->fl)) return false;
+        memcpy(g_clipPal, e->flPal, sizeof g_clipPal);
+        g_clipPalN = e->flPalN;
+        return true;
+    }
     if (sel_empty(&e->sel)) return false;
     SelBitmap b = bm_of(g);
-    return selfloat_lift(&g_clip, &e->sel, &b);
+    if (!selfloat_lift(&g_clip, &e->sel, &b)) return false;
+    g_clipPalN = glyph_pal36(e->font, g, g_clipPal);   /* the clipboard carries the colours (a paste into another glyph or font maps them) */
+    return true;
 }
 
 static void clip_cut(Editor *e)
@@ -768,22 +878,8 @@ static void clip_paste(Editor *e)
     const SelMask *s = &g_clip.shape;
     if (e->cv.width > 0 && (s->x < vx0 || s->y < vy0 || s->x + s->w - 1 > vx1 || s->y + s->h - 1 > vy1)) { dx = vx0 - s->x; dy = vy0 - s->y; }
     if (!selfloat_copy(&e->fl, &g_clip)) return;
-    {   /* pixels of a colour this font does not have (copied from another font) take the ink, or the font's first colour */
-        const PxFont *f = e->font;
-        char sub = '0';
-        if (f->hasPalette) {
-            int ii = px_pixel_index(e->ink);
-            if (ii > 0 && f->colorUsed[ii]) sub = e->ink;
-            else for (int i = 1; i < PX_NUM_PIXELS; i++) if (f->colorUsed[i]) { sub = PX_PIXELS[i]; break; }
-        }
-        size_t n = (size_t)e->fl.shape.w * (size_t)e->fl.shape.h;
-        for (size_t k = 0; k < n; k++) {
-            char c = e->fl.pix[k];
-            if (c == '.') continue;
-            int pi = px_pixel_index(c);
-            if (f->hasPalette ? !(pi > 0 && f->colorUsed[pi]) : c != '0') e->fl.pix[k] = sub;
-        }
-    }
+    memcpy(e->flPal, g_clipPal, sizeof e->flPal);    /* the pixels keep their colours: the drop adds those the glyph has not got to its palette */
+    e->flPalN = g_clipPalN;
     selfloat_shift(&e->fl, dx, dy);
     sel_copy(&e->sel, &e->fl.shape);
     sel_free(&e->src);
@@ -936,6 +1032,7 @@ static void fit_view(Editor *e, Rectangle cv)
 static void draw_bitmap(const PxFont *f, const PxGlyph *g, int sx, int sy, int scale)
 {
     if (!g->pix || g->w <= 0) return;
+    const Color *pal = (const Color *)px_glyph_palette(f, g)->draw;   /* the glyph's own colours, ready to draw */
     for (int y = 0; y < g->h; y++) {
         int x = 0;
         while (x < g->w) {
@@ -943,7 +1040,8 @@ static void draw_bitmap(const PxFont *f, const PxGlyph *g, int sx, int sy, int s
             int run = 1;
             while (x + run < g->w && g->pix[y * g->w + x + run] == c) run++;
             if (c != '.') {
-                DrawRectangle(sx + (g->x + x) * scale, sy + (gtop(g) + y) * scale, run * scale, scale, pixcol(f, c));
+                int pi = px_pixel_index(c);
+                if (pi > 0) DrawRectangle(sx + (g->x + x) * scale, sy + (gtop(g) + y) * scale, run * scale, scale, pal[pi]);
             }
             x += run;
         }
@@ -965,62 +1063,414 @@ static void glyph_label(const PxGlyph *g, char *buf, size_t n)
     snprintf(buf, n, "U+%04X", (unsigned)g->codepoint);   /* drawn as a glyph caption (Th_TextRich) */
 }
 
-/* Palette swatch. */
-static bool swatch(Editor *e, Rectangle r, char c)
+/* ------------------------------------------------------------------ the palette bar (see DESIGN.md, "Version 23")
+ *
+ * A horizontal bar under the canvas and the tool strip, over the status line.  Its first row is the edited glyph: the transparent tile '.' (the
+ * eraser ink), then the slots of the glyph's palette in canonical order, each labelled with its pixel character (0-9, A-Z: the key that picks
+ * it), then '+' while the palette has fewer than 36 entries.  A slot no pixel uses has a dashed frame.  The rows under it are the font's
+ * other colours (no key).  A click picks the ink; a double click on a slot opens the colour picker to change that colour in the glyph; a
+ * colour of the font dragged onto a slot replaces the slot's colour, onto '+' adds it.  When an edit reorders the slots they slide to their
+ * new places.  Tiles register as "pal:." "pal:0" ... "pal:Z" "pal:+" and every colour as "pal:#RRGGBB" (RRGGBBAA when not opaque). */
+
+#define BAR_PAD 8
+#define BAR_SEP 6        /* after '.' */
+#define BAR_ROWS_MAX 3   /* the font's colours: rows shown before the bar scrolls */
+#define ANIM_T 0.2       /* the slide of a reordered slot, seconds */
+enum { PICK_ADD = 0x2301, PICK_EDIT = 0x2302 };
+
+static bool ink_is(const Editor *e, int idx, uint32_t c) { return idx < 0 ? e->inkErase : (!e->inkErase && e->inkColor == c); }
+
+static void set_ink(Editor *e, int idx, uint32_t c) { e->inkErase = idx < 0; if (idx >= 0) e->inkColor = c; }
+
+/* the font's colour list (at least black) */
+static int ink_list(const Editor *e, const uint32_t **out) { return px_font_color_list(e->font, out); }
+
+/* the ink is the colour list's entry k (Editor_Open) */
+static void ink_pick_index(Editor *e, int k)
 {
-    PxFont *f = e->font;
-    bool popupBlock = e->showAll && CheckCollisionPointRec(GetMousePosition(), e->popupRect) && r.y < e->popupRect.y;
-    bool hv = hit(r) && !popupBlock && !locked(e);
-    bool sel = e->ink == c;
-    { char rn[8]; snprintf(rn, sizeof rn, "ink:%c", c); Th_Reg(rn, r); }
-    Color col = pixcol(f, c);
-    if (c == '.') {
-        DrawRectangleRec(r, TH_PANEL);
-        DrawLineEx((Vector2){r.x + 5, r.y + 5}, (Vector2){r.x + r.width - 5, r.y + r.height - 5}, 1, TH_TEXT_DIM);
-        DrawLineEx((Vector2){r.x + r.width - 5, r.y + 5}, (Vector2){r.x + 5, r.y + r.height - 5}, 1, TH_TEXT_DIM);
-    } else {
-        if (col.a < 255) {
-            DrawRectangleRec(r, TH_PANEL);
-            DrawRectangle((int)r.x, (int)r.y, (int)r.width / 2, (int)r.height / 2, TH_TRACK);
-        }
-        DrawRectangleRec(r, col);
-        int lum = (col.r * 30 + col.g * 59 + col.b * 11) / 100;
-        char s[2] = {c, 0};
-        Vector2 m = Th_MeasureSmall(s);
-        Th_TextSmall(s, r.x + (int)((r.width - m.x) / 2), r.y + (int)((r.height - m.y) / 2),
-                     lum > 140 ? TH_ON_LIGHT : TH_ON_DARK);
-    }
-    Th_RectLines(r, hv ? TH_M_BOX : TH_LINE);
-    if (sel) {
-        Rectangle o = {r.x - 2, r.y - 2, r.width + 4, r.height + 4};
-        DrawRectangleLinesEx(o, 2, TH_ACCENT);
-    }
-    if (hv) {
-        static char tip[24];
-        snprintf(tip, sizeof tip, c == '.' ? "Eraser ink (.)" : "Ink '%c'", c);
-        e->tip = tip; e->tipRect = r;
-    }
-    { char rn[8]; snprintf(rn, sizeof rn, "ink:%c", c); return Th_Released(r, rn, hv); }
+    const uint32_t *l;
+    int n = ink_list(e, &l);
+    if (k >= 0 && k < n) set_ink(e, k, l[k]);
 }
-
-/* ------------------------------------------------------------------ toolbar */
-
-static int palette_chars(const Editor *e, char *out)
-{
-    int n = 0;
-    const PxFont *f = e->font;
-    if (!f->hasPalette) {
-        out[n++] = '0';
-    } else {
-        for (int i = 1; i < PX_NUM_PIXELS; i++)
-            if (f->colorUsed[i]) out[n++] = PX_PIXELS[i];
-        if (n == 0) out[n++] = '0';
-    }
-    out[n++] = '.';
-    return n;
-}
-
 static void close_edit_cmd(Editor *e) { e->editOpen = false; }
+
+/* the slots the bar shows: the glyph's palette, its first 36 entries */
+static int bar_slots(const Editor *e, const uint32_t **c)
+{
+    const PxGlyph *g = G((Editor *)e);
+    if (!g) { *c = NULL; return 0; }
+    const PxPalette *p = px_glyph_palette(e->font, g);
+    *c = p->c;
+    return p->n < PX_GLYPH_MAX_COLORS ? p->n : PX_GLYPH_MAX_COLORS;
+}
+
+/* the colours used by pixels: slots 0..k-1 (the glyph is canonical) */
+static int bar_used(const Editor *e)
+{
+    const PxGlyph *g = G((Editor *)e);
+    return g ? px_glyph_used_colors(g) : 0;
+}
+
+/* the font's colours the glyph has not: a list (malloc'd) and its length */
+static int bar_extras(const Editor *e, uint32_t **out)
+{
+    const uint32_t *l, *c;
+    int n = ink_list(e, &l), ns = bar_slots(e, &c), m = 0;
+    *out = (uint32_t *)malloc(sizeof(uint32_t) * (size_t)(n + 1));
+    if (!*out) return 0;
+    for (int i = 0; i < n; i++) {
+        bool has = false;
+        for (int j = 0; j < ns && !has; j++) has = c[j] == l[i];
+        if (!has) (*out)[m++] = l[i];
+    }
+    return m;
+}
+
+/* the tile pitch for a bar of width w: a full glyph ('.', 36 slots, '+') fits one row */
+static int bar_step(float w)
+{
+    int s = (int)((w - 2 * BAR_PAD - BAR_SEP) / (PX_GLYPH_MAX_COLORS + 2));
+    return s < 18 ? 18 : s > 28 ? 28 : s;
+}
+static int bar_gap(int step) { return step >= 24 ? 4 : 3; }
+
+static int bar_per_row(float w, int step) { int n = (int)((w - 2 * BAR_PAD + bar_gap(step)) / step); return n < 1 ? 1 : n; }
+
+/* the height of the bar for a width w */
+static float bar_height(const Editor *e, float w)
+{
+    int step = bar_step(w);
+    uint32_t *x;
+    int nx = bar_extras(e, &x);
+    free(x);
+    int rows = (nx + bar_per_row(w, step) - 1) / bar_per_row(w, step);
+    if (rows > BAR_ROWS_MAX) rows = BAR_ROWS_MAX;
+    return (float)(2 * BAR_PAD + step - bar_gap(step) + (rows > 0 ? 9 + rows * step - bar_gap(step) : 0));
+}
+
+static void tile_names(uint32_t c, char *out)
+{
+    if ((c & 0xFFu) == 0xFFu) snprintf(out, 24, "pal:#%06X", (unsigned)(c >> 8));
+    else snprintf(out, 24, "pal:#%08X", (unsigned)c);
+}
+
+/* a colour tile: the colour (over a checker when it is not opaque), its key, the frame (dashed for an unused slot) and the ink's ring */
+static void draw_tile(Rectangle r, uint32_t c, char key, bool unused, bool ink, bool hot, float flash)
+{
+    Color col = Th_FromRGBA(c);
+    Rectangle in = unused ? (Rectangle){r.x + 3, r.y + 3, r.width - 6, r.height - 6} : r;
+    if (col.a < 255) {
+        DrawRectangleRec(in, TH_PANEL);
+        DrawRectangle((int)in.x, (int)in.y, (int)in.width / 2, (int)in.height / 2, TH_TRACK);
+        DrawRectangle((int)(in.x + in.width / 2), (int)(in.y + in.height / 2), (int)(in.width - (int)in.width / 2), (int)(in.height - (int)in.height / 2), TH_TRACK);
+    }
+    DrawRectangleRec(in, col);
+    if (key) {
+        double lum = col.a < 128 ? 1.0 : cm_luminance(c);
+        char s[2] = {key, 0};
+        Vector2 m = Th_MeasureSmall(s);
+        Th_TextSmall(s, r.x + (int)((r.width - m.x) / 2), r.y + (int)((r.height - m.y) / 2), lum > 0.36 ? TH_ON_LIGHT : TH_ON_DARK);
+    }
+    if (unused) {   /* dashed: a colour of the glyph's palette that no pixel uses yet */
+        Color d = hot ? TH_ACCENT : TH_TEXT_DIM;
+        Th_DashedHLine(r.x, r.x + r.width, r.y, 2, d);
+        Th_DashedHLine(r.x, r.x + r.width, r.y + r.height - 1, 2, d);
+        Th_DashedVLine(r.x, r.y, r.y + r.height, 2, d);
+        Th_DashedVLine(r.x + r.width - 1, r.y, r.y + r.height, 2, d);
+    } else Th_RectLines(r, hot ? TH_M_BOX : TH_LINE);
+    if (flash > 0) DrawRectangleLinesEx((Rectangle){r.x - 3, r.y - 3, r.width + 6, r.height + 6}, 2, Fade(TH_ACCENT, flash));
+    if (ink) DrawRectangleLinesEx((Rectangle){r.x - 2, r.y - 2, r.width + 4, r.height + 4}, 2, TH_ACCENT);
+}
+
+static void hex_of(uint32_t c, char *out) { char h[10]; cm_format_hex(c, h); snprintf(out, 12, "#%s", h); }
+
+/* The palette is changed by a command of the bar (one undo step each). */
+static void pal_add(Editor *e, uint32_t c)
+{
+    PxGlyph *g = G(e);
+    if (!g || refuse(e)) return;
+    const uint32_t *sl;
+    int ns = bar_slots(e, &sl);
+    for (int i = 0; i < ns; i++) if (sl[i] == c && (g->pi > 0 || g->pix)) { set_ink(e, 0, c); return; }   /* it has it */
+    if (px_glyph_palette(e->font, g)->n >= PX_GLYPH_MAX_COLORS) { Th_Toast(2, "This glyph has 36 colours: drop the colour onto a slot to replace one"); return; }
+    touch(e);
+    if (px_glyph_add_slot(e->font, g, c) >= 0) { mark(e); set_ink(e, 0, c); }
+    e->editOpen = false;
+}
+
+static void pal_replace(Editor *e, int slot, uint32_t c)
+{
+    PxGlyph *g = G(e);
+    if (!g || refuse(e)) return;
+    const uint32_t *sl;
+    int ns = bar_slots(e, &sl);
+    if (slot < 0 || slot >= ns || sl[slot] == c) return;
+    uint32_t was = sl[slot];
+    touch(e);
+    if (px_glyph_replace_color(e->font, g, slot, c) == 0) {
+        mark(e);
+        if (!e->inkErase && e->inkColor == was) e->inkColor = c;   /* the ink follows its slot */
+    }
+    e->editOpen = false;
+}
+
+/* the answer of the colour picker */
+static void pick_answer(Editor *e)
+{
+    uint32_t c = 0;
+    int r = e->pickTag ? Th_ColorPickTake(e->pickTag, &c) : 0;
+    if (!r) return;
+    int tag = e->pickTag;
+    e->pickTag = 0;
+    if (r < 0) return;     /* cancelled */
+    if (tag == PICK_ADD) pal_add(e, c);
+    else {
+        const uint32_t *sl;
+        int ns = bar_slots(e, &sl);
+        for (int i = 0; i < ns; i++) if (sl[i] == e->pickCol) { pal_replace(e, i, c); break; }
+    }
+}
+
+static void open_picker(Editor *e, int tag, uint32_t col)
+{
+    e->pickTag = tag;
+    e->pickCol = col;
+    Th_ColorPickOpen(col, tag == PICK_ADD ? "Add a colour to the glyph" : "Change the colour of the slot", tag);
+}
+
+/* the slide of the slots: where slot colour c is drawn this frame (target x) */
+static float anim_x(Editor *e, uint32_t c, float target, float *flash)
+{
+    *flash = 0;
+    double now = GetTime();
+    for (int i = 0; i < e->nanim; i++) {
+        if (e->anim[i].c != c) continue;
+        double t = (now - e->anim[i].t0) / ANIM_T;
+        if (t >= 1) return target;
+        double k = 1 - t, ease = k * k * k;     /* ease-out cubic */
+        if (e->anim[i].flash) { *flash = (float)ease; return target; }
+        return target + (float)((e->anim[i].from - target) * ease);
+    }
+    return target;
+}
+
+/* a new frame of the bar: the slots that are no longer where they were start to slide from where they were drawn */
+static void anim_update(Editor *e, const uint32_t *sl, int ns, float x0, int step)
+{
+    bool same = e->shownGi == e->gi && e->shownStep == (float)step && e->shownX0 == x0 && e->nshown > 0;
+    double now = GetTime();
+    typeof(e->anim[0]) na[PX_GLYPH_MAX_COLORS];
+    int nn = 0;
+    for (int i = 0; i < ns; i++) {
+        float target = x0 + BAR_SEP + step * (1 + i);
+        int old = -1;
+        for (int j = 0; j < e->nanim; j++) if (e->anim[j].c == sl[i]) old = j;
+        int was = -1;
+        for (int j = 0; j < e->nshown; j++) if (e->shown[j].c == sl[i]) was = j;
+        if (!same) continue;
+        if (old >= 0 && e->anim[old].to == target && now - e->anim[old].t0 < ANIM_T) na[nn++] = e->anim[old];   /* still sliding there */
+        else if (was >= 0 && fabsf(e->shown[was].x - target) > 0.5f) {
+            na[nn].c = sl[i]; na[nn].from = e->shown[was].x; na[nn].to = target; na[nn].t0 = now; na[nn].flash = false; nn++;
+        } else if (was < 0) {
+            na[nn].c = sl[i]; na[nn].from = na[nn].to = target; na[nn].t0 = now; na[nn].flash = true; nn++;   /* new in the row: a short glow */
+        }
+    }
+    memcpy(e->anim, na, sizeof(na[0]) * (size_t)nn);
+    e->nanim = nn;
+}
+
+/* the tile under the mouse while a colour is dragged: 2 a slot (*slot), 3 '+', 0 none */
+static int drop_target(const Editor *e, const Rectangle *slots, int ns, Rectangle plus, bool hasPlus, int *slot)
+{
+    Vector2 m = GetMousePosition();
+    for (int i = 0; i < ns; i++) if (CheckCollisionPointRec(m, slots[i])) { *slot = i; return 2; }
+    if (hasPlus && CheckCollisionPointRec(m, plus)) return 3;
+    return 0;
+}
+
+static void draw_bar(Editor *e, Rectangle r)
+{
+    PxGlyph *g = G(e);
+    e->bar = r;
+    DrawRectangleRec(r, TH_PANEL_ALT);
+    Th_HLine(r.x, r.x + r.width, r.y, TH_LINE);
+    if (!g) return;
+    int step = bar_step(r.width), gap = bar_gap(step), ts = step - gap;
+    const uint32_t *sl;
+    int ns = bar_slots(e, &sl), used = bar_used(e);
+    bool empty = !(g->pi > 0) && !g->pix;          /* an empty glyph of the default palette: its black is unused */
+    if (empty) used = 0;
+    bool edit = !locked(e), hasPlus = edit && px_glyph_palette(e->font, g)->n < PX_GLYPH_MAX_COLORS;
+    float x0 = r.x + BAR_PAD, y0 = r.y + BAR_PAD;
+    bool live = !Th_InputBlocked();
+    Vector2 mouse = GetMousePosition();
+    bool pressed = live && IsMouseButtonPressed(MOUSE_BUTTON_LEFT), released = IsMouseButtonReleased(MOUSE_BUTTON_LEFT);
+    static char tip[200];
+    char nm[24];
+    bool pressedSlot = false;   /* a press elsewhere ends a double click */
+
+    anim_update(e, sl, ns, x0, step);
+
+    /* row 1: '.', the slots, '+' */
+    Rectangle dot = {x0, y0, (float)ts, (float)ts};
+    Rectangle srect[PX_GLYPH_MAX_COLORS];
+    for (int i = 0; i < ns; i++) srect[i] = (Rectangle){x0 + BAR_SEP + step * (1 + i), y0, (float)ts, (float)ts};
+    Rectangle plus = {x0 + BAR_SEP + step * (1 + ns), y0, (float)ts, (float)ts};
+    int dropKind = 0, dropSlot = -1;
+    if (e->barDrag) dropKind = drop_target(e, srect, ns, plus, hasPlus, &dropSlot);
+
+    {   /* '.' */
+        bool hv = live && hit(dot);
+        Th_Reg("pal:.", dot);
+        DrawRectangleRec(dot, TH_PANEL);
+        DrawLineEx((Vector2){dot.x + 4, dot.y + 4}, (Vector2){dot.x + dot.width - 4, dot.y + dot.height - 4}, 1, TH_TEXT_OFF);
+        Vector2 m = Th_MeasureSmall(".");
+        Th_TextSmall(".", dot.x + (int)((dot.width - m.x) / 2), dot.y + (int)((dot.height - m.y) / 2) - 3, TH_TEXT_DIM);
+        Th_RectLines(dot, hv ? TH_M_BOX : TH_LINE);
+        if (e->inkErase) DrawRectangleLinesEx((Rectangle){dot.x - 2, dot.y - 2, dot.width + 4, dot.height + 4}, 2, TH_ACCENT);
+        if (hv) { snprintf(tip, sizeof tip, "Transparent: draws nothing, erases  (.)"); e->tip = tip; e->tipRect = dot; }
+        if (hv && pressed) { e->pressKind = 1; e->pressAt = mouse; }
+        if (released && e->pressKind == 1 && hv) set_ink(e, -1, 0);
+    }
+    for (int i = 0; i < ns; i++) {
+        float flash;
+        Rectangle t = srect[i];
+        t.x = anim_x(e, sl[i], srect[i].x, &flash);
+        bool hv = live && hit(srect[i]);
+        bool unused = i >= used;
+        draw_tile(t, sl[i], PX_PIXELS[1 + i], unused, ink_is(e, 0, sl[i]), hv || (dropKind == 2 && dropSlot == i), flash);
+        snprintf(nm, sizeof nm, "pal:%c", PX_PIXELS[1 + i]);
+        Th_Reg(nm, srect[i]);
+        tile_names(sl[i], nm);
+        Th_Reg(nm, srect[i]);
+        if (hv && !e->barDrag) {
+            char hx[12];
+            hex_of(sl[i], hx);
+            snprintf(tip, sizeof tip, "Ink %s  (%c)%s", hx, PX_PIXELS[1 + i], unused ? ": no pixel uses it yet" : edit ? ": double-click to change it in this glyph" : "");
+            e->tip = tip; e->tipRect = srect[i];
+        }
+        if (hv && pressed) { e->pressKind = 2; e->pressCol = sl[i]; e->pressSlot = i; e->pressAt = mouse; pressedSlot = true; }
+        if (released && e->pressKind == 2 && hv && e->pressSlot == i) {
+            set_ink(e, 0, sl[i]);
+            if (edit && GetTime() - e->lastClick < 0.4 && e->lastClickCol == sl[i]) { open_picker(e, PICK_EDIT, sl[i]); e->lastClick = -10; }
+            else { e->lastClick = GetTime(); e->lastClickCol = sl[i]; }
+        }
+    }
+    if (hasPlus) {
+        bool hv = live && hit(plus);
+        bool hot = hv || dropKind == 3;
+        Th_Reg("pal:+", plus);
+        DrawRectangleRec(plus, hot ? TH_PANEL : TH_PANEL_ALT);
+        Th_RectLines(plus, hot ? TH_ACCENT : TH_LINE);
+        float cx = plus.x + plus.width / 2, cy = plus.y + plus.height / 2, k = ts * 0.28f;
+        DrawRectangle((int)(cx - k), (int)cy - 1, (int)(2 * k), 2, hot ? TH_ACCENT : TH_TEXT_DIM);
+        DrawRectangle((int)cx - 1, (int)(cy - k), 2, (int)(2 * k), hot ? TH_ACCENT : TH_TEXT_DIM);
+        if (hv && !e->barDrag) { snprintf(tip, sizeof tip, "Add a colour to this glyph (the colour picker)"); e->tip = tip; e->tipRect = plus; }
+        if (hv && pressed) { e->pressKind = 3; e->pressAt = mouse; }
+        if (released && e->pressKind == 3 && hv) open_picker(e, PICK_ADD, e->inkErase ? 0xFFFFFFFFu : e->inkColor);
+    }
+
+    /* the rows of the font's other colours */
+    uint32_t *xs;
+    int nx = bar_extras(e, &xs);
+    e->barExtras = nx;
+    e->barRows = 1;
+    if (nx > 0) {
+        int per = bar_per_row(r.width, step), rows = (nx + per - 1) / per, vis = rows < BAR_ROWS_MAX ? rows : BAR_ROWS_MAX;
+        e->barRows = 1 + rows;
+        float ry = y0 + step + 9;
+        Th_HLine(r.x + BAR_PAD, r.x + r.width - BAR_PAD, ry - 5, TH_LINE_SOFT);
+        Rectangle view = {r.x, ry - 2, r.width, (float)(vis * step - gap + 4)};
+        bool onBar = Th_ScrollBar(view, &e->barScroll, (float)(rows * step - gap + 4), (float)step, live);
+        BeginScissorMode((int)view.x, (int)view.y, (int)view.width, (int)view.height);
+        for (int i = 0; i < nx; i++) {
+            Rectangle t = {x0 + step * (i % per), ry + step * (i / per) - e->barScroll, (float)ts, (float)ts};
+            if (t.y + t.height < view.y || t.y > view.y + view.height) continue;
+            bool inside = t.y >= view.y && t.y + t.height <= view.y + view.height;
+            bool hv = live && inside && !onBar && hit(t);
+            draw_tile(t, xs[i], 0, false, ink_is(e, 0, xs[i]), hv, 0);
+            snprintf(nm, sizeof nm, "palx:%d", i);
+            Th_Reg(nm, t);
+            tile_names(xs[i], nm);
+            Th_Reg(nm, t);
+            if (hv && !e->barDrag) {
+                char hx[12];
+                hex_of(xs[i], hx);
+                snprintf(tip, sizeof tip, "%s, a colour of other glyphs: click to draw with it%s", hx, edit ? ", drag it onto a slot to replace that colour, onto + to add it" : "");
+                e->tip = tip; e->tipRect = t;
+            }
+            if (hv && pressed) { e->pressKind = 4; e->pressCol = xs[i]; e->pressAt = mouse; }
+            if (released && e->pressKind == 4 && hv && !e->barDrag) set_ink(e, 0, xs[i]);
+        }
+        EndScissorMode();
+    }
+    free(xs);
+
+    /* the drag of a colour of the font: it follows the mouse; the release drops it */
+    if (e->pressKind == 4 && edit && IsMouseButtonDown(MOUSE_BUTTON_LEFT) && (fabsf(mouse.x - e->pressAt.x) > 4 || fabsf(mouse.y - e->pressAt.y) > 4)) e->barDrag = true;
+    if (e->barDrag) {
+        SetMouseCursor(MOUSE_CURSOR_POINTING_HAND);
+        Rectangle t = {mouse.x - ts / 2.0f, mouse.y - ts / 2.0f, (float)ts, (float)ts};
+        DrawRectangle((int)t.x + 2, (int)t.y + 3, (int)t.width, (int)t.height, Fade(BLACK, 0.15f));
+        draw_tile(t, e->pressCol, 0, false, false, true, 0);
+        snprintf(tip, sizeof tip, dropKind == 2 ? "Drop: slot %c becomes this colour" : dropKind == 3 ? "Drop: add the colour to this glyph" : "Drop it onto a slot (replace) or onto + (add)", dropSlot >= 0 ? PX_PIXELS[1 + dropSlot] : ' ');
+        e->tip = tip; e->tipRect = t;
+        if (released) {
+            if (dropKind == 2) pal_replace(e, dropSlot, e->pressCol);
+            else if (dropKind == 3) pal_add(e, e->pressCol);
+        }
+    }
+    if (released || !IsMouseButtonDown(MOUSE_BUTTON_LEFT)) { e->pressKind = 0; e->barDrag = false; }
+    if (pressed && !pressedSlot) e->lastClick = -10;
+
+    /* where the slots are, for the slide of the next reorder */
+    e->nshown = ns;
+    for (int i = 0; i < ns; i++) { float f; e->shown[i].c = sl[i]; e->shown[i].x = anim_x(e, sl[i], srect[i].x, &f); }
+    e->shownGi = e->gi; e->shownStep = (float)step; e->shownX0 = x0;
+}
+
+/* A slot of the glyph (or '.') picked by its key: '.', '0'-'9', 'A'-'Z' (either case).  Nothing for a slot it has not. */
+static void key_slot(Editor *e, int ch)
+{
+    if (ch == '.') { set_ink(e, -1, 0); return; }
+    if (ch >= 'a' && ch <= 'z') ch -= 32;
+    int i = px_pixel_index((char)ch);
+    if (ch > 127 || i <= 0) return;
+    const uint32_t *sl;
+    int ns = bar_slots(e, &sl);
+    if (i - 1 < ns) set_ink(e, 0, sl[i - 1]);
+}
+
+/* The unused-slot rule (DESIGN.md, "Version 23"): when the view leaves the glyph, or the font is saved, the slots it made that no pixel uses go.
+ * The palette the glyph had when the view opened it stays when it is still that one, and comes back when its first colours are the glyph's
+ * again (a palette read or shared keeps being written); otherwise the palette is cut to the colours the pixels use. */
+static void leave_glyph(Editor *e)
+{
+    PxGlyph *g = G(e);
+    if (!g || locked(e) || g->lazy) return;
+    px_glyph_canonicalize(e->font, g);
+    const PxPalette *p = px_glyph_palette(e->font, g);
+    bool own = g->pi > 0 && g->pi < e->font->npals;
+    if (!own && e->p0n == 0) return;
+    if (own && p->n == e->p0n && memcmp(p->c, e->p0, sizeof(uint32_t) * (size_t)p->n) == 0) return;
+    int k = px_glyph_used_colors(g);
+    if (e->p0n >= k && k > 0 && memcmp(p->c, e->p0, sizeof(uint32_t) * (size_t)k) == 0) { px_glyph_set_palette(e->font, g, e->p0, e->p0n); return; }
+    px_glyph_trim_palette(e->font, g);
+}
+
+static void remember_p0(Editor *e)
+{
+    PxGlyph *g = G(e);
+    e->p0n = 0;
+    e->p0gi = e->gi; e->p0font = e->font; e->p0code = g ? g->code : -1;
+    if (!g || !(g->pi > 0 && g->pi < e->font->npals)) return;
+    const PxPalette *p = px_glyph_palette(e->font, g);
+    uint32_t *n = (uint32_t *)realloc(e->p0, sizeof(uint32_t) * (size_t)p->n);
+    if (!n) return;
+    e->p0 = n;
+    e->p0n = p->n;
+    memcpy(e->p0, p->c, sizeof(uint32_t) * (size_t)e->p0n);
+}
 
 /* Zoom by `delta` steps around the middle of the canvas. */
 static void zoom_by(Editor *e, int delta)
@@ -1040,8 +1490,6 @@ static void zoom_by(Editor *e, int delta)
 static float draw_toolbar(Editor *e, Rectangle area)
 {
     PxGlyph *g = G(e);
-    char chars[PX_NUM_PIXELS + 1];
-    int nchars = palette_chars(e, chars);
     float h1 = TOOLBAR_H, total = h1 + PALETTE_H;
 
     DrawRectangle((int)area.x, (int)area.y, (int)area.width, (int)total, TH_PANEL_ALT);
@@ -1093,22 +1541,9 @@ static float draw_toolbar(Editor *e, Rectangle area)
         x += lr.width;
     }
 
-    /* ---- row 2: the ink palette on the left, the move and advance controls on the right */
+    /* ---- row 2: the lock on the left, the tools' options, the move and advance controls on the right (the ink is the palette bar's, under the canvas) */
     float y2 = area.y + h1 + 3;
-    float px = area.x + 10, py = area.y + h1 + 6;
-    Th_TextCap("INK", px, py + 4, TH_TEXT_DIM);
-    px += Th_MeasureCap("INK").x + TH_GAP;
-    for (int i = 0; i < nchars; i++) {
-        if (chars[i] == '.' && i > 0) px += 8;
-        if (swatch(e, (Rectangle){px, py, 22, 22}, chars[i])) e->ink = chars[i];
-        px += 26;
-    }
-    if (e->font->hasPalette) {
-        Th_Toggle((Rectangle){px + 4, py, 44, 22}, "All", &e->showAll, 0, NULL);
-        px += 52;
-    }
-    (void)close_edit_cmd;
-
+    float px = area.x + 2;
     float rx = area.x + area.width - 10;
     bool hasSel = !sel_empty(&e->sel);
     if (g) {
@@ -1129,7 +1564,7 @@ static float draw_toolbar(Editor *e, Rectangle area)
         lm = Th_MeasureCap("MOVE");
         rx -= lm.x + 8; Th_TextCap("MOVE", rx, y2 + (int)((bh - lm.y) / 2), TH_TEXT_DIM);
     }
-    /* between the ink palette and the move controls: the lock of the font */
+    /* at the left: the lock of the font */
     if (Th_Lock(((Rectangle){px + 8, y2, bh, bh}), e->readOnly, e->readOnly ? "The font is locked: unlock it to edit it" : "Lock the font: nothing can change it")) e->result = EDITOR_LOCK;
     /* the tools' own controls, between the lock and the move buttons: Pixel-perfect for the pencil and the shapes, and for the selection tools
      * how a new shape meets the selection and the wand's connectivity (a font with a big palette leaves them no room: the keys work) */
@@ -1201,34 +1636,6 @@ static float draw_strip(Editor *e, Rectangle r)
         if (Th_Button(pos[t], tips[t], TH_BTN_ICON(kTool[t].icon) | (e->tool == (Tool)t ? TH_BTN_ACTIVE : 0) | TH_BTN_OFF(!locked(e)), tips[t])) set_tool(e, (Tool)t);
     }
     return w;
-}
-
-/* The popup with all 37 pixel characters (drawn last). */
-static void draw_popup(Editor *e, Rectangle anchor)
-{
-    int cols = 13, rows = 3, cs = 26;
-    Rectangle p = {anchor.x + 10 + 30, anchor.y + anchor.height + 2, cols * cs + 16, rows * cs + 16};
-    if (p.x + p.width > GetScreenWidth()) p.x = GetScreenWidth() - p.width - 4;
-    e->popupRect = p;
-    Th_Raised(p, 1);
-    for (int i = 0; i < PX_NUM_PIXELS; i++) {
-        Rectangle r = {p.x + 8 + (i % cols) * cs, p.y + 8 + (i / cols) * cs, cs - 4, cs - 4};
-        bool hv = hit(r);
-        char c = PX_PIXELS[i];
-        Color col = pixcol(e->font, c);
-        if (c == '.') col = TH_PANEL;
-        DrawRectangleRec(r, col);
-        int lum = (col.r * 30 + col.g * 59 + col.b * 11) / 100;
-        char s[2] = {c, 0};
-        Vector2 m = Th_MeasureSmall(s);
-        Th_TextSmall(s, r.x + (int)((r.width - m.x) / 2), r.y + (int)((r.height - m.y) / 2),
-                     lum > 140 ? TH_ON_LIGHT : TH_ON_DARK);
-        Th_RectLines(r, hv ? TH_M_BOX : TH_LINE);
-        if (e->ink == c) DrawRectangleLinesEx((Rectangle){r.x - 2, r.y - 2, r.width + 4, r.height + 4}, 2, TH_ACCENT);
-        { char rn[12]; snprintf(rn, sizeof rn, "pop:%c", c); if (Th_Released(r, rn, hv)) { e->ink = c; e->showAll = false; } }
-    }
-    if (IsMouseButtonPressed(MOUSE_BUTTON_LEFT) && !hit(p) && !hit((Rectangle){anchor.x, anchor.y, anchor.width, anchor.height - 0}))
-        e->showAll = false;
 }
 
 /* ------------------------------------------------------------------ preview strip */
@@ -1327,7 +1734,7 @@ static void plot_preview(Editor *e, int x, int y, char c)
 {
     int ox = (int)e->panLast.x, oy = (int)e->panLast.y; /* reused as screen origin during preview */
     if (clipped_out(e, x, y)) return;
-    Color col = c == '.' ? fade(TH_DANGER, 110) : fade(pixcol(e->font, c), 150);
+    Color col = c == '.' ? fade(TH_DANGER, 110) : fade(pixcol(e, c), 150);
     DrawRectangle(ox + x * e->zoom, oy + y * e->zoom, e->zoom, e->zoom, col);
 }
 
@@ -1399,7 +1806,8 @@ static void draw_float(const Editor *e, int sx, int sy, int scale)
     for (int y = 0; y < s->h; y++)
         for (int x = 0; x < s->w; x++) {
             char c = e->fl.pix[(size_t)y * s->w + x];
-            if (c != '.') DrawRectangle(sx + (s->x + x) * scale, sy + (s->y + y) * scale, scale, scale, pixcol(e->font, c));
+            int pi = px_pixel_index(c);
+            if (pi > 0) DrawRectangle(sx + (s->x + x) * scale, sy + (s->y + y) * scale, scale, scale, Th_FromRGBA(pi - 1 < e->flPalN ? e->flPal[pi - 1] : 0x000000FFu));
         }
 }
 
@@ -1453,7 +1861,7 @@ static void draw_canvas(Editor *e, Rectangle cv, Vector2 mouse)
 
     /* shape preview */
     if (e->mode == M_SHAPE && e->hasHover) {
-        char c = e->btn == MOUSE_BUTTON_RIGHT ? '.' : e->ink;
+        char c = e->btn == MOUSE_BUTTON_RIGHT ? '.' : ink_ch(e);
         Vector2 keep = e->panLast;
         e->panLast = (Vector2){(float)ox, (float)oy};
         if (e->tool == T_LINE) { int en[4]; shape_ends(e, e->hx, e->hy, en); plot_line(e, en[0], en[1], en[2], en[3], plot_preview, c); }
@@ -1467,14 +1875,14 @@ static void draw_canvas(Editor *e, Rectangle cv, Vector2 mouse)
         RasPath r = {0};
         e->panLast = (Vector2){(float)ox, (float)oy};
         if (e->mode == M_CONTOUR) {
-            if (cont_cells(e, &r)) for (int i = 0; i < r.n; i++) plot_preview(e, r.p[i].x, r.p[i].y, e->btn == MOUSE_BUTTON_RIGHT ? '.' : e->ink);
+            if (cont_cells(e, &r)) for (int i = 0; i < r.n; i++) plot_preview(e, r.p[i].x, r.p[i].y, e->btn == MOUSE_BUTTON_RIGHT ? '.' : ink_ch(e));
         } else {
             RasPt *v = (RasPt *)malloc(sizeof(RasPt) * (size_t)(e->polyN + 1));
             int n = e->polyN;
             if (v) {
                 memcpy(v, e->poly, sizeof(RasPt) * (size_t)n);
                 if (e->hasHover) v[n++] = poly_point(e, e->hx, e->hy);
-                if (ras_polygon(&r, v, n, false, false)) for (int i = 0; i < r.n; i++) plot_preview(e, r.p[i].x, r.p[i].y, e->polyBtn == MOUSE_BUTTON_RIGHT ? '.' : e->ink);
+                if (ras_polygon(&r, v, n, false, false)) for (int i = 0; i < r.n; i++) plot_preview(e, r.p[i].x, r.p[i].y, e->polyBtn == MOUSE_BUTTON_RIGHT ? '.' : ink_ch(e));
                 free(v);
             }
         }
@@ -1484,7 +1892,7 @@ static void draw_canvas(Editor *e, Rectangle cv, Vector2 mouse)
 
     /* the curve being made: its cells and its handles */
     if (!e->curHidden && (e->curveStage > 0 || e->mode == M_CURVE)) {
-        char c = e->curveBtn == MOUSE_BUTTON_RIGHT ? '.' : e->ink;
+        char c = e->curveBtn == MOUSE_BUTTON_RIGHT ? '.' : ink_ch(e);
         Vector2 keep = e->panLast;
         e->panLast = (Vector2){(float)ox, (float)oy};
         plot_curve(e, plot_preview, c);
@@ -1541,8 +1949,7 @@ static void draw_canvas(Editor *e, Rectangle cv, Vector2 mouse)
     /* box side lines, pen origin and advance */
     Th_VLine((float)ox, cv.y, cv.y + cv.height, TH_M_BOX);
     bool nearAdv = !locked(e) && (e->mode == M_ADVANCE || (e->mode == M_NONE && mouse.x >= cv.x && mouse.x < cv.x + cv.width &&
-                                            mouse.y >= cv.y && mouse.y < cv.y + cv.height && fabsf(mouse.x - advX) <= 4 &&
-                                            !(e->showAll && CheckCollisionPointRec(mouse, e->popupRect))));
+                                            mouse.y >= cv.y && mouse.y < cv.y + cv.height && fabsf(mouse.x - advX) <= 4));
     Th_DashedVLine((float)advX, cv.y, cv.y + cv.height, 4, TH_M_ADVANCE);
     if (nearAdv) {
         DrawRectangle(advX - 1, (int)cv.y, 3, (int)cv.height, fade(TH_M_ADVANCE, 70));
@@ -1554,8 +1961,8 @@ static void draw_canvas(Editor *e, Rectangle cv, Vector2 mouse)
     if (e->hasHover && canPaint && !nearAdv) {
         Rectangle hr = {(float)(ox + e->hx * z), (float)(oy + e->hy * z), (float)z + 1, (float)z + 1};
         if (e->tool != T_FILL && e->tool != T_PICK && !is_sel_tool(e->tool) && e->mode == M_NONE) {
-            char c = e->tool == T_ERASER ? '.' : e->ink;
-            if (c != '.') DrawRectangle((int)hr.x, (int)hr.y, z, z, fade(pixcol(f, c), 70));
+            char c = e->tool == T_ERASER ? '.' : ink_ch(e);
+            if (c != '.') DrawRectangle((int)hr.x, (int)hr.y, z, z, fade(pixcol(e, c), 70));
         }
         DrawRectangleLinesEx(hr, 1, TH_ACCENT);
     }
@@ -1573,16 +1980,14 @@ static void draw_canvas(Editor *e, Rectangle cv, Vector2 mouse)
 
 /* ------------------------------------------------------------------ input on the canvas */
 
-/* The eyedropper: the pixel character under the cell becomes the ink.  Empty space (and a cell outside the bitmap) is '.', which is an ink of every font (the last swatch);
- * a character that is not in the palette is not taken.  There is one ink: the right button picks the same way. */
+/* The eyedropper: the colour of the pixel under the cell becomes the ink.  Empty space (and a cell outside the bitmap) is '.', the eraser ink (the last swatch).
+ * There is one ink: the right button picks the same way. */
 static void pick_at(Editor *e, int cx, int cy)
 {
     PxGlyph *g = G(e);
-    char chars[PX_NUM_PIXELS + 1];
-    int n = palette_chars(e, chars);
     char c = g ? gget(g, cx, cy) : '.';
-    for (int i = 0; i < n; i++)
-        if (chars[i] == c) { e->ink = c; return; }
+    if (c == '.' || px_pixel_index(c) <= 0) { set_ink(e, -1, 0); return; }
+    set_ink(e, 0, px_glyph_color(e->font, g, c));
 }
 
 /* the tools that Alt turns into the eyedropper while it is held at the press */
@@ -1593,8 +1998,7 @@ static void canvas_input(Editor *e, Rectangle cv, Vector2 mouse)
     PxGlyph *g = G(e);
     int z = e->zoom;
     int ox = (int)cv.x + e->vx, oy = (int)cv.y + e->vy;
-    bool popupBlock = e->showAll && CheckCollisionPointRec(mouse, e->popupRect);
-    bool inside = CheckCollisionPointRec(mouse, cv) && !popupBlock;
+    bool inside = CheckCollisionPointRec(mouse, cv) && !e->barDrag;
     int cx = floordiv((int)mouse.x - ox, z), cy = floordiv((int)mouse.y - oy, z);
     e->hasHover = inside || e->mode != M_NONE;
     if (e->hasHover) { e->hx = cx; e->hy = cy; }
@@ -1645,7 +2049,7 @@ static void canvas_input(Editor *e, Rectangle cv, Vector2 mouse)
             int b = IsMouseButtonPressed(MOUSE_BUTTON_LEFT) ? MOUSE_BUTTON_LEFT : MOUSE_BUTTON_RIGHT;
             e->btn = b;
             float_drop(e);   /* pixels floating from an arrow key land first: the drawing is clipped to the selection that stays */
-            char c = (b == MOUSE_BUTTON_RIGHT || e->tool == T_ERASER) ? '.' : e->ink;
+            char c = (b == MOUSE_BUTTON_RIGHT || e->tool == T_ERASER) ? '.' : ink_ch(e);
             e->sx = e->lx = cx; e->sy = e->ly = cy;
             if (key_alt() && alt_picks(e->tool)) {   /* Alt turns a drawing tool into the eyedropper for this click */
                 pick_at(e, cx, cy);
@@ -1700,7 +2104,7 @@ static void canvas_input(Editor *e, Rectangle cv, Vector2 mouse)
     SetMouseCursor(MOUSE_CURSOR_CROSSHAIR);
     if (e->mode == M_CURVE) { curve_drag(e, cx, cy); return; }
     if (e->mode == M_CONTOUR) { cont_drag(e, cx, cy); return; }
-    char c = (e->btn == MOUSE_BUTTON_RIGHT || e->tool == T_ERASER) ? '.' : e->ink;
+    char c = (e->btn == MOUSE_BUTTON_RIGHT || e->tool == T_ERASER) ? '.' : ink_ch(e);
     if (e->mode == M_PAINT) {
         if (cx != e->lx || cy != e->ly) {
             stroke_to(e, e->lx, e->ly, cx, cy, c);
@@ -1729,7 +2133,7 @@ Editor *Editor_Create(void)
     if (!e) return NULL;
     e->tool = T_PENCIL;
     e->contiguous = true;
-    e->ink = '0';
+    e->inkColor = 0x000000FFu;
     e->zoom = 8;
     e->needFit = true;
     e->showMetrics = true;
@@ -1747,6 +2151,7 @@ void Editor_Destroy(Editor *e)
     free(e->stk);
     free(e->stkPrev);
     free(e->poly);
+    free(e->p0);
     ras_free(&e->cont);
     free(e);
 }
@@ -1776,16 +2181,21 @@ void Editor_Open(Editor *e, PxFont *font, int glyphIndex, EditorBeforeChange bef
     e->mode = M_NONE;
     e->needFit = true;
     e->userZoom = false;
-    e->showAll = false;
     e->result = EDITOR_RUNNING;
-    if (px_pixel_index(e->ink) < 0) e->ink = '0';
+    if (!e->inkErase && px_font_color_index(font, e->inkColor) < 0) ink_pick_index(e, 0);   /* an ink the font has not: its first colour */
+    e->barScroll = 0;
+    e->pressKind = 0; e->barDrag = false;
+    e->nanim = 0; e->nshown = 0;
     box_update(e);
+    /* the palette the glyph has now, for the unused-slot rule; not again when the same glyph is opened again (an undo, a redo) */
+    const PxGlyph *g = (glyphIndex >= 0 && glyphIndex < font->count) ? &font->glyphs[glyphIndex] : NULL;
+    if (!(e->p0font == font && e->p0gi == glyphIndex && g && e->p0code == g->code)) remember_p0(e);
 }
 
 void Editor_SetReadOnly(Editor *e, bool readOnly)
 {
     e->readOnly = readOnly;
-    if (readOnly) { e->mode = M_NONE; e->showAll = false; curve_cancel(e); poly_cancel(e); ras_free(&e->cont); float_cancel(e); sel_free(&e->sel); e->implicitSel = false; }
+    if (readOnly) { e->mode = M_NONE; e->pressKind = 0; e->barDrag = false; curve_cancel(e); poly_cancel(e); ras_free(&e->cont); float_cancel(e); sel_free(&e->sel); e->implicitSel = false; }
 }
 
 void Editor_SetOriginalHash(Editor *e, const char *hash)
@@ -1823,7 +2233,17 @@ int  Editor_StripTool(int slot)
         if (!kTool[kStrip[i]].hidden && n++ == slot) return (int)kStrip[i];
     return -1;
 }
-char Editor_Ink(const Editor *e) { return e->ink; }
+char Editor_Ink(const Editor *e)
+{
+    if (e->inkErase) return '.';
+    const uint32_t *sl;
+    int ns = bar_slots(e, &sl);
+    for (int i = 0; i < ns; i++) if (sl[i] == e->inkColor) return PX_PIXELS[1 + i];
+    return '?';
+}
+int  Editor_BarRows(const Editor *e) { return e->barRows; }
+int  Editor_BarExtras(const Editor *e) { return e->barExtras; }
+uint32_t Editor_InkColor(const Editor *e) { return e->inkErase ? 0 : e->inkColor; }
 int  Editor_Zoom(const Editor *e) { return e->zoom; }
 
 bool Editor_TakeChanged(Editor *e)
@@ -1854,15 +2274,18 @@ static EditorResult editor_frame(Editor *e, Rectangle area)
     /* keyboard */
     bool ctrl = IsKeyDown(KEY_LEFT_CONTROL) || IsKeyDown(KEY_RIGHT_CONTROL) || IsKeyDown(KEY_LEFT_ALT) || IsKeyDown(KEY_RIGHT_ALT);
     bool shift = IsKeyDown(KEY_LEFT_SHIFT) || IsKeyDown(KEY_RIGHT_SHIFT);
+    pick_answer(e);
+    /* the slot keys (version 23): a character typed with no modifier while no text field has the keyboard ('blocked' covers a field that has it):
+     * '.', '0'-'9' and 'A'-'Z' pick that slot of the palette bar.  The characters are read whatever happens (a drag) so that none is left over. */
+    if (!blocked) {
+        int ch;
+        while ((ch = GetCharPressed()) > 0)
+            if (!ctrl && !shift && e->mode == M_NONE) key_slot(e, ch);
+    }
     if (!ctrl && e->mode == M_NONE && !blocked) {
-        if (!locked(e)) {
+        if (!locked(e) && shift) {   /* the tools: Shift and their letter */
             for (int t = 0; t < T_COUNT; t++)
-                if (kTool[t].keycode && IsKeyPressed(kTool[t].keycode)) set_tool(e, t == T_LINE && shift ? T_CURVE : (Tool)t);   /* Shift+L is the curve */
-        }
-        for (int k = 0; k < 10 && !locked(e); k++) {
-            /* digits pick an ink only when the font's palette has it ('0' is always there) */
-            int pi = 1 + k;
-            if (IsKeyPressed(KEY_ZERO + k) && (k == 0 || (e->font->hasPalette && e->font->colorUsed[pi]))) e->ink = (char)('0' + k);
+                if (kTool[t].keycode && IsKeyPressed(kTool[t].keycode)) set_tool(e, (Tool)t);
         }
         /* arrows: with a selection they move its pixels (Shift: NUDGE_BIG cells); without one Shift+arrow moves the whole bitmap by a cell */
         bool selected = !sel_empty(&e->sel);
@@ -1881,8 +2304,7 @@ static EditorResult editor_frame(Editor *e, Rectangle area)
         if (IsKeyPressed(KEY_PAGE_UP) && e->gi > 0) e->result = EDITOR_PREV;
         if (IsKeyPressed(KEY_PAGE_DOWN) && e->gi + 1 < e->font->count) e->result = EDITOR_NEXT;
         if (IsKeyPressed(KEY_ESCAPE)) {
-            if (e->showAll) e->showAll = false;
-            else if (e->floating) float_cancel(e);
+            if (e->floating) float_cancel(e);
             else if (e->curveStage) curve_cancel(e);
             else if (e->polyN > 0) poly_cancel(e);
             else if (!sel_empty(&e->sel)) sel_none(e);
@@ -1906,8 +2328,10 @@ static EditorResult editor_frame(Editor *e, Rectangle area)
     if (pvH < 36) pvH = 36;
     Rectangle pv = {area.x, area.y + area.height - pvH, area.width, pvH};
     Rectangle st = {area.x, pv.y - STATUS_H, area.width, STATUS_H};
-    float sw = draw_strip(e, (Rectangle){area.x, area.y + tbH, 0, st.y - (area.y + tbH)});
-    Rectangle cv = {area.x + sw + 12, area.y + tbH + 12, area.width - sw - 24, st.y - (area.y + tbH) - 12 - 4};
+    float barH = bar_height(e, area.width);
+    Rectangle br = {area.x, st.y - barH, area.width, barH};
+    float sw = draw_strip(e, (Rectangle){area.x, area.y + tbH, 0, br.y - (area.y + tbH)});
+    Rectangle cv = {area.x + sw + 12, area.y + tbH + 12, area.width - sw - 24, br.y - (area.y + tbH) - 12 - 4};
     if (cv.height < 20 || cv.width < 20) return e->result;
 
     /* the screen mapping is frozen from mouse-down to mouse-up: a stroke that grows the font box changes the layout
@@ -1921,13 +2345,20 @@ static EditorResult editor_frame(Editor *e, Rectangle area)
 
     e->cv = cv;
     canvas_input(e, cv, mouse);
+    /* the glyph is canonical after every edit (version 23): its pixels and palette in reading order, the slots follow */
+    if (e->mode == M_NONE && !locked(e) && !g->lazy && px_glyph_canonicalize(e->font, g))
+        px_font_compact_palettes(e->font);          /* the palette the stroke made, now renamed, goes from the table */
     draw_canvas(e, cv, mouse);
+    draw_bar(e, br);
 
     /* status line: the same strip as the application's (Th_StatusBar), with a Checker toggle in its reserved end */
     {
-        char pos[32], tool[220], cur[33];
+        char pos[32], tool[240], cur[33], ink[48];
         snprintf(pos, sizeof pos, e->hasHover ? "x %d   y %d" : "x -   y -", e->hx, -1 - e->hy);
-        snprintf(tool, sizeof tool, "%s   ink %c   zoom %dx   bitmap %s%s", e->readOnly ? "View" : kTool[e->tool].name, e->ink, e->zoom,
+        char key = Editor_Ink(e), hx[12];
+        if (e->inkErase) snprintf(ink, sizeof ink, ". (transparent)");
+        else { hex_of(e->inkColor, hx); if (key != '?') snprintf(ink, sizeof ink, "%s (key %c)", hx, key); else snprintf(ink, sizeof ink, "%s (not in this glyph)", hx); }
+        snprintf(tool, sizeof tool, "%s   ink %s   zoom %dx   bitmap %s%s", e->readOnly ? "View" : kTool[e->tool].name, ink, e->zoom,
                  g->w > 0 ? TextFormat("%dx%d at %d,%d", g->w, g->h, g->x, g->y) : "empty",
                  sel_empty(&e->sel) ? "" : TextFormat("   %s %dx%d (%d cells)", e->floating ? "floating" : "selection", e->sel.w, e->sel.h, sel_count(&e->sel)));
         px_glyph_hash(g, cur);
@@ -1941,7 +2372,6 @@ static EditorResult editor_frame(Editor *e, Rectangle area)
 
     draw_preview(e, pv);
 
-    if (e->showAll) draw_popup(e, (Rectangle){area.x, area.y, area.width, TOOLBAR_H + PALETTE_H});
 
     /* tooltip */
     if (!e->tip) e->tip = Th_Tip(&e->tipRect);
@@ -1960,11 +2390,11 @@ static EditorResult editor_frame(Editor *e, Rectangle area)
 EditorResult Editor_UpdateDraw(Editor *e, Rectangle area)
 {
     EditorResult r = editor_frame(e, area);
-    if (r != EDITOR_RUNNING) { curve_commit(e); poly_commit(e); float_drop(e); }
+    if (r != EDITOR_RUNNING) { curve_commit(e); poly_commit(e); float_drop(e); leave_glyph(e); }
     return r;
 }
 
-void Editor_Flush(Editor *e) { if (e) { curve_commit(e); poly_commit(e); float_drop(e); } }
+void Editor_Flush(Editor *e) { if (e) { curve_commit(e); poly_commit(e); float_drop(e); leave_glyph(e); } }
 
 bool Editor_CancelFloat(Editor *e)
 {
@@ -2045,4 +2475,3 @@ int Editor_SelfTest(Editor *e, PxFont *f)
     return fails;
 }
 
-void Editor_DebugOpenPalette(Editor *e) { e->showAll = true; }

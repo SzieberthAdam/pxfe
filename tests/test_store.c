@@ -98,6 +98,28 @@ static void copy_tree(const char *from, const char *to) {
 
 /* ------------------------------------------------------------------ tests */
 
+/* The glyphs' characters have the colours cc[k] (the character PX_PIXELS[1 + k]), as with the font-wide palette of pxfe 21: each glyph gets
+ * its colours in reading order, then the font's other colours (the palette pxfe 21 wrote for a new glyph, so the expected counts stay). */
+static void font_colours(PxFont *f, const uint32_t *cc, int n) {
+    uint32_t map[PX_NUM_PIXELS];
+    for (int k = 0; k < PX_NUM_PIXELS; k++) map[k] = k >= 1 && k - 1 < n ? cc[k - 1] : 0x000000FFu;
+    for (int i = 0; i < f->count; i++) {
+        PxGlyph *g = &f->glyphs[i];
+        if (!g->pix) continue;
+        px_glyph_set_colors(f, g, map);
+        const PxPalette *p = px_glyph_palette(f, g);
+        uint32_t ext[64];
+        int m = p->n;
+        memcpy(ext, p->c, sizeof(uint32_t) * (size_t)m);
+        for (int k = 0; k < n; k++) {
+            bool have = false;
+            for (int j = 0; j < m; j++) if (ext[j] == cc[k]) have = true;
+            if (!have) ext[m++] = cc[k];
+        }
+        px_glyph_set_palette(f, g, ext, m);
+    }
+}
+
 static void test_open_pxfdb(void) {
     char err[PX_ERR_LEN];
     Store *s = NULL;
@@ -210,7 +232,9 @@ static void test_model(void) {
     CHECK(store_load_glyph_bitmaps(c, &f, NULL, 0, err) && !f.glyphs[px_font_find(&f, 0x48)].lazy, "store_load_glyph_bitmaps loads the rest");
     px_font_free(&f);
     CHECK(!store_load_font(c, "00000000000000000000000000000000", NULL, 0, &f, err) && err[0], "an unknown font is an error");
-    CHECK(store_load_font(c, H_GREY, NULL, 0, &f, err) && f.hasPalette && f.color[1] == 0x808080FFu && f.color[2] == 0xFFFFFFFFu && px_font_colors(&f) == 2 && strcmp(f.glyphs[px_font_find(&f, 0x41)].pal, P_GREY) == 0, "grey font with its palette");
+    CHECK(store_load_font(c, H_GREY, NULL, 0, &f, err) && px_glyph_palette(&f, &f.glyphs[px_font_find(&f, 0x41)])->n == 2 &&
+          px_glyph_color(&f, &f.glyphs[px_font_find(&f, 0x41)], '0') == 0x808080FFu && px_glyph_color(&f, &f.glyphs[px_font_find(&f, 0x41)], '1') == 0xFFFFFFFFu &&
+          px_font_colors(&f) == 2 && strcmp(f.glyphs[px_font_find(&f, 0x41)].pal, P_GREY) == 0, "grey font with its palette (the A's own)");
     px_font_free(&f);
     CHECK(store_load_font(c, H_NOASC, NULL, 0, &f, err) && !f.has[PXM_ASCENT] && f.glyphs[px_font_find(&f, 0x41)].x == -1, "no-ascent font, offset -1");
     px_font_free(&f);
@@ -905,9 +929,6 @@ static void test_palettes(void) {
     f.has[PXM_ASCENT] = true; f.m[PXM_ASCENT] = 6;
     f.has[PXM_DESCENT] = true; f.m[PXM_DESCENT] = 2;
     f.symbolic = true;
-    f.hasPalette = true;
-    f.colorUsed[1] = f.colorUsed[2] = f.colorUsed[3] = true;
-    f.color[1] = 0x000000FFu; f.color[2] = 0x808080FFu; f.color[3] = 0xFF000080u;
     PxGlyph g;
     memset(&g, 0, sizeof g);
     g.codepoint = 0x41; g.advance = 4; g.w = 3; g.h = 2;
@@ -916,6 +937,7 @@ static void test_palettes(void) {
     g.codepoint = 0x42; memcpy(g.pix, "0.0.00", 6);
     px_font_add_glyph(&f, &g);
     px_glyph_free(&g);
+    font_colours(&f, (const uint32_t[]){0x000000FFu, 0x808080FFu, 0xFF000080u}, 3);
     StoreSaveResult sr;
     CHECK(store_save_to_memory(s, &f, NULL, 0, &sr, err) && sr.newPxfm, "colour font: saved into memory");
     CHECK(count_rows(s, "palette") == 3, "colour font: its 2 palettes added (the B shares none: it is black only)");
@@ -945,6 +967,47 @@ static void test_palettes(void) {
     px_mkdir_p(TMP "/imp_pal");
     CHECK(store_import_folder(TMP "/ex_pal", TMP "/imp_pal/x.pxfdb", NULL, &b, err) && same_content(s, b), "colour font: the exported folder imports to the same content");
     store_close(b);
+
+    /* a font of 40 colours over its glyphs (a glyph has at most 36): saved into memory, loaded back, the same text; the entry counts 40 */
+    {
+        PxFont m;
+        px_font_init(&m);
+        m.has[PXM_ASCENT] = true; m.m[PXM_ASCENT] = 6;
+        m.has[PXM_DESCENT] = true; m.m[PXM_DESCENT] = 2;
+        for (int i = 0; i < 20; i++) {
+            PxGlyph mg;
+            memset(&mg, 0, sizeof mg);
+            mg.codepoint = 0x61 + i; mg.advance = 3; mg.w = 2; mg.h = 1;
+            mg.pix = (char *)malloc(2); memcpy(mg.pix, "01", 2);
+            int gi = px_font_add_glyph(&m, &mg);
+            px_glyph_free(&mg);
+            uint32_t pc[2] = {0x100000FFu + ((uint32_t)i << 16), 0x00100080u + ((uint32_t)i << 8)};
+            px_glyph_set_palette(&m, &m.glyphs[gi], pc, 2);
+        }
+        StoreSaveResult mr;
+        CHECK(px_font_colors(&m) == 40 && store_save_to_memory(s, &m, NULL, 0, &mr, err) && mr.newPxfm, "40 colours: saved into memory");
+        PxFont mb;
+        CHECK(store_load_font(c, mr.pxfm, NULL, 0, &mb, err) && px_font_colors(&mb) == 40, "40 colours: loaded back, COLORS 40");
+        char mh[33];
+        px_font_hash(&mb, mh);
+        CHECK(strcmp(mh, mr.pxfm) == 0, "40 colours: the same hash");
+        size_t mn;
+        char *mt = store_pxfm_text(c, mr.pxfm, &mn, mh);
+        CHECK(mt && strstr(mt, "COLORS\t40\n") && strcmp(mh, mr.pxfm) == 0, "40 colours: the text from the rows has COLORS 40");
+        free(mt);
+        bool forty = false;
+        StoreEntryList ml;
+        if (store_list_fonts(c, &ml, err)) {
+            for (int i = 0; i < ml.count; i++) if (strcmp(ml.e[i].pxfm, mr.pxfm) == 0) forty = ml.e[i].colors == 40;
+            store_entry_list_free(&ml);
+        }
+        CHECK(forty, "40 colours: the entry has 40 colours (pxfm.colors)");
+        StoreDeletePlan mp;
+        CHECK(store_plan_delete_font(s, mr.pxfm, &mp, err) && mp.nPalettes == 20 && store_apply_delete(s, &mp, err), "40 colours: deleted with its 20 palettes");
+        store_plan_free(&mp);
+        px_font_free(&mb);
+        px_font_free(&m);
+    }
 
     /* deleting the font deletes its palettes */
     StoreDeletePlan plan;
@@ -1008,6 +1071,27 @@ static void test_lib_colors(void) {
     store_close(s);
 }
 
+/* testdata/lib_many.pxfdb: one font of 40 colours over its glyphs (version 22) */
+#define H_MANY "cd17ae6df4a73ab2581ed3fcf3ebf554"
+static void test_lib_many(void) {
+    char err[PX_ERR_LEN];
+    Store *s = NULL;
+    CHECK(store_open_pxfdb("testdata/lib_many.pxfdb", NULL, &s, err), "lib_many: open");
+    if (!s) return;
+    StoreConn *c = store_conn_open(s);
+    PxFont f;
+    CHECK(store_load_font(c, H_MANY, NULL, 0, &f, err), "lib_many: the font of 40 colours loads");
+    char h[33];
+    px_font_hash(&f, h);
+    const uint32_t *cl;
+    CHECK(strcmp(h, H_MANY) == 0 && px_font_colors(&f) == 40 && px_font_color_list(&f, &cl) == 40, "lib_many: its hash, COLORS 40, a colour list of 40");
+    const PxGlyph *ga = &f.glyphs[px_font_find(&f, 0x41)], *gu = &f.glyphs[px_font_find(&f, 0x55)], *gv = &f.glyphs[px_font_find(&f, 0x56)], *gw = &f.glyphs[px_font_find(&f, 0x57)];
+    CHECK(ga->pi == gu->pi && ga->pi == gv->pi && gw->ncol == 36, "lib_many: A, U and V share a palette; W has 36 colours");
+    px_font_free(&f);
+    store_conn_close(c);
+    store_close(s);
+}
+
 int main(void) {
     px_mkdir_p(TMP);
     test_open_pxfdb();
@@ -1023,6 +1107,7 @@ int main(void) {
     test_threads();
     test_palettes();
     test_lib_colors();
+    test_lib_many();
     printf("\n%d passed, %d failed\n", g_pass, g_fail);
     return g_fail ? 1 : 0;
 }

@@ -13,7 +13,7 @@ assert undo 0
 assert epp 0
 
 # the tool: key L, the button, the Curve button
-key l
+key l shift
 wait 3
 assert etool 2
 assert w.Curve 1
@@ -149,13 +149,13 @@ assert undo 0
 drag @ecell:0,5 @ecell:6,5
 wait 3
 assert glyph U+0020 ink 7
-key e
+key e shift
 wait 2
 assert etool 1
 drag @ecell:1,5 @ecell:3,5
 wait 3
 assert glyph U+0020 ink 4
-key l
+key l shift
 wait 2
 assert etool 2
 
@@ -166,10 +166,10 @@ assert etool 9
 click @Line
 wait 3
 assert etool 2
-key l shift
+key u shift
 wait 3
 assert etool 9
-key l
+key l shift
 wait 3
 assert etool 2
 click @Pencil

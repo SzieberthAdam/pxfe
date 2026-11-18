@@ -239,6 +239,19 @@ call :run 137_colour_font "%DB%"
 call :run 137b_colour_font_reload "%DB%"
 call :fresh
 call :run 138_symbolic "%DB%"
+call :fresh
+copy /y testdata\lib_many.pxfdb tests\tmp\e2e.pxfdb >nul
+call :run 139_many_colours "%DB% --font cd17ae6df4a73ab2581ed3fcf3ebf554"
+call :fresh
+call :run 140_palette_keys "%DB% --font %H1%"
+call :fresh
+copy /y testdata\lib_many.pxfdb tests\tmp\e2e.pxfdb >nul
+call :run 141_palette_drag "%DB% --font cd17ae6df4a73ab2581ed3fcf3ebf554"
+call :fresh
+copy /y testdata\lib_many.pxfdb tests\tmp\e2e.pxfdb >nul
+call :run 142_shots_bar_many "%DB% --font cd17ae6df4a73ab2581ed3fcf3ebf554"
+call :fresh
+call :run 143_shots_picker "%DB% --font %H1%"
 
 echo.
 echo %RUNS% scripts run, %FAILS% failed

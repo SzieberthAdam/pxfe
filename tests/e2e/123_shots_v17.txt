@@ -7,22 +7,22 @@ wait 4
 sleep 600
 dblclick @cell:U+0020
 wait 5
-key l shift
+key u shift
 drag @ecell:0,6 @ecell:6,6
 drag @ecell:1,6 @ecell:1,1
 drag @ecell:5,6 @ecell:5,1
 wait 3
-key b
+key b shift
 click @Pixel-perfect
 wait 3
 shot tests/tmp/shots/123_wide_pencil.png
 resize 1110 600
 wait 8
 shot tests/tmp/shots/123_narrow_pencil.png
-key l
+key l shift
 wait 4
 shot tests/tmp/shots/123_narrow_line.png
-key l shift
+key u shift
 wait 4
 drag @ecell:0,5 @ecell:6,5
 drag @ecell:1,5 @ecell:1,1

@@ -1,5 +1,6 @@
 # 132. The eyedropper (version 20), font 408c4d7d (colours 0 and 1; glyph U+0020), unlocked, as in 06b.
-# Key I and the strip's Eyedropper pick the pixel character under the cursor as the ink (the right button too: there is one ink);
+# Shift+I (version 23; I before) and the strip's Eyedropper pick the colour of the pixel under the cursor as the ink (version 22: inks are colours, so the asserts
+# name the colour with einkrgb and the swatches by #RRGGBB, since the font's colour list reorders as the space gains colours); with the Eyedropper tool the right button picks too;
 # '.' (empty space) is an ink of every font; Alt held at the click does the same for the Pencil, Line, Rectangle, Ellipse, Curve, Polygon, Contour and Fill.
 wait 5
 click @Unlock
@@ -9,48 +10,49 @@ key enter
 wait 5
 assert editor 1
 assert editor_glyph U+0020
-assert eink '0
+assert eink '?
+assert einkrgb 0x808080
 
 # two pixels of different colours
-click @ink:1
+click @pal:#FFFFFF
 click @ecell:1,2
 wait 3
-click @ink:0
+click @pal:#808080
 click @ecell:2,2
 wait 3
-assert glyph U+0020 pixel 1 2 1
-assert glyph U+0020 pixel 2 2 0
+assert glyph U+0020 color 1 2 FFFFFF
+assert glyph U+0020 color 2 2 808080
 assert undo 2
 
 # the key and the button; the click picks and changes nothing
-key i
+key i shift
 wait 2
 assert etool 11
 click @ecell:1,2
 wait 3
-assert eink '1
+assert einkrgb 0xFFFFFF
 assert undo 2
 click @ecell:2,2
 wait 3
-assert eink '0
+assert einkrgb 0x808080
 click @ecell:3,5
 wait 3
 assert eink '.
 assert undo 2
 click @ecell:1,2 right
 wait 3
-assert eink '1
+assert einkrgb 0xFFFFFF
 assert etool 11
-key b
+key b shift
 wait 2
 click @Eyedropper
 wait 2
 assert etool 11
 click @ecell:2,2
 wait 3
-assert eink '0
+assert einkrgb 0x808080
 assert undo 2
-assert glyph U+0020 pixel 2 2 0
+assert glyph U+0020 color 2 2 808080
 shot tests/tmp/shots/132_eyedropper.png
 
 # a cell outside the bitmap is empty space: '.'
@@ -59,78 +61,78 @@ wait 3
 assert eink '.
 
 # Alt at the click picks instead of drawing, with each drawing tool, and the tool stays
-key b
-click @ink:1
-assert eink '1
+key b shift
+click @pal:#FFFFFF
+assert einkrgb 0xFFFFFF
 click @ecell:2,2 alt
 wait 3
-assert eink '0
+assert einkrgb 0x808080
 assert etool 0
-assert glyph U+0020 pixel 2 2 0
+assert glyph U+0020 color 2 2 808080
 assert undo 2
-click @ink:1
+click @pal:#FFFFFF
 click @ecell:3,3 alt
 wait 3
 assert eink '.
 assert glyph U+0020 pixel 3 3 .
 assert undo 2
-key l
-click @ink:1
+key l shift
+click @pal:#FFFFFF
 click @ecell:2,2 alt
 wait 3
-assert eink '0
+assert einkrgb 0x808080
 assert etool 2
 assert undo 2
-key r
-click @ink:1
+key r shift
+click @pal:#FFFFFF
 click @ecell:2,2 alt
 wait 3
-assert eink '0
+assert einkrgb 0x808080
 assert etool 3
-key o
-click @ink:1
+key o shift
+click @pal:#FFFFFF
 click @ecell:2,2 alt
 wait 3
-assert eink '0
+assert einkrgb 0x808080
 assert etool 10
-key f
-click @ink:1
+key f shift
+click @pal:#FFFFFF
 click @ecell:2,2 alt
 wait 3
-assert eink '0
+assert einkrgb 0x808080
 assert etool 4
 assert glyph U+0020 pixel 3 3 .
 assert undo 2
-key d
-click @ink:1
+key d shift
+click @pal:#FFFFFF
 click @ecell:2,2 alt
 wait 3
-assert eink '0
+assert einkrgb 0x808080
 assert etool 12
 assert epoly 0
-key c
-click @ink:1
+key c shift
+click @pal:#FFFFFF
 click @ecell:2,2 alt
 wait 3
-assert eink '0
+assert einkrgb 0x808080
 assert etool 13
 assert undo 2
-key l shift
+key u shift
 wait 2
 assert etool 9
-click @ink:1
+click @pal:#FFFFFF
 click @ecell:2,2 alt
 wait 3
-assert eink '0
+assert einkrgb 0x808080
 assert etool 9
 assert ecurve 0
 
 # without Alt the same click draws
-click @ink:1
-key b
+click @pal:#FFFFFF
+key b shift
 click @ecell:3,3
 wait 3
-assert glyph U+0020 pixel 3 3 1
+assert glyph U+0020 color 3 3 FFFFFF
 assert undo 3
 key z ctrl
 key z ctrl

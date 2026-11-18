@@ -50,11 +50,13 @@ static inline bool px_code_is_valid(int32_t c)     { return px_code_is_codepoint
  * row-major, w*h bytes, no terminator, top row first.  A glyph with no ink has w == h == 0, pix == NULL,
  * x == y == 0 (a space).
  *
- * PIXELS IN MEMORY ARE FONT-WIDE.  A pixel character in memory names a colour of the FONT's palette (PxFont.color), not of
- * the glyph's: the editor and the renderers never see the canonical numbering of the files (pxgl.md "Canonical colours").
- * The reader maps each glyph's canonical pixels through its hex palette onto the font-wide characters; the writer renumbers
- * each glyph canonically (reading order) and gives it a palette of its colours in that order (see PALETTES below).
- * A one-colour font (no COLORS line) uses '0' only, drawn in the ink of the theme.
+ * PIXELS IN MEMORY ARE THE GLYPH'S OWN.  A pixel character in memory names a colour of the GLYPH's palette: '0' is its entry 0,
+ * '1' its entry 1, ... ('.' is the background and has no colour).  The palette is an entry of the font's palette table
+ * (PxFont.pals), named by `pi`; glyphs of the same colours share one entry (see PALETTES below).  While editing, the
+ * characters need not be in reading order: the writer renumbers each glyph canonically (pxgl.md "Canonical colours") and
+ * gives it a palette of its colours in that order.  A glyph uses at most 36 colours (the 36 ink characters).
+ * pi 0 is the default palette: black and nothing else.  The glyphs of a one-colour font (no COLORS line) all have it, so
+ * they cost no palette at all; a sample draws a one-colour font in the theme's ink.
  *
  * HASH CACHE.  The pxgl hash of the bitmap is cached in the glyph (hash, cdx, cdy, ncol, order, hashValid) so that
  * px_font_hash() after an edit is cheap on a font of 8000 glyphs.  Whoever changes the PIXELS or the SIZE of a
@@ -70,8 +72,8 @@ static inline bool px_code_is_valid(int32_t c)     { return px_code_is_codepoint
  *
  * LAZY.  px_read_pxfm_lines() gives glyphs with `lazy` set: no bitmap (pix NULL, w = h = 0), only the hash (and the
  * palette hash `pal`); x, y, advance, codepoint are valid.  px_load_glyphs() loads them.  A colour font is never left
- * partly lazy by the loaders: its bitmaps are all loaded at once (colour fonts are small), so the font-wide palette and
- * the COLORS count are always exact. */
+ * partly lazy by the loaders: its bitmaps are all loaded at once (colour fonts are small), so the COLORS count and the font's
+ * colour list are always exact. */
 typedef struct PxGlyph {
     union { int32_t code; int32_t codepoint; };  /* the glyph's code (see CODES above); `codepoint` is the old name */
     int x, y;              /* bitmap bottom-left corner from the pen position on the baseline, y up */
@@ -87,13 +89,18 @@ typedef struct PxGlyph {
     char order[36];        /* cache: those characters in reading order (order[0] becomes '0' in the file, ...) */
     char pal[33];          /* lower-case hash of the hex palette the glyph was READ with ("" none, or a one-colour font); the
                               writer keeps it while its first ncol colours are still the glyph's colours in reading order */
+    int pi;                /* its palette: an index into PxFont.pals (0 = the default palette, black); it means something only
+                              in the font that holds the glyph (a glyph copied into ANOTHER font must be given its palette) */
 } PxGlyph;
 
 typedef struct PxKern { int32_t first, second; int value; } PxKern;
 
-/* A hex palette (spec/hex.md): its colours in the order of the file, 0xRRGGBBAA each (the alpha FF when the line has six
- * digits), and its hash (32 lower-case hex digits). */
-typedef struct PxPalette { char hash[33]; int n; uint32_t *c; } PxPalette;
+/* A palette: its colours in order, 0xRRGGBBAA each (the alpha FF when a hex line has six digits), and the hash of its hex file
+ * (spec/hex.md; 32 lower-case hex digits, "" when the colours are no hex palette: a colour twice).  `draw` is the palette
+ * ready to draw, indexed by px_pixel_index: draw[0] ('.') is transparent, draw[1 + i] the colour of entry i (black past the
+ * end), as r, g, b, a bytes: the layout of raylib's Color, so a renderer casts it to (const Color *) and converts nothing per
+ * pixel.  The writer's lists of palettes (px_font_write_palettes) leave `draw` unset. */
+typedef struct PxPalette { char hash[33]; int n; uint32_t *c; uint8_t draw[PX_NUM_PIXELS][4]; } PxPalette;
 
 /* The optional font-wide integer metrics, in the order of the array below (not of the file). */
 typedef enum PxMetric {
@@ -110,19 +117,19 @@ typedef struct PxFont {
     bool hasRatio; int ratioA, ratioB;  /* RATIO a:b, both positive, coprime */
     bool monospaced;               /* MONOSPACED: what the source says */
     bool symbolic;                 /* SYMBOLIC: the source says it is a symbol font (code points of a private encoding) */
-    /* The FONT-WIDE palette pxfe works with in memory (see PIXELS IN MEMORY above).  hasPalette: a colour font (the glyphs
-     * have colours of their own); else every ink pixel is '0' and is drawn in the theme's ink.  colorUsed[i]: the pixel
-     * character PX_PIXELS[i] (i >= 1; '.' is the background and has no colour) is an ink of the font; color[i] its colour,
-     * 0xRRGGBBAA.  The colours of the used slots are all different. */
-    bool hasPalette;
-    bool colorUsed[PX_NUM_PIXELS];
-    uint32_t color[PX_NUM_PIXELS];
     int colorsRead;                /* the COLORS of the file the font was read from (0: none); the writer repeats it while a
                                       glyph with a palette is lazy (a parsed, unloaded font) */
-    struct PxPalette *pals;        /* the hex palettes the glyphs were read with (PxGlyph.pal names one), with their colours */
+    /* THE PALETTE TABLE.  Every palette the glyphs have, each content once (interned): a glyph names its entry by
+     * PxGlyph.pi.  Entries never change: a glyph that takes another colour is pointed at another entry, found or added
+     * (copy on write, px_glyph_add_color), so glyphs of the same colours share one.  pals[0] is the default palette (black)
+     * while the table exists; it is empty (npals 0) while every glyph has the default.  An entry no glyph names any more
+     * stays until px_font_compact_palettes (px_font_copy compacts its copy: undo snapshots), but the palettes the glyphs
+     * were read with stay while a PxGlyph.pal names them (the writer reuses them). */
+    PxPalette *pals;
     int npals, palCap;
-    bool palDeferred;              /* the read palettes together have more than 36 colours: the font-wide palette is made from
-                                      the colours the glyphs use, once every bitmap is loaded (px_font_finish_palette) */
+    unsigned palGen;               /* new whenever an index of the table may name another palette (a compaction, a copy) */
+    /* cache of px_font_color_list (mutable, rebuilt when the glyphs' palettes changed) */
+    uint32_t *clist; int nclist, clistCap; unsigned clistKey; bool clistOk;
     PxGlyph *glyphs;               /* kept sorted by code (stable): code points, then the uncoded glyphs F00000.., then the default glyph FFFFFF */
     int count, capacity;
     PxKern *kern; int kernCount, kernCap;  /* kerning pairs (codes; an F-code names an uncoded glyph, FFFFFF the default glyph);
@@ -146,9 +153,9 @@ bool px_is_hash(const char *s, bool upper, bool lower);  /* 32 hex digits of the
 
 /* ------------------------------------------------------------------ font lifecycle */
 
-void px_font_init(PxFont *f);                /* nothing stated, default palette, no glyphs, no default glyph */
+void px_font_init(PxFont *f);                /* nothing stated, no palette, no glyphs, no default glyph */
 void px_font_free(PxFont *f);
-bool px_font_copy(PxFont *dst, const PxFont *src);      /* deep copy (lazy glyphs stay lazy) */
+bool px_font_copy(PxFont *dst, const PxFont *src);      /* deep copy (lazy glyphs stay lazy); the copy's palette table is compacted */
 void px_glyph_free(PxGlyph *g);
 bool px_glyph_copy(PxGlyph *dst, const PxGlyph *src);   /* deep copy */
 /* Index of the first glyph with this code (binary search), or -1. */
@@ -213,18 +220,20 @@ char *px_pxfm_text(const PxFont *f, size_t *len, char hashOut[33]);
 void px_font_hash(const PxFont *f, char out[33]);
 
 /* ------------------------------------------------------------------ colours: hex palettes, canonical glyphs, COLORS
- * PALETTES.  On READ the hex palettes the glyph lines name are kept in the font (pals) and joined into the font-wide palette:
- * the colours in the order they first appear, glyph by glyph (in code order) and line by line of each glyph's WHOLE palette,
- * get '0', '1', ...  This needs no bitmap.  Should the whole palettes together have more than 36 colours, only the lines the
- * glyphs use count (the first k of each, k the glyph's colours), once every bitmap is loaded; a font that uses more than 36
- * colours even so is refused with a message (pxfe cannot edit it).  The loaders load a colour font whole, and map each
- * glyph's canonical pixels onto the font-wide characters as it is loaded.
+ * PALETTES.  On READ the hex palettes the glyph lines name are put in the font's table (pals), whole (all their lines), and
+ * each glyph is pointed at the palette it was read with: the canonical pixels of its file are already its own characters,
+ * so nothing is mapped.  A colour font is loaded whole, so that COLORS can be checked.  A font has any number of colours;
+ * a glyph at most 36 (its ink characters).
  * On WRITE every glyph is renumbered in reading order.  Its palette is the one it was read with while that palette's first
  * k lines are its colours in that order (so an unchanged font writes the same bytes, also when a palette is shared and longer
  * than a glyph needs).  Else it is made as pixelglyphlib's store.canonical_pixels permutes a glyph's palette: the glyph's
- * colours in their new order, then the other lines of its old palette (when that has all of the glyph's colours) or else of
- * the font-wide palette, in their order.  COLORS is the number of different colours the glyphs use; a font of one colour
- * writes no colour at all (its pixels are '0': black). */
+ * colours in their new order, then the other entries of its palette in memory in their order, without repeats (the glyph view
+ * drops the unused slots it made before a save, see CANONICAL IN MEMORY).  COLORS is the
+ * number of different colours the glyphs use; a font of one colour writes no colour at all (its pixels are '0': black).
+ * The FONT'S COLOUR LIST (px_font_color_list, the ink chooser) is the distinct colours of the glyphs' palettes other than the
+ * default one, glyph by glyph in the font's order and entry by entry; just black when there is none. */
+
+#define PX_GLYPH_MAX_COLORS 36
 
 /* A hex palette file, read strictly (hex.md "Errors": ASCII, RRGGBB or RRGGBBAA in upper case with no alpha FF, at least one
  * line, no empty line, no colour twice; line ends and trailing blanks as in the canonical form).  *colors is malloc'd. */
@@ -233,22 +242,71 @@ bool px_hex_parse(const char *data, size_t len, uint32_t **colors, int *n, char 
 char *px_hex_text(const uint32_t *colors, int n, size_t *len, char hash[33]);
 /* Whether n pixel characters ('.' empty) are numbered in reading order from '0' (pxgl.md "Canonical colours"). */
 bool px_pixels_canonical(const char *pix, size_t n);
-/* Keeps a palette read for the font (a copy; a palette of the same hash is kept once).  False on out of memory. */
-bool px_font_add_palette(PxFont *f, const char *hash, const uint32_t *colors, int n);
+/* Puts a palette in the font's table, its content once: its index (>= 1), or -1 (out of memory, n < 1).  The hash of an entry
+ * is that of its colours: px_font_add_palette's `hash` (of a palette read) is not needed and not checked. */
+int  px_font_intern_palette(PxFont *f, const uint32_t *colors, int n);
+int  px_font_add_palette(PxFont *f, const char *hash, const uint32_t *colors, int n);
+/* The entry of the table whose hash this is (a palette the glyphs were read with), or NULL. */
 const PxPalette *px_font_find_palette(const PxFont *f, const char *hash);
-/* After the palettes the glyph lines name were added and before any bitmap is loaded: the font-wide palette from them (see
- * PALETTES).  An error when a glyph names a palette the font has not got. */
+/* The palette of a glyph (never NULL: the default palette when pi is 0 or out of range). */
+const PxPalette *px_glyph_palette(const PxFont *f, const PxGlyph *g);
+/* The colour of a pixel character of the glyph (0 for '.', black past its palette). */
+uint32_t px_glyph_color(const PxFont *f, const PxGlyph *g, char c);
+/* The entry (0..35) of the glyph's palette that has this colour, or -1. */
+int  px_glyph_find_color(const PxFont *f, const PxGlyph *g, uint32_t color);
+/* The entry (0..35) the glyph draws a colour with: its own when it has it, else the colour takes a new entry at the end (version 23:
+ * unused entries are kept), or, when the palette has 36 entries, the first one no pixel uses; the glyph is pointed at the palette so
+ * made (copy on write: found or added in the table).  A glyph of the default palette is given a palette of its own (black too, unless
+ * it has no ink: then the new colour alone).  PX_COLOR_FULL when its 36 entries are all in use by its pixels, -1 on out of memory. */
+#define PX_COLOR_FULL (-2)
+int  px_glyph_add_color(PxFont *f, PxGlyph *g, uint32_t color);
+/* The same for n colours at once (pasted pixels): slots[i] gets the entry of colors[i]; a new colour never takes the entry another
+ * of them got.  0, or PX_COLOR_FULL (nothing changed) when they do not all fit, -1 on out of memory.  px_glyph_colors_fit only
+ * tells whether they would. */
+int  px_glyph_add_colors(PxFont *f, PxGlyph *g, const uint32_t *colors, int n, int *slots);
+bool px_glyph_colors_fit(const PxFont *f, const PxGlyph *g, const uint32_t *colors, int n);
+/* Points the glyph at the palette of these colours (found or added); false on out of memory. */
+bool px_glyph_set_palette(PxFont *f, PxGlyph *g, const uint32_t *colors, int n);
+/* The glyph's pixels are characters whose colours charColor gives (indexed by px_pixel_index, like a font-wide palette): they
+ * are renumbered in reading order, each colour once, and the glyph gets the palette of those colours.  A glyph without ink
+ * keeps its palette.  For importers, old drafts and tests. */
+bool px_glyph_set_colors(PxFont *f, PxGlyph *g, const uint32_t charColor[PX_NUM_PIXELS]);
+/* CANONICAL IN MEMORY (version 23).  The glyph view keeps the glyph it edits canonical after every edit: its pixels numbered in
+ * reading order and its palette in the same order, so entry i is the colour of pixel character i; the entries no pixel uses (the
+ * view's "unused slots": a colour added with "+", all its pixels erased, the rest of a longer palette it was read with) follow
+ * the used ones in their order.  The glyph view drops the unused entries it made when it leaves the glyph or the font is saved
+ * (Editor_Flush), so a file gets them only when the palette it was read with (or one shared with other glyphs) is kept.
+ * px_glyph_canonicalize renumbers pixels and palette so (no change, false, when they are so already; a colour twice in the palette
+ * becomes one entry); px_glyph_used_colors is the number of colours the pixels use (k: entries 0..k-1 of a canonical glyph).
+ * px_glyph_add_slot appends a colour as an unused entry: its entry, the existing one when the glyph has it, PX_COLOR_FULL at 36 entries.
+ * px_glyph_replace_color gives entry `slot` another colour (every pixel of it changes); a colour the glyph has already in entry j:
+ * the pixels of j join the slot and entry j goes; then canonical; 0, -1 for a bad slot or out of memory.
+ * px_glyph_trim_palette drops the unused entries (an empty glyph goes back to the default palette); true when it changed. */
+bool px_glyph_canonicalize(PxFont *f, PxGlyph *g);
+int  px_glyph_used_colors(const PxGlyph *g);
+int  px_glyph_add_slot(PxFont *f, PxGlyph *g, uint32_t color);
+int  px_glyph_replace_color(PxFont *f, PxGlyph *g, int slot, uint32_t color);
+bool px_glyph_trim_palette(PxFont *f, PxGlyph *g);
+/* The font's colour list (see PALETTES): *out points into the font's cache, valid until the font changes; its length (>= 1). */
+int  px_font_color_list(const PxFont *f, const uint32_t **out);
+/* Index of a colour in the font's colour list, or -1. */
+int  px_font_color_index(const PxFont *f, uint32_t color);
+/* A colour font: its colour list is more than black alone (or it was read with COLORS and is not loaded).  A sample draws a
+ * font that is not one in the theme's ink. */
+bool px_font_is_colour(const PxFont *f);
+/* Drops the table entries no glyph names (by pi, or by pal: a palette read) and renumbers pi. */
+void px_font_compact_palettes(PxFont *f);
+/* After the palettes the glyph lines name were added and before any bitmap is loaded: each glyph is pointed at its palette.
+ * An error when a glyph names a palette the font has not got. */
 bool px_font_adopt_palettes(PxFont *f, char err[PX_ERR_LEN]);
 /* True when some glyph line names a palette (a colour font as read): its loaders load every bitmap at once. */
 bool px_font_has_glyph_palettes(const PxFont *f);
 /* A bitmap just loaded in the canonical numbering of its file: checked (reading order, a palette long enough, a glyph of
- * several colours only with a palette) and mapped onto the font-wide characters; the colour cache is filled.  The caller has
- * set pix, w, h, hash and hashValid. */
+ * several colours only with a palette); the colour cache is filled.  The caller has set pix, w, h, hash and hashValid. */
 bool px_glyph_from_canonical(PxFont *f, PxGlyph *g, char err[PX_ERR_LEN]);
-/* When no glyph is lazy any more: a deferred font-wide palette is made and the glyphs mapped, and the COLORS read is
- * checked against the colours the glyphs use.  Nothing while a glyph is lazy. */
+/* When no glyph is lazy any more: the COLORS read is checked against the colours the glyphs use.  Nothing while a glyph is lazy. */
 bool px_font_finish_palette(PxFont *f, char err[PX_ERR_LEN]);
-/* The COLORS the writer writes: the different colours the glyphs use, 0 for a font of one colour (or none). */
+/* The COLORS the writer writes: the different colours the glyphs use (any number), 0 for a font of one colour (or none). */
 int  px_font_colors(const PxFont *f);
 /* The palettes the writer names (each once), with their colours: what px_save_final writes and the store inserts.
  * *out is malloc'd (free with px_palettes_free); returns the count, -1 on out of memory. */
@@ -291,12 +349,13 @@ bool px_save_final(const PxFont *f, const char *libRoot, char hashOut[33], char 
  *   ORIGINALPXTF	<original pxtf hash>	<variant number>    (absent: a font without typeface)
  *   PXTF	<one line of the duplicated typeface's canonical text, escaped>   (one per line; absent: none)
  *   <metric lines as in pxfm: ASCENT .. XHEIGHT, RATIO, MONOSPACED, SYMBOLIC, KERNING (codes, F-codes allowed)>
- *   COLOR	<pixel>	<RRGGBBAA>       (pxfe's own: the font-wide palette, a line per ink character; none: one colour;
- *                                    the line for '.' an older draft has is ignored)
+ *   COLOR	<pixel>	<RRGGBBAA>       (only in drafts of pxfe 21, its font-wide palette: the glyphs of such a draft are
+ *                                    given palettes of their own when it is loaded; the line for '.' is ignored)
  *   PALETTE	<HASH>	<RRGGBBAA,...>  (a palette the glyphs were read with, its colours in order)
  *   DEFAULT	<code>                  (default glyph, absent: none)
  *   DANGLINGDEF	<x,y>	<advance>[	<hash>]
- *   GLYPH	<code, 6 hex digits>	<x>,<y>	<advance>	<w>x<h>	<0|1 asDrawn>[	<HASH of the palette it was read with>]
+ *   GLYPH	<code, 6 hex digits>	<x>,<y>	<advance>	<w>x<h>	<0|1 asDrawn>[	<HASH of the palette it was read with, or ->[	<RRGGBBAA,...>]]
+ *                                   (the last field: the glyph's palette in memory; absent: the default palette)
  *   	<row>  (h rows, tab-indented; none when w==h==0)
  * Glyph blocks keep the glyph array order.  The hashes in a draft are upper case. */
 struct PxtfTypeface;

@@ -11,12 +11,12 @@ assert editor_glyph U+0020
 assert glyph U+0020 empty
 assert undo 0
 
-key c
+key c shift
 wait 2
 assert etool 13
 assert w.Filled 1
 assert efilled 0
-key b
+key b shift
 wait 2
 click @Contour
 wait 2
@@ -138,11 +138,11 @@ wait 3
 assert glyph U+0020 empty
 
 # clipped to the selection; the bitmap grows outside the box
-key m
+key m shift
 drag @ecell:1,1 @ecell:2,2
 wait 3
 assert eselcount 4
-key c
+key c shift
 move @ecell:0,0
 mousedown
 move @ecell:3,0

@@ -10,11 +10,11 @@ assert editor_glyph U+0020
 assert glyph U+0020 empty
 
 # columns 1..2 and rows 2..4 are selected (6 cells): the fill covers those and no others
-key m
+key m shift
 drag @ecell:1,2 @ecell:2,4
 wait 3
 assert eselcount 6
-key f
+key f shift
 click @ecell:1,2
 wait 3
 assert glyph U+0020 ink 6
@@ -29,11 +29,11 @@ wait 3
 assert glyph U+0020 empty
 
 # a click outside the selection fills nothing and takes no undo step
-key m
+key m shift
 drag @ecell:1,2 @ecell:2,4
 wait 3
 assert eselcount 6
-key f
+key f shift
 click @ecell:3,6
 wait 3
 assert glyph U+0020 empty
@@ -54,10 +54,10 @@ wait 3
 assert glyph U+0020 empty
 
 # not contiguous, the global fill is clipped as well
-key m
+key m shift
 drag @ecell:1,2 @ecell:2,4
 wait 3
-key f
+key f shift
 click @Contiguous
 click @ecell:2,3
 wait 3
@@ -71,14 +71,14 @@ wait 2
 assert econtig 1
 
 # the selection splits the empty space: two rectangles make two rooms, and the fill takes the one that was clicked
-key m
+key m shift
 drag @ecell:0,0 @ecell:1,1
 wait 3
 assert eselcount 4
 drag @ecell:3,6 @ecell:3,7 shift
 wait 3
 assert eselcount 6
-key f
+key f shift
 click @ecell:0,0
 wait 3
 assert glyph U+0020 ink 4
@@ -89,11 +89,11 @@ wait 3
 assert glyph U+0020 empty
 
 # without a selection the fill covers the whole glyph box again
-key m
+key m shift
 click @ecell:3,3
 wait 3
 assert esel none
-key f
+key f shift
 click @ecell:1,1
 wait 3
 assert glyph U+0020 ink 32

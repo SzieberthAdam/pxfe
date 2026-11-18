@@ -1,15 +1,15 @@
 # pxfe handoff (2026-11-18)
 
-Versions 5 to 21 are implemented: Load, Save, Import, Export (5), navigation (6), views (7), the design system with Noto Sans and GNU Unifont (8), font layers (9), importing a font file (10), the default glyph as a glyph of its own (11), locks instead of duplicates (12), importing a picture of a font (13) and moving the baseline and editing a glyph's facts (14) the Colours filter, typing with the mouse away and press-and-release (15) selection and moving in the glyph view (16), line, curve and pixel-perfect (17), the tool strip (18), rectangle and ellipse (19), fill, eyedropper, polygon and contour (20), and hex palettes, COLORS and SYMBOLIC of pixelglyphlib's spec commit 5dd97ca2c4 (21).
+Versions 5 to 23 are implemented: Load, Save, Import, Export (5), navigation (6), views (7), the design system with Noto Sans and GNU Unifont (8), font layers (9), importing a font file (10), the default glyph as a glyph of its own (11), locks instead of duplicates (12), importing a picture of a font (13) and moving the baseline and editing a glyph's facts (14) the Colours filter, typing with the mouse away and press-and-release (15) selection and moving in the glyph view (16), line, curve and pixel-perfect (17), the tool strip (18), rectangle and ellipse (19), fill, eyedropper, polygon and contour (20), hex palettes, COLORS and SYMBOLIC of pixelglyphlib's spec commit 5dd97ca2c4 (21), per-glyph palettes (22), and the palette bar, canonical glyph palettes and the colour picker (23).
 The design is in [DESIGN.md](DESIGN.md), one section per version; "Version 5: Load, Save, Import, Export" replaces the storage tiers, the save pipeline and the drafts of version 4.
 pxfe is meant to run on Windows, macOS and Linux; today it builds on Windows only (`build.bat`, `vendor/sqlite3/libsqlite3.a`, `src/winfile.c`).
 The files of `handoff/` are the reports of the version 4 agents, kept for history.
 
 ## State
 
-- `build.bat e2e` builds with no warnings.
-- `build.bat test` passes: 177 pxfont, 44 selection, 110 raster, 249 outline, 148 bmsrc, 86 fit, 62 sheet, 120 fsettings, 101 pxtf and 193 store checks, 0 failed.
-- `tests\e2e\run_all.bat` passes: 112 scripts, 0 failed (version 11 added 104 and 104b, version 12 added 105 and 105b, version 13 added 106, version 14 added 107 and 108, version 15 added 109, 110, 110b and 111, version 16 added 112 to 116, version 17 added 117 to 122, version 18 added 124, version 19 added 125 to 129, version 20 added 130 to 136, version 21 added 137, 137b and 138).
+- `build.bat` and `build.bat e2e` build with no warnings.
+- `build.bat test` passes: 33 colormath, 243 pxfont, 44 selection, 110 raster, 249 outline, 148 bmsrc, 86 fit, 62 sheet, 120 fsettings, 101 pxtf and 203 store checks, 0 failed.
+- `tests\e2e\run_all.bat` passes: 117 scripts, 0 failed (version 11 added 104 and 104b, version 12 added 105 and 105b, version 13 added 106, version 14 added 107 and 108, version 15 added 109, 110, 110b and 111, version 16 added 112 to 116, version 17 added 117 to 122, version 18 added 124, version 19 added 125 to 129, version 20 added 130 to 136, version 21 added 137, 137b and 138, version 22 added 139, version 23 added 140 to 143).
 - `tests\e2e\run_reallib.bat` loads `pixelglyphlib\pxfdb.pxfdb` read-only and imports the folder into `tests\tmp\real.pxfdb`; see the report of the last run for its timings.
 - Plain `build.bat` fails only at the link step when a running `pxfe.exe` locks the file; closing it is enough.
 
@@ -393,17 +393,17 @@ The behaviour is modelled on common pixel editors; the code is pxfe's own (a tex
 - `src/play.inc`: `assert epoly N`, `assert econtig 0|1`.
 - Tests: `130_fill`, `131_fill_clip`, `132_eyedropper`, `133_polygon`, `134_contour`, `135_tools_locked`, `136_strip_v20`; `129_strip_order` has the new order, `124_tool_strip` and `129_strip_order` use a window of 1110 x 520 for the short case, `121_clip_to_selection` expects the clipped Fill.
 
-The complete shortcuts of the glyph view:
+The complete shortcuts of the glyph view (as of version 23):
 
 | Key | What it does |
 | --- | --- |
-| B, E | Pencil, Eraser |
-| L, Shift+L | Line, Curve |
-| R, O | Rectangle, Ellipse |
-| D, C | Polygon, Contour |
-| F, I | Fill (paint bucket), Eyedropper |
-| M, Q, W, V | Marquee, Lasso, Magic Wand, Move |
-| 0 to 9 | pick that ink when the font's palette has it |
+| Shift+B, Shift+E | Pencil, Eraser |
+| Shift+L, Shift+U | Line, Curve |
+| Shift+R, Shift+O | Rectangle, Ellipse |
+| Shift+D, Shift+C | Polygon, Contour |
+| Shift+F, Shift+I | Fill (paint bucket), Eyedropper |
+| Shift+M, Shift+Q, Shift+W, Shift+V | Marquee, Lasso, Magic Wand, Move |
+| `.`, `0`-`9`, `A`-`Z` | pick that slot of the palette bar as the ink (version 23; the tools were plain letters and the Curve Shift+L before) |
 | Alt at the click | with the Pencil, Line, Curve, Rectangle, Ellipse, Polygon, Contour or Fill: pick the ink under the cursor, draw nothing, keep the tool |
 | Right button | draws with `.` (pencil, line, curve, rectangle, ellipse, polygon, contour, fill) |
 | Shift | Line and Curve ends and Polygon edges: clean angles; Rectangle and Ellipse: a square or circle; Pencil: a line from the last cell; with the selection tools: add |
@@ -456,6 +456,49 @@ Things to know:
 
 - A colour font is read whole (every glyph and palette) when it is opened; fonts of one colour stay lazy.
 - A font of more than 36 colours is refused with a message; the editor's palette has 36 characters.
+  Version 22 lifts this (a glyph has at most 36 colours, a font any number).
 - A pxfdb made before hex palettes is refused when it is opened ("made by an older pixelglyphlib … rebuild it"); pxfe does not migrate it.
   In `pixelglyphlib`, `pxfdb.pxfdb` is of the new schema and opens; `pxfdb-with-symbols.pxfdb` and `pxfdb-without-symbols.pxfdb` are of the old one and are refused.
-- Not done: a glyph's palette is not shown or edited on its own.
+- Not done: a glyph's palette is not shown or edited on its own (done in version 22).
+
+## Version 22: per-glyph palettes
+
+The design is in the last section of [DESIGN.md](DESIGN.md), "Version 22: per-glyph palettes".
+Each glyph has its own palette in memory (at most 36 colours), so a font may have any number of colours; the palettes are interned in a shared table and glyphs point at entries.
+
+- `src/pxfont.c` and `.h`: the palette table (`PxFont.pals`, entry 0 the default black palette, `PxGlyph.pi`, `palGen`), the ready-to-draw `PxPalette.draw`, copy on write (`px_font_intern_palette`, `px_glyph_add_color`, `px_glyph_add_colors`, `px_glyph_colors_fit`, `px_glyph_set_palette`, `px_glyph_set_colors`), lookups (`px_glyph_palette`, `px_glyph_color`, `px_glyph_find_color`), the cached colour list (`px_font_color_list`, `px_font_color_index`, `px_font_is_colour`), `px_font_compact_palettes`, reading without remapping, the writer's palette from the glyph's own, drafts with a palette per GLYPH line (pxfe 21 drafts still load); `hasPalette`, `colorUsed`, `color` and `palDeferred` are gone.
+- `src/store.c`: no limit on the colours of a build's font.
+- `src/editor.c` and `.h`: the ink is a colour (`Editor_InkColor`), new colours go into the glyph's palette (37th refused with a toast), the eyedropper picks colours, the swatch strip and the All popup show the font's colour list, clipboard and float carry colours.
+- `src/main.c`, `src/sample.c`: draw with the glyph's palette; undo snapshots compact the table.
+- `src/fitdoc.inc`: a picture gives each glyph its palette.
+- `src/play.inc`: `palettes`, `epal`, `ecolors`, `einkrgb`, `assert glyph … color x y`.
+- `tests/make_testdata.c`: `testdata/lib_many.pxfdb`, a font of 40 colours (`cd17ae6d…`); the other test data is unchanged.
+- Tests: `test_pxfont.c` and `test_store.c` (glyph palettes, 40 colours), `139_many_colours`; `06b_palette` and `132_eyedropper` changed (see the e2e README).
+
+Things to know:
+
+- The font's colour list is in order of first appearance (glyph order, then palette order), so it can reorder while drawing; the ink, a colour, stays.
+- Fonts of one colour keep entry 0 for every glyph and stay lazy; a colour font is still read whole when opened.
+- Unused palette entries stay in the table until the next undo snapshot compacts it.
+- There is no picker for a colour the font does not have yet.
+
+## Version 23: the palette bar and the colour picker
+
+The design is in the last section of [DESIGN.md](DESIGN.md), "Version 23: the palette bar and the colour picker", with the rule "one component per kind of control" in "Version 8: design system" and the picker in its component catalogue.
+
+- `src/colormath.c` and `.h` (new, no raylib): sRGB gamma, HSV, HSL, CIE Lab (D65), packing, hex, luminance.
+- `src/colorpick.c` and `.h` (new): the colour picker of the design system (`Th_ColorPickOpen`, `Th_ColorPickTake`, `Th_ColorPickIsOpen`, `Th_ColorPickDraw`, `Th_ColorPickMode`, `Th_ColorPickSetMode`, `Th_ColorPickValue`).
+- `src/pxfont.c` and `.h`: `px_glyph_canonicalize`, `px_glyph_used_colors`, `px_glyph_add_slot`, `px_glyph_replace_color`, `px_glyph_trim_palette`; a new colour is appended to the glyph's palette (an unused entry is taken only at 36 entries); the writer is unchanged.
+- `src/editor.c` and `.h`: the palette bar under the canvas (row 1 `.`, the slots and `+`; the font's other colours below), drag and drop, double-click edit, the reorder animation, the slot keys, Shift+letter tools (Curve Shift+U), the open glyph kept canonical, the unused-slot rule (`leave_glyph`, `remember_p0`), the status line's ink; the ink strip, the All popup and `Editor_DebugOpenPalette` are gone; new `Editor_BarRows`, `Editor_BarExtras`; `Editor_Ink` is the ink's slot.
+- `src/main.c`: draws the picker last, blocks the rest under it, keeps `pickerMode` in `[app]`.
+- `src/play.inc`: `ebarrows`, `ebarextras`, `eunused`, `eslotof:RRGGBB`, `eslotused:N`, `epicker`, `epickermode`, `epickerrgb`, `epickera`.
+- `build.bat`: builds and runs `tests/test_colormath.c`.
+- Tests: `test_colormath.c`, `test_canonical_palettes` in `test_pxfont.c`, e2e `140_palette_keys`, `141_palette_drag`, `142_shots_bar_many`, `143_shots_picker`; every script that pressed a tool key now presses Shift+letter (`08a_quit_prompt` and `44_layers_pixels` keep a plain `key l` on purpose: it must change nothing); `06_editor`, `06b_palette`, `132_eyedropper` and `139_many_colours` use the bar.
+
+Things to know:
+
+- Slot keys come from `GetCharPressed` (in the e2e build `Play_GetChar`), so a script picks slot 3 with `type 3`, not `key 3`; tools are `key b shift`.
+- The glyph view canonicalizes the open glyph after every frame without a drag and then compacts the palette table, so `assert palettes` counts no leftover entry.
+- Unused slots live while the glyph is open; leaving it keeps them only when they belong to the palette the glyph was opened with.
+- The picker is a global modal: while it is open `HandleShortcuts` returns early and the views are blocked; its first frame ignores clicks and keys.
+- Not done: the Layers panel's layer colour still uses its hex field, not the picker; slots cannot be reordered or deleted by hand.

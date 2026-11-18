@@ -11,11 +11,11 @@ assert editor_glyph U+0020
 assert glyph U+0020 empty
 
 # the pencil: a stroke across row 3 is drawn in the three selected cells only
-key m
+key m shift
 drag @ecell:1,2 @ecell:3,5
 wait 3
 assert eselcount 12
-key b
+key b shift
 wait 2
 assert etool 0
 assert eselcount 12
@@ -48,9 +48,9 @@ wait 3
 assert glyph U+0020 empty
 
 # the line
-key m
+key m shift
 drag @ecell:1,2 @ecell:3,5
-key l
+key l shift
 drag @ecell:-1,4 @ecell:6,4
 wait 3
 assert glyph U+0020 ink 3
@@ -62,9 +62,9 @@ key z ctrl
 wait 3
 
 # the rectangle: its outline touches the selection at row 2 and column 1; the Filled toggle fills
-key m
+key m shift
 drag @ecell:1,2 @ecell:3,5
-key r
+key r shift
 drag @ecell:1,2 @ecell:5,6
 wait 3
 assert glyph U+0020 ink 6
@@ -77,9 +77,9 @@ assert glyph U+0020 pixel 2 3 .
 assert undo 1
 key z ctrl
 wait 3
-key m
+key m shift
 drag @ecell:1,2 @ecell:3,5
-key r
+key r shift
 click @Filled
 drag @ecell:0,0 @ecell:6,7
 wait 3
@@ -94,9 +94,9 @@ click @Filled
 assert efilled 0
 
 # the curve: an arch from (0,7) to (6,7) that rises to row 2: only the cells inside the selection are drawn
-key m
+key m shift
 drag @ecell:1,2 @ecell:3,5
-key l shift
+key u shift
 drag @ecell:0,7 @ecell:6,7
 drag @ecell:1,7 @ecell:1,0
 drag @ecell:5,7 @ecell:5,0
@@ -113,15 +113,15 @@ wait 3
 assert glyph U+0020 empty
 
 # the eraser and the right button erase only inside: two inked rows first (no selection), then the selection
-key b
+key b shift
 drag @ecell:0,3 @ecell:6,3
 drag @ecell:0,4 @ecell:6,4
 wait 3
 assert glyph U+0020 ink 14
 assert undo 2
-key m
+key m shift
 drag @ecell:1,2 @ecell:3,5
-key e
+key e shift
 drag @ecell:0,3 @ecell:6,3
 wait 3
 assert glyph U+0020 ink 11
@@ -129,7 +129,7 @@ assert glyph U+0020 pixel 2 3 .
 assert glyph U+0020 pixel 0 3 0
 assert glyph U+0020 pixel 4 3 0
 assert undo 3
-key b
+key b shift
 drag @ecell:0,4 @ecell:6,4 right
 wait 3
 assert glyph U+0020 ink 8
@@ -141,7 +141,7 @@ assert eselcount 12
 assert esel bounds 1 2 3 4
 
 # the fill is clipped too (version 20): a click outside the selection fills nothing
-key f
+key f shift
 click @ecell:6,0
 wait 3
 assert glyph U+0020 pixel 6 1 .
@@ -153,7 +153,7 @@ key z ctrl
 key d ctrl
 wait 3
 assert esel none
-key b
+key b shift
 drag @ecell:0,6 @ecell:6,6
 wait 3
 assert glyph U+0020 pixel 0 6 0
@@ -170,10 +170,10 @@ key z ctrl
 wait 3
 assert glyph U+0020 empty
 assert undo 0
-key m
+key m shift
 drag @ecell:5,6 @ecell:7,7
 wait 3
-key b
+key b shift
 drag @ecell:3,6 @ecell:7,6
 wait 3
 assert glyph U+0020 pixel 5 6 0

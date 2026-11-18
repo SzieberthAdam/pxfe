@@ -11,7 +11,7 @@ assert editor_glyph U+0020
 assert glyph U+0020 empty
 assert undo 0
 
-key f
+key f shift
 wait 2
 assert etool 4
 assert w.Contiguous 1
@@ -19,7 +19,7 @@ assert w.8-way 1
 assert econtig 1
 assert w.Filled 0
 assert w.Pixel-perfect 0
-key b
+key b shift
 wait 2
 assert w.Contiguous 0
 click @Fill
@@ -38,11 +38,11 @@ assert glyph U+0020 empty
 assert undo 0
 
 # contiguous: a ring (the rectangle's outline, 4 x 4 = 12 cells) divides the box; inside it is 4 cells, outside 16
-key r
+key r shift
 drag @ecell:0,0 @ecell:3,3
 wait 3
 assert glyph U+0020 ink 12
-key f
+key f shift
 click @ecell:1,1
 wait 3
 assert glyph U+0020 ink 16
@@ -64,11 +64,11 @@ assert glyph U+0020 ink 12
 assert undo 1
 
 # the right button fills with '.': the ring is cleared, a dot elsewhere stays (contiguous)
-key b
+key b shift
 click @ecell:2,6
 wait 3
 assert glyph U+0020 ink 13
-key f
+key f shift
 click @ecell:0,0 right
 wait 3
 assert glyph U+0020 ink 1
@@ -110,11 +110,11 @@ key z ctrl
 wait 3
 assert glyph U+0020 empty
 assert undo 0
-key o
+key o shift
 drag @ecell:0,0 @ecell:2,2
 wait 3
 assert glyph U+0020 ink 4
-key f
+key f shift
 click @ecell:0,0
 wait 3
 assert glyph U+0020 ink 5
@@ -139,11 +139,11 @@ wait 3
 assert glyph U+0020 empty
 
 # growth: a pixel to the right of the advance widens the region; the fill takes the new columns too
-key b
+key b shift
 click @ecell:6,3
 wait 3
 assert glyph U+0020 ink 1
-key f
+key f shift
 click @ecell:1,1
 wait 3
 assert glyph U+0020 ink 56

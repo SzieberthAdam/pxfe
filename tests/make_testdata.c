@@ -1,6 +1,7 @@
-/* make_testdata.c - writes testdata/lib (text folders pxgl/ pxfm/ pxtf/ palette/), testdata/lib.pxfdb and testdata/lib_colors.pxfdb
- * with pxfe's own code.
- * Run from the pxfe directory after deleting testdata/lib, testdata/lib.pxfdb and testdata/lib_colors.pxfdb:  tests\make_testdata.exe
+/* make_testdata.c - writes testdata/lib (text folders pxgl/ pxfm/ pxtf/ palette/), testdata/lib.pxfdb, testdata/lib_colors.pxfdb
+ * and testdata/lib_many.pxfdb with pxfe's own code.
+ * Run from the pxfe directory after deleting testdata/lib, testdata/lib.pxfdb, testdata/lib_colors.pxfdb and testdata/lib_many.pxfdb:
+ * tests\make_testdata.exe
  * The fonts of lib are those of the spec examples (the grey one is the colour example of pxfm.md) plus one with uncoded glyphs,
  * a kerning pair naming an F-code and a default glyph.  lib_colors (for the Colours filter) has four fonts of 1, 2, 2 and 3
  * colours: typeface 1 holds the 3-colour font, typeface 2 the 1-colour example and an italic 2-colour font without ASCENT,
@@ -15,6 +16,7 @@
 
 #define LIB "testdata/lib"
 #define LIBC "tests/tmp/lib_colors"
+#define LIBM "tests/tmp/lib_many"
 
 static PxGlyph make_glyph(int cp, int adv, int x, int y, const char *rows) {
     PxGlyph g;
@@ -50,6 +52,33 @@ static const char *ROWS_H = "0...0\n0...0\n00000\n0...0\n0...0";
 static const char *ROWS_M = "0...0\n00.00\n0.0.0\n0...0\n0...0";
 static const char *ROWS_X = "0...0\n.0.0.\n.0.0.\n0...0";
 static const char *ROWS_GREY_A = "..1..\n.101.\n10.01\n00000\n0...0";
+
+/* The glyphs' characters have the colours cc[k] (the character PX_PIXELS[1 + k]), as in pxfe 21, which had one palette for the font:
+ * each glyph gets its colours in reading order, then the font's other colours (the palette pxfe 21 wrote, so the files stay the same). */
+static void font_colours(PxFont *f, const uint32_t *cc, int n) {
+    uint32_t map[PX_NUM_PIXELS];
+    for (int k = 0; k < PX_NUM_PIXELS; k++) map[k] = k >= 1 && k - 1 < n ? cc[k - 1] : 0x000000FFu;
+    for (int i = 0; i < f->count; i++) {
+        PxGlyph *g = &f->glyphs[i];
+        if (!g->pix) continue;
+        px_glyph_set_colors(f, g, map);
+        const PxPalette *p = px_glyph_palette(f, g);
+        uint32_t ext[64];
+        int m = p->n;
+        memcpy(ext, p->c, sizeof(uint32_t) * (size_t)m);
+        for (int k = 0; k < n; k++) {
+            bool have = false;
+            for (int j = 0; j < m; j++) if (ext[j] == cc[k]) have = true;
+            if (!have) ext[m++] = cc[k];
+        }
+        px_glyph_set_palette(f, g, ext, m);
+    }
+}
+
+/* the 40 colours of the many-colour font */
+static uint32_t many_colour(int k) {
+    return (uint32_t)(0x20 + k * 5) << 24 | (uint32_t)(0xF0 - k * 5) << 16 | (uint32_t)(0x40 + (k % 4) * 0x30) << 8 | 0xFFu;
+}
 
 static void must(bool ok, const char *what, const char *err) {
     if (!ok) { fprintf(stderr, "%s: %s\n", what, err ? err : ""); exit(1); }
@@ -103,12 +132,9 @@ int main(void) {
     px_font_init(&f);
     f.has[PXM_ASCENT] = true; f.m[PXM_ASCENT] = 6;
     f.has[PXM_DESCENT] = true; f.m[PXM_DESCENT] = 2;
-    f.hasPalette = true;
-    memset(f.colorUsed, 0, sizeof f.colorUsed);
-    f.colorUsed[1] = f.colorUsed[2] = true;
-    f.color[1] = 0xFFFFFFFFu; f.color[2] = 0x808080FFu;
     add(&f, 0x20, 4, 0, 0, NULL);
     add(&f, 0x41, 6, 0, 0, ROWS_GREY_A);
+    font_colours(&f, (const uint32_t[]){0xFFFFFFFFu, 0x808080FFu}, 2);
     save_font(&f, hex[1]);
 
     /* 3. no ASCENT / DESCENT, an offset of -1 */
@@ -178,30 +204,24 @@ int main(void) {
     px_font_init(&f);           /* 2 colours: the grey font, in no typeface */
     f.has[PXM_ASCENT] = true; f.m[PXM_ASCENT] = 6;
     f.has[PXM_DESCENT] = true; f.m[PXM_DESCENT] = 2;
-    f.hasPalette = true;
-    f.colorUsed[1] = f.colorUsed[2] = true;
-    f.color[1] = 0xFFFFFFFFu; f.color[2] = 0x808080FFu;
     add(&f, 0x20, 4, 0, 0, NULL);
     add(&f, 0x41, 6, 0, 0, ROWS_GREY_A);
+    font_colours(&f, (const uint32_t[]){0xFFFFFFFFu, 0x808080FFu}, 2);
     save_font(&f, hc[1]);
     px_font_init(&f);           /* 2 colours, no ASCENT / DESCENT: black and grey */
-    f.hasPalette = true;
-    f.colorUsed[1] = f.colorUsed[2] = true;
-    f.color[1] = 0x000000FFu; f.color[2] = 0x808080FFu;
     add(&f, 0x20, 4, 0, 0, NULL);
     add(&f, 0x2C, 3, 0, -2, ROWS_COMMA);
     add(&f, 0x41, 6, -1, 0, ROWS_GREY_A);
+    font_colours(&f, (const uint32_t[]){0x000000FFu, 0x808080FFu}, 2);
     save_font(&f, hc[2]);
     px_font_init(&f);           /* 3 colours: black, grey and red, monospaced */
     f.has[PXM_ASCENT] = true; f.m[PXM_ASCENT] = 6;
     f.has[PXM_DESCENT] = true; f.m[PXM_DESCENT] = 2;
     f.monospaced = true;
-    f.hasPalette = true;
-    f.colorUsed[1] = f.colorUsed[2] = f.colorUsed[3] = true;
-    f.color[1] = 0x000000FFu; f.color[2] = 0x808080FFu; f.color[3] = 0xC04040FFu;
     add(&f, 0x20, 6, 0, 0, NULL);
     add(&f, 0x41, 6, 0, 0, ROWS_GREY_A);
     add(&f, 0x48, 6, 0, 0, "0...0\n0...0\n02220\n0...0\n0...0");
+    font_colours(&f, (const uint32_t[]){0x000000FFu, 0x808080FFu, 0xC04040FFu}, 3);
     save_font(&f, hc[3]);
     for (int i = 0; i < 4; i++) upper(hc[i], uc[i]);
     snprintf(text, sizeof text,
@@ -216,5 +236,41 @@ int main(void) {
     must(store_import_folder(LIBC, "testdata/lib_colors.pxfdb", NULL, &s, err), "import the folder into testdata/lib_colors.pxfdb", err);
     store_close(s);
     printf("testdata/lib_colors.pxfdb written\n");
+
+    /* lib_many: one font of 40 colours (more than a glyph may have, as the spec allows): A..T two colours each (the colours 2i and 2i+1),
+     * U the colours of A (a shared palette), V the first colour of A only (the palette of A, longer than it needs), W a 6x6 block of the
+     * colours 0..35 (a glyph with all its 36 colours), and the space.  Its files are in tests/tmp/lib_many. */
+    g_lib = LIBM;
+    char hm[33];
+    px_font_init(&f);
+    f.has[PXM_ASCENT] = true; f.m[PXM_ASCENT] = 6;
+    f.has[PXM_DESCENT] = true; f.m[PXM_DESCENT] = 2;
+    add(&f, 0x20, 4, 0, 0, NULL);
+    for (int i = 0; i < 20; i++) {
+        add(&f, 0x41 + i, 6, 0, 0, "0000\n0..0\n1111\n1..1\n1..1");
+        uint32_t pc[2] = {many_colour(2 * i), many_colour(2 * i + 1)};
+        px_glyph_set_palette(&f, &f.glyphs[px_font_find(&f, 0x41 + i)], pc, 2);
+    }
+    add(&f, 0x55, 6, 0, 0, "0..0\n0..0\n0..0\n0..0\n.11.");
+    add(&f, 0x56, 6, 0, 0, "0...0\n0...0\n.0.0.\n.0.0.\n..0..");
+    {
+        uint32_t pa[2] = {many_colour(0), many_colour(1)};
+        px_glyph_set_palette(&f, &f.glyphs[px_font_find(&f, 0x55)], pa, 2);
+        px_glyph_set_palette(&f, &f.glyphs[px_font_find(&f, 0x56)], pa, 2);
+    }
+    {
+        char rows[64];
+        int o = 0;
+        for (int y = 0; y < 6; y++) { for (int x = 0; x < 6; x++) rows[o++] = PX_PIXELS[1 + y * 6 + x]; rows[o++] = y < 5 ? '\n' : 0; }
+        add(&f, 0x57, 7, 0, 0, rows);
+        uint32_t pw[36];
+        for (int k = 0; k < 36; k++) pw[k] = many_colour(k);
+        px_glyph_set_palette(&f, &f.glyphs[px_font_find(&f, 0x57)], pw, 36);
+    }
+    must(px_font_colors(&f) == 40, "the many-colour font", "has not 40 colours");
+    save_font(&f, hm);
+    must(store_import_folder(LIBM, "testdata/lib_many.pxfdb", NULL, &s, err), "import the folder into testdata/lib_many.pxfdb", err);
+    store_close(s);
+    printf("testdata/lib_many.pxfdb written\n");
     return 0;
 }

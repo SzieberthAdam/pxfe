@@ -1,5 +1,6 @@
 # 6b. Glyph view with a colour palette: testdata font 408c4d7d (the colour example of pxfm.md: COLORS 2, the A with the palette 808080 FFFFFF;
-# glyphs U+0020 and U+0041), as a duplicate.  Read, the font-wide palette is 0 = 808080, 1 = FFFFFF.
+# glyphs U+0020 and U+0041), as a duplicate.  Version 23: the palette bar under the canvas, its first row the glyph's slots, the font's other
+# colours below; the keys '.', 0-9, A-Z pick a slot; drawing keeps the glyph canonical, so a colour drawn first in reading order becomes slot 0.
 wait 5
 click @Unlock
 wait 4
@@ -11,44 +12,63 @@ key enter
 wait 5
 assert editor 1
 shot tests/tmp/shots/06b_palette_editor.png
-assert eink '0
-# the palette strip: pick an ink, paint with it
-click @ink:1
+# the space is empty (the default palette): the ink is the font's first colour, not one of its slots yet
+assert einkrgb 0x808080
+assert eink '?
+assert ebarrows 2
+assert ebarextras 2
+# a colour of the font (the second row): the ink; drawing adds it to the glyph as its slot 0
+click @pal:#FFFFFF
 wait 2
-assert eink '1
+assert einkrgb 0xFFFFFF
 click @ecell:1,2
 wait 3
-assert glyph U+0020 pixel 1 2 1
-# keys 0..9 pick only inks that the palette has
-key 2
-wait 2
-assert eink '1
-key 0
-wait 2
+assert glyph U+0020 color 1 2 FFFFFF
+assert glyph U+0020 pixel 1 2 0
+assert epal 1
 assert eink '0
-key 1
+assert ebarextras 1
+# keys pick only the slots the glyph has
+type 1
+wait 2
+assert einkrgb 0xFFFFFF
+# grey drawn above the white comes first in reading order: it becomes slot 0, white slot 1 (the ink stays white, its key is now 1)
+click @pal:#808080
+wait 2
+assert eink '?
+click @ecell:0,0
+wait 3
+assert eslotof:808080 0
+assert eslotof:FFFFFF 1
+assert glyph U+0020 pixel 0 0 0
+assert glyph U+0020 pixel 1 2 1
+assert eink '0
+type 1
 wait 2
 assert eink '1
+assert einkrgb 0xFFFFFF
+type 0
+wait 2
+assert einkrgb 0x808080
 drag @ecell:2,3 @ecell:3,3
 wait 3
-assert glyph U+0020 pixel 2 3 1
-assert glyph U+0020 pixel 3 3 1
-# the eraser ink: left button paints '.' (erases)
-click @ink:.
-click @ecell:2,3
+assert glyph U+0020 color 2 3 808080
+assert glyph U+0020 color 3 3 808080
+# '.': the transparent ink erases; white loses its only pixel and stays as an unused slot
+type .
+wait 2
+assert eink '.
+click @ecell:1,2
 wait 3
-assert glyph U+0020 pixel 2 3 .
-# the all-characters popup opens and Esc closes only the popup
-click @All
-wait 3
-shot tests/tmp/shots/06b_palette_popup.png
-key esc
-wait 3
-assert editor 1
+assert glyph U+0020 pixel 1 2 .
+assert eunused 1
+assert eslotused:1 0
+assert eslotused:0 1
+shot tests/tmp/shots/06b_palette_unused.png
 key esc
 wait 3
 assert editor 0
-# Export: COLORS and a palette field per glyph line with a glyph file; the space (white only) gets a palette of its own, FFFFFF first
+# Export: COLORS and a palette field per glyph line with a glyph file; the space (grey only now) is written without its unused white
 setdialog folder tests/tmp/xout
 click @Menu
 click @file.export
@@ -61,4 +81,5 @@ assert saved pxfm
 assert file $SAVEDPXFM contains COLORS\t2
 assert file $SAVEDPXFM contains \tEBBBA94934DA6897D86C5E8EA2AC5409
 assert file tests/tmp/xout/palette/eb/ebbba94934da6897d86c5e8ea2ac5409.hex contains 808080\nFFFFFF
+assert sql "SELECT COUNT(*) FROM palette WHERE hex(colors) = '808080FF'" 1
 verifylib $SAVEDPXFM tests/tmp/xout 2

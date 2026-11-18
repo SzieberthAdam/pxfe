@@ -831,8 +831,8 @@ static void work_pxfm(void *vb, int i) {
     if (b->errs[1][i]) return;
     /* the glyph and palette files it names are in the library; each palette has a colour for each colour of its glyph;
      * COLORS is the number of distinct colours over the first k lines of the palettes (pxfm.md) */
-    uint32_t seen[64];
-    int nseen = 0;
+    uint32_t *seen = NULL;           /* any number of colours */
+    int nseen = 0, seenCap = 0;
     for (int k = 0; k < f->count && !b->errs[1][i]; k++) {
         const PxGlyph *g = &f->glyphs[k];
         if (!g->hash[0]) continue;
@@ -861,10 +861,19 @@ static void work_pxfm(void *vb, int i) {
         for (int q = 0; q < ncol && q < pn; q++) {
             int z = 0;
             while (z < nseen && seen[z] != pc[q]) z++;
-            if (z == nseen && nseen < 64) seen[nseen++] = pc[q];
+            if (z < nseen) continue;
+            if (nseen == seenCap) {
+                int nc = seenCap ? seenCap * 2 : 64;
+                uint32_t *ns = (uint32_t *)realloc(seen, sizeof(uint32_t) * (size_t)nc);
+                if (!ns) break;
+                seen = ns;
+                seenCap = nc;
+            }
+            seen[nseen++] = pc[q];
         }
         free(ec);
     }
+    free(seen);
     if (b->errs[1][i]) return;
     if (f->colorsRead > 0 && f->colorsRead != nseen)
         set_err(b, 1, i, "%s: COLORS %d, but the glyphs use %d distinct colours of their palettes", path, f->colorsRead, nseen);
@@ -1442,7 +1451,7 @@ static bool load_font_nolock(StoreConn *c, const uint8_t fh[16], const char *hex
     }
     sqlite3_reset(st);
     if (px_font_has_glyph_palettes(&f)) {
-        /* a colour font: its palettes, the font-wide palette made from them, then every bitmap */
+        /* a colour font: its palettes into the font's table, then every bitmap */
         st = store_stmt(c, ST_PALETTE, "SELECT colors FROM palette WHERE hash = ?");
         for (int i = 0; i < f.count; i++) {
             const PxGlyph *g = &f.glyphs[i];
@@ -1459,7 +1468,7 @@ static bool load_font_nolock(StoreConn *c, const uint8_t fh[16], const char *hex
             }
             uint32_t cv[4096];
             for (int k = 0; k < bl / 4; k++) cv[k] = (uint32_t)b[4 * k] << 24 | (uint32_t)b[4 * k + 1] << 16 | (uint32_t)b[4 * k + 2] << 8 | b[4 * k + 3];
-            if (!px_font_add_palette(&f, g->pal, cv, bl / 4)) { sqlite3_reset(st); px_font_free(&f); return fail(err, "out of memory"); }
+            if (px_font_add_palette(&f, g->pal, cv, bl / 4) <= 0) { sqlite3_reset(st); px_font_free(&f); return fail(err, "out of memory"); }
         }
         sqlite3_reset(st);
         codes = NULL;

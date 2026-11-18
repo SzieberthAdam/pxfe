@@ -439,6 +439,7 @@ Where a view had its own widget for a role that exists elsewhere, that code is g
 The user's complaints: the text is too small to read, and views invent their own looks for the same thing.
 The rule of this round: one component, one function.
 Every use site of a role calls the function of its owner in `src/theme.c`; a view never draws a second variant.
+One component per kind of control, reused everywhere (version 23): a new kind of control (such as the colour picker) is added to the catalogue once, as a component of the design system with a clean API, and every view that needs that kind of control uses it.
 The measure of success is that the user interface code shrinks.
 No view code holds a literal font size or colour: both come from `theme.h`.
 
@@ -668,6 +669,12 @@ Exactly two forms, both in Unifont:
 - A view that needs the scroll before it draws calls the function before its content; the sample editor and the panels call it after the content they draw under the bar.
 - Used by the font grid, the Typefaces, Fonts and Typeface views, the Glyphs view, the side panels (the browser's, the font view's, the glyph view's), the Usage list of the Glyphs view, the sample editor and the sample preview, the font list of the Add Layer popover, and the long menus (the Style and Format dropdowns).
 - No view keeps a drag state, a thumb calculation or a bar drawing of its own.
+
+#### Colour picker
+
+- Owner: `src/colorpick.c` (`Th_ColorPickOpen`, `Th_ColorPickTake`, `Th_ColorPickIsOpen`, `Th_ColorPickDraw`), a modal drawn by `main.c` over everything else; see "Version 23: the palette bar and the colour picker".
+- Look: a raised panel with a title, a segmented control of the models (HSV, Wheel, RGB, HSL, Lab), the model's plane or sliders, an alpha slider, the new and old colour, a hex field, Cancel and OK (primary).
+- Every place that lets the user choose a colour opens this picker; no view draws a picker of its own.
 
 ### Colours by role
 
@@ -1541,20 +1548,22 @@ In the editor, `region_pix` builds the character grid of the glyph region once f
 
 ### The shortcuts of the glyph view
 
+Since version 23 the tools are Shift+letter and the plain keys pick a slot of the palette bar (the table shows the keys of version 23).
+
 | Key | What it does |
 | --- | --- |
-| B | Pencil |
-| E | Eraser |
-| L | Line |
-| Shift+L | Curve (also its button) |
-| R | Rectangle |
-| O | Ellipse |
-| D | Polygon |
-| C | Contour |
-| F | Paint bucket (Fill) |
-| I | Eyedropper |
-| M, Q, W, V | Marquee, Lasso, Magic Wand, Move |
-| 0 to 9 | pick that ink when the font's palette has it |
+| Shift+B | Pencil |
+| Shift+E | Eraser |
+| Shift+L | Line |
+| Shift+U | Curve (also its button; Shift+L before version 23) |
+| Shift+R | Rectangle |
+| Shift+O | Ellipse |
+| Shift+D | Polygon |
+| Shift+C | Contour |
+| Shift+F | Paint bucket (Fill) |
+| Shift+I | Eyedropper |
+| Shift+M, Shift+Q, Shift+W, Shift+V | Marquee, Lasso, Magic Wand, Move |
+| `.`, `0`-`9`, `A`-`Z` | pick that slot of the open glyph's palette as the ink (`.` is transparent) |
 | Alt at the click | with the Pencil, Line, Curve, Rectangle, Ellipse, Polygon, Contour or Fill: pick the ink under the cursor |
 | Right button | draws with `.` (the fill, the shapes, the polygon and the contour too) |
 | Shift | the Line and the Curve's end points, the Polygon's edges: clean angles; the Rectangle and Ellipse: a square or circle; the Pencil: a line from the last cell |
@@ -1618,6 +1627,7 @@ Reading (`px_load_glyphs` for files, `load_font_nolock` for the store):
    Each glyph remembers the hash of the palette it was read with (`PxGlyph.pal`).
 4. `px_font_finish_palette` checks `COLORS` against the colours in use.
    A font of more than 36 colours is refused: "the font uses N colours; pxfe can edit a font of at most 36 colours".
+   Version 22 lifts this: each glyph has a palette of its own in memory.
 
 Lazy loading stays for fonts of one colour: only the glyphs that are drawn are read.
 A colour font is read whole when its first glyph is needed, so its palette and its `COLORS` are exact.
@@ -1662,8 +1672,8 @@ Drafts (`PXFEDRAFT 3`) carry the font-wide palette as `COLOR` lines of the ink c
 
 ### Not done
 
-- A font of more than 36 colours cannot be opened (the spec allows any number).
-- The palette of a glyph is not shown or edited on its own: the editor still edits the font-wide palette.
+- A font of more than 36 colours cannot be opened (the spec allows any number); done in version 22.
+- The palette of a glyph is not shown or edited on its own: the editor still edits the font-wide palette; done in version 22.
 
 ### Tests
 
@@ -1673,3 +1683,173 @@ Drafts (`PXFEDRAFT 3`) carry the font-wide palette as `COLOR` lines of the ink c
 - `tests/make_testdata.c` writes `testdata/lib` (now with `palette/`), `testdata/lib.pxfdb` and `testdata/lib_colors.pxfdb` (its files in `tests/tmp/lib_colors`).
 - End to end: `137_colour_font` and `137b_colour_font_reload` (a picture of three colours imported, saved and reopened), `138_symbolic` (a symbol BDF, the Symbolic switch, undo, the saved row); the scripts that named the old grey font `03696f65` now name `408c4d7d`, `06b_palette` checks COLORS and the palette field, `27_export_overwrite` and `30_delete_save` check that the palette goes with its font.
 - Play: `assert colors N` (COLORS of the open font, 0 for one colour), `assert symbolic 0|1`.
+
+## Version 22: per-glyph palettes
+
+Version 21 kept one font-wide palette of at most 36 ink characters in memory and converted at the edges.
+Version 22 gives each glyph its own palette in memory, so a font may have any number of colours; only a glyph is limited, to 36 (`PX_GLYPH_MAX_COLORS`, the ink characters `0`…`Z`).
+The files, the store and the write rules of version 21 are unchanged.
+
+### In memory: a table of shared palettes
+
+- `PxFont.pals` is a table of palettes, interned: no two entries have the same colours, and an entry never changes once it is in the table.
+  Entry 0 is the default palette, black alone (`000000`, hash `2f1ab4cf…`).
+- Each glyph refers to an entry by index (`PxGlyph.pi`, 0 the default palette); its pixel characters index that entry (`0` is its first colour).
+  Glyphs of the same colours share one entry: in a font of one colour every glyph has entry 0 and the table holds nothing else, so such a font costs nothing more than before and stays lazy.
+- `PxGlyph.pal` keeps the hash of the palette the glyph was read with; the writer reuses that palette when its first k lines are still the glyph's colours, so an unchanged font is written back byte for byte.
+- Each entry carries a ready-to-draw array `draw[37][4]` laid out as raylib's `Color` and indexed like the pixel characters (`.` transparent), so drawing a glyph does no conversion per pixel; `px_glyph_palette(f, g)->draw` is all a renderer needs (the grid's cells, the glyph view, the sample text, the float).
+- A palette is changed by copy on write: `px_glyph_add_color` (and `px_glyph_add_colors` for many) makes the new colour array, interns it (finding an equal entry or appending one) and points the glyph at it; the glyph's other pixels keep their characters.
+  A new colour takes an unused slot of the glyph's palette first (a colour no pixel uses), else it is appended; a 37th colour returns `PX_COLOR_FULL` and nothing changes.
+  `px_glyph_set_colors` and `px_glyph_set_palette` set a glyph's colours outright (picture import, drafts, tests).
+- Unused entries are dropped lazily: `px_font_compact_palettes` keeps the entries a glyph points at or names by its read hash, and renumbers the indices.
+  It runs when an undo snapshot is taken (`px_font_copy`, and on the live font in `PushUndo`); between compactions a font may hold stale entries, which nothing reads.
+  `PxFont.palGen` is bumped by every compaction and copy, so caches keyed on indices (the sample text's) see the change.
+- Undo snapshots copy the table and the indices (`px_font_copy`); entries are small, and compaction keeps a snapshot from carrying entries no glyph uses.
+
+### The font's colour list
+
+`px_font_color_list` gives the font's distinct colours in order of first appearance: glyph order, then the order of each glyph's palette (its first 36 lines), with no length limit; a font whose glyphs all have the default palette has the list of black alone.
+It is cached in `PxFont.clist` and rebuilt only when its key changes (a hash over `palGen`, the number of entries, the number of glyphs and each glyph's index), so the ink chooser asks for it every frame for free.
+`px_font_is_colour` (two colours or more, one colour that is not black, or a lazy glyph that names a palette) decides whether the sample text draws the font's colours or the theme's ink.
+`px_font_colors` (the `COLORS` written and `pxfm.colors`) counts the distinct colours the glyphs use, with a small hash set and no limit; the Colours filter counts the same.
+
+The order of the list follows the glyphs, so it can change while drawing: a colour first used by an earlier glyph moves forward.
+The editor's ink is a colour, not a place in the list, so the ink stays the same when the list reorders.
+
+### Reading and writing
+
+- `px_font_adopt_palettes` points each glyph at the entry of the palette its line names (by hash); `px_glyph_from_canonical` checks the glyph and that its palette has a line for each of its colours, and keeps the canonical characters as they are: the glyph's palette is its read palette, so there is no remapping.
+- `px_font_finish_palette` only checks `COLORS` against the colours in use; a font of any number of colours opens.
+- Writing (`glyph_write_palette`): the read palette when its first k lines are the glyph's colours in reading order, else the colours used in reading order and then the rest of the glyph's palette without repeats; `COLORS` from the colours used, none for a font of one colour.
+- Drafts (`PXFEDRAFT 3`) write `PALETTE` lines only for the palettes a glyph names by hash; a GLYPH line has an optional sixth field (the read hash, or `-`) and a seventh, the glyph's palette as `RRGGBBAA,...`, when it has one of its own.
+  A draft of pxfe 21 (font-wide `COLOR` lines, no palette per glyph) still loads: every glyph gets the colours of those lines.
+- A picture of a font gives each glyph the colours of its sheet as its own palette (`px_glyph_set_colors`), so the glyphs of a sheet share one entry.
+
+### The editor's ink
+
+- The ink is an RGBA colour (`Editor.inkColor`), or the eraser `.` (`inkErase`).
+  Drawing with a colour the glyph does not have adds it to the glyph's palette (an unused slot first); when the glyph has 36 colours in use, nothing is drawn and a toast says "A glyph has at most 36 colours: this one has no room for another" (at most once a second).
+  The right button draws `.`.
+- The eyedropper (key I, and Alt+click with every drawing tool) sets the ink to the colour under the cursor, or the eraser for `.`.
+- When a glyph is opened and the ink is not a colour of the font, the ink becomes the font's first colour.
+- The strip of swatches in the bar shows the font's colour list, as many as fit in about 55% of the bar (at most 36), then the eraser, then a toggle "All" ("All N" when the strip does not show them all; it is there for a colour font or when the list overflows).
+  A swatch has a small corner mark when the open glyph has that colour; the first ten show their digit; the tooltip gives the hex value, the key and whether the glyph has the colour.
+- The All popup shows the whole list in rows of 13, up to 8 rows at a time, scrolled by the wheel, with a header of the counts (the font's colours and the glyph's); a click picks the ink and closes it, Esc closes it.
+- Keys `0`…`9` pick the first ten colours of the list.
+- The status line shows the ink as `ink #RRGGBB` (`#RRGGBBAA` when not opaque) or `ink .`.
+- Clipboard and float carry their colours (the palette of the glyph they came from): a paste or a dropped float maps them into the target glyph's palette (`px_glyph_add_colors`), reusing slots, before its pixels are stamped.
+  When they would bring the target over 36 colours the drop is refused with a toast and the float is cancelled.
+
+### Not done
+
+- There is no colour picker for a colour the font does not have yet: a new colour comes from another font (paste) or from an import.
+- The order of the colour list follows the glyphs, so a swatch's place and its digit key can change while drawing.
+
+### Tests
+
+- `tests/test_pxfont.c` (223 checks): the glyph palettes (`test_glyph_palettes`): a font of one colour and the default palette, a colour added and interned, an empty glyph taking the free slot, 36 colours and the 37th refused, `px_glyph_colors_fit`, a freed slot reused, the mapping of a paste, compaction, a font of 40 colours saved, read and written back byte for byte (with a glyph sharing another's palette), a draft round trip and a draft of pxfe 21 converted; the old test of 37 colours refused now reads a font of 37 colours and writes it back.
+- `tests/test_store.c` (203 checks): a font of 40 colours saved into memory, loaded, the same hash, `COLORS 40`, `pxfm.colors` 40, deleted with its 20 palettes; `testdata/lib_many.pxfdb`.
+- `tests/make_testdata.c` writes `testdata/lib_many.pxfdb` (files in `tests/tmp/lib_many`): font `cd17ae6d…` of COLORS 40: A to T of two colours each, U and V sharing A's palette, W of 36 colours.
+  The other test data is unchanged byte for byte.
+- End to end: `139_many_colours` on `lib_many.pxfdb` (59 checks); `06b_palette` and `132_eyedropper` now check colours rather than pixel characters and list places, since white drawn into the empty space becomes its `0` and the first colour of the list.
+- Play: `assert palettes N` (entries of the table), `assert epal N` and `assert ecolors N` (the edited glyph's palette length and the colours its pixels use), `assert einkrgb 0xRRGGBB` (the ink colour), `assert glyph U+0041 color x y RRGGBB|RRGGBBAA|none` (the colour of a pixel); `assert palette N` is the length of the font's colour list for a colour font (0 for one colour); `assert eink 'c` is the ink's place in the list as a pixel character.
+
+## Version 23: the palette bar and the colour picker
+
+The ink strip of the glyph view's toolbar and its "All" popup are gone.
+Their place is a palette bar under the canvas and the tool strip, above the status line and the 1x/2x preview, as wide as the editor area.
+A colour picker joins the design system, and the colours a glyph has are kept in canonical order in memory, so slot i is always pixel character i.
+
+### Canonical palettes in memory
+
+- `px_glyph_canonicalize(f, g)` (pxfont.c) renumbers the pixels in reading order (the first inked pixel is `0`, the next new colour `1`, ...) and reorders the glyph's palette to match: the used colours in reading order, then the unused entries in their old order.
+  It does nothing for a glyph that is canonical already, so the palette entry is not renamed needlessly.
+- The glyph view calls it for the open glyph at the end of every frame without a drag (never in the middle of a stroke), and compacts the palette table when it changed something, so the palette the stroke made does not linger in the table.
+- A new colour is appended to the glyph's palette while it has fewer than 36 entries; only a palette of 36 entries gives an unused entry to the new colour; when all 36 are used the colour is refused with a toast ("This glyph has 36 colours: drop the colour onto a slot of the palette bar to replace one").
+  An inkless glyph on the default palette starts a palette of its own with the new colour alone (the default black is not kept as an unused slot).
+- `px_glyph_used_colors(g)` is the number of colours the pixels use (the first k slots); `px_glyph_add_slot(f, g, c)` appends an unused slot; `px_glyph_replace_color(f, g, slot, c)` gives a slot another colour (when the glyph has that colour already, the two slots become one and the glyph is canonicalized); `px_glyph_trim_palette(f, g)` cuts the palette to the used colours.
+- The writer is unchanged: the rules of versions 21 and 22 (reuse the palette read when its first k lines are the glyph's colours, otherwise the used colours in reading order and then the rest of the palette in memory) still give a byte-identical round trip of an unchanged font.
+
+### The palette bar
+
+- Row 1: the transparent tile `.` (key `.`), then the open glyph's slots in canonical order, each with its key `0`-`9`, `A`-`Z` drawn small in its corner (dark or light by the swatch's luminance, `cm_luminance`), then `+` while the glyph has fewer than 36 colours.
+- A slot no pixel uses is drawn with a dashed frame; it keeps its key and can be picked as ink, and the canonical order puts it after the used slots.
+- The ink has an accent frame; the tooltip gives the hex value, the key and what a double-click does.
+- Further rows show the font's other colours (the font's colour list without the glyph's), without keys, up to three rows at a time with a scroll bar beyond.
+  A click makes such a colour the ink; drawing with it adds it to the glyph (or shows the toast of a full glyph).
+- Dragging a colour of the other rows onto a slot replaces that slot's colour in this glyph (also in a glyph of 36 colours); dropping it onto `+` adds it as an unused slot.
+  The tile follows the mouse while it is dragged, the target is highlighted and the tooltip says what the drop does.
+- A double-click on a slot opens the colour picker on that slot's colour; OK changes the slot's colour (a colour the glyph has already merges the two slots).
+  `+` opens the picker on the ink and adds the colour chosen as an unused slot.
+- Every add, replace and change is one undo step.
+- Size: the tile pitch is `(width - 22) / 38` clamped to 18..28 px, with a gap of 3 or 4 px, so `.`, 36 slots and `+` fit one row at 1110x600 and at large sizes.
+- A one-colour font shows `.`, black `0` and `+`.
+- The tool strip and the canvas end above the bar, so the strip is shorter: at 1110 x 520 it now has three columns (two before), at 1110 x 600 still two; `124_tool_strip`, `129_strip_order` and `136_strip_v20` expect that.
+- A locked font shows its colours and lets the ink be picked (keys and clicks), but has no `+`, no drop, no double-click and no new colour.
+- The status line shows the ink as `ink . (transparent)`, `ink #RRGGBB (key 3)` or `ink #RRGGBB (not in this glyph)`.
+- Widget names for scripts: `pal:.`, `pal:0` to `pal:Z`, `pal:+`, `pal:#RRGGBB` (a slot or a colour of the other rows), `palx:N` (the Nth colour of the other rows).
+
+### The reorder animation
+
+- When the slots reorder (a colour drawn first in reading order becomes slot 0), the swatches slide from where they were drawn to their new places in 200 ms with a cubic ease-out.
+- The slots are tracked by colour, so the ink (an RGBA colour, not a slot number) stays the same colour and its frame moves with it.
+- A colour that is new to row 1 gets a short accent glow that fades over the same 200 ms.
+
+### Keys
+
+- Plain `.`, `0`-`9` and `A`-`Z` (either case) pick that slot as the ink when no text field has focus and no dialog or picker is open; a key without a slot does nothing.
+  The keys are read as typed characters (`GetCharPressed`), so the keyboard layout's character counts.
+- Every tool shortcut moves to Shift+letter, since the plain letters are now slots.
+- Clash: Shift+L was the Curve and is now the Line, so the Curve moves to Shift+U.
+  The Pencil's Shift+click line and Shift as a drawing modifier are mouse gestures and are unchanged; Shift+arrow keys are unchanged; every Ctrl shortcut is unchanged.
+- A letter typed with Shift held never picks a slot.
+
+| Key | What it does |
+| --- | --- |
+| `.`, `0`-`9`, `A`-`Z` | pick that slot of the palette bar as the ink |
+| Shift+B | Pencil |
+| Shift+E | Eraser |
+| Shift+L | Line |
+| Shift+U | Curve (was Shift+L) |
+| Shift+R | Rectangle |
+| Shift+O | Ellipse |
+| Shift+D | Polygon |
+| Shift+C | Contour |
+| Shift+F | Paint bucket (Fill) |
+| Shift+I | Eyedropper |
+| Shift+M, Shift+Q, Shift+W, Shift+V | Marquee, Lasso, Magic Wand, Move |
+
+The other keys of the table in "Version 20: The shortcuts of the glyph view" are unchanged.
+
+### The unused-slot rule
+
+- When the glyph view opens a glyph it remembers the glyph's palette P0 (not again when it is reopened on the same glyph of the same font, as after an undo or a redo).
+- When the view leaves the glyph (Back, the previous or next glyph, the padlock) and when the font is saved, committed or the view closed (`Editor_Flush`), the glyph is canonicalized first.
+  If its palette is still P0, nothing changes.
+  Otherwise, if P0's first k entries are the k colours the pixels use, the glyph goes back to P0 (a palette that was read or is shared keeps being written and reused).
+  Otherwise the palette is cut to the used colours.
+- So unused slots live while the glyph is being edited, and go when it is left unless they were part of the palette it was opened with.
+
+### The colour picker
+
+- `src/colorpick.c` / `colorpick.h`: one modal for every place that chooses a colour, drawn by raylib in the theme's look (`Th_Raised`, `Th_TextHead`, `Th_Segmented`, `Th_TextField`, `Th_Button`).
+- API: `Th_ColorPickOpen(rgba, title, tag)` opens it on a colour (0xRRGGBBAA) with a non-zero tag naming the caller's question; `Th_ColorPickTake(tag, &rgba)` gives the answer once: 1 and the colour for OK, -1 for Cancel, 0 while there is none; `Th_ColorPickIsOpen()`; `Th_ColorPickDraw(W, H)` draws it.
+  `main.c` draws it last (after the dialogs) and blocks every other input while it is open; the glyph view asks with the tags "add" (`+`) and "edit" (a double-click on a slot).
+- Models, chosen by a segmented control: HSV (a saturation/value square and a hue bar), Wheel (a hue and saturation disc and a value bar), RGB, HSL and CIE Lab (three gradient sliders each); an alpha slider under each.
+- The right side: the new and the old colour side by side over a checker (a click on the old one takes it back), a hex field (`RRGGBB` or `RRGGBBAA`), the colour as RGB, HSV and Lab in small text, Cancel and OK.
+- Enter confirms and Esc cancels (also in the hex field); Tab in the hex field takes its value and leaves the field.
+- The last model is kept in `pxfe.ini` `[app]` `pickerMode` (0 HSV, 1 Wheel, 2 RGB, 3 HSL, 4 Lab).
+- The maths is `src/colormath.c` / `colormath.h`, which does not use raylib: sRGB gamma, HSV, HSL, CIE Lab (D65 white, IEC 61966-2-1 matrices; a Lab colour outside sRGB is clamped and reported), packing, hex parsing and formatting, and relative luminance.
+
+### Tests
+
+- `tests/test_colormath.c` (33 checks): gamma, HSV and HSL known values and round trips over 4096 colours, Lab known values (white, black, red, blue, grey) and round trips, out-of-gamut colours, hex parsing and formatting, packing.
+- `tests/test_pxfont.c` (243 checks): `test_canonical_palettes` (canonical order after edits, unused slots after the used ones, add a slot, replace a slot's colour including a merge, trim, the append rule); the checks of version 22 follow the append rule.
+- End to end: `140_palette_keys` (slot keys, every Shift+letter tool, typing into a text field keeps the ink, `+` with Esc and with a hex colour, the unused slot, the canonical reorder, undo and redo, a double-click on a slot, every picker model and the ini, hex with alpha, the old colour, the unused-slot rule), `141_palette_drag` (on `lib_many`: a drop onto a slot of the full W, undo and redo, a merge through the picker, a drop onto `+`, drawing with a colour of the other rows, the unused-slot rule, a locked font), and the screenshot scripts `142_shots_bar_many` (W and A at 1110x600, W at 1600x1000) and `143_shots_picker` (a one-colour font's bar and the picker in each model).
+- `06_editor`, `06b_palette`, `132_eyedropper`, `139_many_colours` and every script of versions 17 to 20 that presses a tool key were updated (Shift+letter, `type 3` for a slot, `@pal:` names).
+- Play: `assert ebarrows N` (rows of the bar), `ebarextras N` (colours in the other rows), `eunused N` (unused slots), `eslotof:RRGGBB N` (the slot of a colour, -1 when the glyph has not got it; 8 digits for a colour with alpha), `eslotused:N 0|1`, `epicker`, `epickermode`, `epickerrgb 0xRRGGBB`, `epickera N`; `assert eink 'c` is now the ink's slot in the glyph as a pixel character (`?` when the glyph has not got the colour).
+
+### Not done
+
+- The palette bar has no keyboard way to reorder or delete a slot; a slot goes by the unused-slot rule.
+- The picker is used by the glyph view only; the layer colour of the Layers panel keeps its hex field.

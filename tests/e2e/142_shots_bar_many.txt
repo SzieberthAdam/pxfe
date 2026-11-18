@@ -1,0 +1,29 @@
+# 142. Version 23, screenshots only: the palette bar of glyph W (36 colours: '.', 36 slots, no '+') with the row of the font's other colours,
+# on testdata/lib_many.pxfdb, font cd17ae6d (40 colours), at 1110x600 and at 1600x1000.
+resize 1110 600
+wait 5
+click @Unlock
+wait 4
+dblclick @cell:U+0057
+wait 6
+assert editor_glyph U+0057
+assert ebarrows 2
+assert w.pal:Z 1
+move @pal:#D43C40
+wait 3
+shot tests/tmp/shots/142_bar_W_1110x600.png
+click @Back
+wait 4
+sleep 600
+dblclick @cell:U+0041
+wait 6
+assert w.pal:+ 1
+shot tests/tmp/shots/142_bar_A_1110x600.png
+resize 1600 1000
+wait 6
+click @Back
+wait 4
+sleep 600
+dblclick @cell:U+0057
+wait 6
+shot tests/tmp/shots/142_bar_W_1600x1000.png

@@ -105,7 +105,7 @@ assert esel bounds 5 0 2 2
 shot tests/tmp/shots/113_modes.png
 
 # the lasso: the cells inside a closed path and the cells on it (a right triangle of 15 cells); a click deselects
-key q
+key q shift
 wait 2
 assert etool 6
 move @ecell:1,1
@@ -145,13 +145,13 @@ assert etool 7
 click @Lasso
 wait 2
 assert etool 6
-key w
+key w shift
 wait 2
 assert etool 7
-key v
+key v shift
 wait 2
 assert etool 8
-key m
+key m shift
 wait 2
 assert etool 5
 assert undo 0

@@ -11,10 +11,10 @@ assert editor_glyph U+0020
 click @Ellipse
 wait 2
 assert etool 0
-key o
+key o shift
 wait 2
 assert etool 0
-key r
+key r shift
 wait 2
 assert etool 0
 click @Rectangle
@@ -34,7 +34,7 @@ assert editor 1
 # unlocked, they work; locked again, they are refused again
 click @Unlock
 wait 4
-key o
+key o shift
 wait 2
 assert etool 10
 drag @ecell:1,1 @ecell:5,5

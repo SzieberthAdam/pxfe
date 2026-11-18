@@ -10,11 +10,11 @@ assert editor_glyph U+0020
 assert glyph U+0020 empty
 
 # the rectangle outline: only its top row (row 2) crosses the columns 1..3, its sides and bottom are outside
-key m
+key m shift
 drag @ecell:1,2 @ecell:3,5
 wait 3
 assert eselcount 12
-key r
+key r shift
 drag @ecell:0,2 @ecell:6,6
 wait 3
 assert glyph U+0020 ink 3
@@ -30,9 +30,9 @@ wait 3
 assert glyph U+0020 empty
 
 # the filled rectangle covers the selection and nothing else
-key m
+key m shift
 drag @ecell:1,2 @ecell:3,5
-key r
+key r shift
 click @Filled
 wait 2
 drag @ecell:-1,0 @ecell:6,7
@@ -52,9 +52,9 @@ wait 2
 assert efilled 0
 
 # the ellipse ring of the box (2,0)..(6,7) (5 x 8) crosses the selection down its left side only: column 2, rows 2..5
-key m
+key m shift
 drag @ecell:1,2 @ecell:3,5
-key o
+key o shift
 drag @ecell:2,0 @ecell:6,7
 wait 3
 assert glyph U+0020 ink 4
@@ -70,9 +70,9 @@ key z ctrl
 wait 3
 
 # the filled ellipse: the cells of the selection that it covers, columns 2 and 3
-key m
+key m shift
 drag @ecell:1,2 @ecell:3,5
-key o
+key o shift
 click @Filled
 wait 2
 drag @ecell:2,0 @ecell:6,7

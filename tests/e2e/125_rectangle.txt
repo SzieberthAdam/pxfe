@@ -12,7 +12,7 @@ assert glyph U+0020 empty
 assert undo 0
 assert efilled 0
 
-key r
+key r shift
 wait 3
 assert etool 3
 assert w.Filled 1
