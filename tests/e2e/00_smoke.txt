@@ -8,6 +8,8 @@ shot tests/tmp/shots/smoke1.png
 click @cell:U+0041
 assert selected 1
 assert sel U+0041 1
+click @ptab_Glyph
+wait 3
 click @Delete
 wait 3
 assert modal none

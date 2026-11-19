@@ -55,7 +55,9 @@ The tests are described in `HANDOFF.md` and `tests/e2e/README.md`.
 - A `.pxfdb` file is loaded.
 - A folder starts the import flow: the target file is asked for (or given with `--import-to`), the folder is imported, the new database is loaded.
 - `--font` and `--typeface` open that font or typeface; `--unlock` then unlocks the font.
-- With no argument, the last database (`lastPxfdb` in `pxfe.ini` beside the exe) is loaded, else an empty state with "Load Database…" and "Import Folder…".
+- With no argument, the last database (`lastPxfdb` in `pxfe.ini` beside the exe) is loaded, else an empty state with "New Database", "Load Database…" and "Import Folder…".
+- New Database (also in the Menu, after the unsaved-changes prompt) starts with a blank page: an empty database in memory, titled "Untitled", with no file, and the New Font dialog opens on it.
+  Its first Save is a Save As; until then nothing is written and `lastPxfdb` does not change.
 - After a database is loaded (at start or by Load), pxfe shows the Typefaces view.
 
 ## Design system
@@ -461,7 +463,7 @@ Every font and every typeface has a lock, locked by default; what is unlocked is
 
 ### The bar
 
-- The top bar has a **Menu** button (New Font, Load, Save, Save As, Import Folder, Import Font File, Export to Folder, Quit) and a segmented control of three segments.
+- The top bar has a **Menu** button (New Database, New Font, Load, Save, Save As, Import Folder, Import Font File, Export to Folder, Quit) and a segmented control of three segments.
 - Exactly one segment is blue: the view the user is in.
 - A long segment ends in an ellipsis (`HeadFit`); every segment's hint says where it goes.
 

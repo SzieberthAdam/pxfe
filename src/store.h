@@ -65,6 +65,8 @@ bool store_open_pxfdb(const char *path, StoreProgress *prog, Store **out, char e
 bool store_import_folder(const char *folder, const char *pxfdbPath, StoreProgress *prog, Store **out, char err[PX_ERR_LEN]);
 /* The same without keeping the store: the folder's data into the database file `pxfdbPath` (the backup of an Overwrite). */
 bool store_import_to_file(const char *folder, const char *pxfdbPath, StoreProgress *prog, char err[PX_ERR_LEN]);
+/* New: an empty database in memory with no file yet (the path is ""); the first Save is a Save As. */
+bool store_create(Store **out, char err[PX_ERR_LEN]);
 /* Save: writes memory to the store's file: a temporary file in the same folder (VACUUM INTO), then MoveFileEx with
  * REPLACE_EXISTING and WRITE_THROUGH.  A failure leaves the old file as it was.  Clears the modified state. */
 bool store_save(Store *s, char err[PX_ERR_LEN]);

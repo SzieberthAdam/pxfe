@@ -107,6 +107,7 @@ One command per line, `#` starts a comment.
   The stack rows of the Layers tab count font layers too (`assert l.count`, `l.dx.N`, ...); a font layer's row has the tag FONT.
   Widgets of the Layers tab: `@lay_x+`, `@lay_x-`, `@lay_y+`, `@lay_y-` (a font layer's offset, quarter pixels for an outline), `@lay_size+`, `@lay_size-`, `@lay_size.value`, and for the edited glyph `@lay_gx±`, `@lay_gy±`, `@lay_gsize±`, `@lay_ghide`, `@lay_greset`.
   Add Layer popover: `@lay_src_File`, `@lay_choose` (`@Choose…`), `@lay_file`, `@lay_face+`, `@lay_face-`, `@lay_mode_Outlines`, `@lay_mode_Bitmap_strikes`, `@lay_scope_This_glyph_only`, `@lay_scope_Font_layer`.
+- New Database: `@New_Database` on the empty state or Menu, `@file.newdb`; the window title is `Untitled` until the first Save (a Save As, `setdialog save`).
 - New Font and Add Glyph: Menu, `@file.new` opens the dialog (`assert nfopen 1`): `@nf.name`, `@nf.style`, `@nf.size±`, `@nf.ascent±`, `@nf.descent±` (also `.value`), `@Create`, `@Cancel`.
   The font view's command bar has `@Add_Glyph` (the code in the dialog: type it, then `@Add`).
   The Menu has New Font first: Down from nothing lands on it (`menuhi 0`), Import Font File is 1, Load 2, Save 3, Save As 4, Import Folder 5, Export to Folder 6, Quit 7.
@@ -135,7 +136,7 @@ The environment variable `PXFE_TRACE=1` prints one `TRACE load ...` or `TRACE im
 
 - 00 to 06c: locked font, grid, metrics, selection, delete, clone, glyph editor, palette, font without ASCENT/DESCENT.
   06b and 06c and 02 export to a folder to read the pxfm that a commit made.
-- 07a: Save of an unlocked font (file bytes change only at Save, the rows, the in-place commit), 07b reload; 07d a real font imported from `tests\tmp\reallib`; 07e the empty state, File menu, Load of a missing and of a broken file.
+- 07a: Save of an unlocked font (file bytes change only at Save, the rows, the in-place commit), 07b reload; 07d a real font imported from `tests\tmp\reallib`; 07e the empty state, File menu, Load of a missing and of a broken file; 07f New Database (a blank page, the first Save is a Save As).
 - 08a to 08d: unsaved-changes prompt on close (Cancel, Esc, Discard, Save); 08e on Load (Cancel, Discard, Save, Esc, an error).
 - 09: input paths.
 - 10: read-only behaviour of a locked font and Unlock.

@@ -60,6 +60,7 @@ The files of `handoff/` are old agent reports, kept for history.
 
 - `src/store.c`: an in-memory SQLite database that Load fills from a `.pxfdb`; Save writes a temp file with `VACUUM INTO` and replaces the file; a change counter tells whether memory differs from the file; Import and Export work on folders; the `palette` table, `pxfm.symbolic`, `pxfm.colors`, `store_palette_text`.
 - A pxfdb made before hex palettes is refused on open ("made by an older pixelglyphlib … rebuild it"); in `pixelglyphlib`, `pxfdb.pxfdb` opens and the two `pxfdb-with*-symbols.pxfdb` are refused.
+- New Database (`store_create`, `NewDatabase` in main.c): an empty store with no file (path ""), titled "Untitled"; `SaveDb` turns into Save As for it; script 07f.
 - `src/main.c`: the menu items, the Save button, the title and status bar markers, the Save / Discard / Cancel prompts, the export dialog (Append, Overwrite, backup).
 - `src/fsettings.c`: the sidecar `<db>-settings` (SQLite, schema 3: `layer`, `correction`, `unlocked`; schema 1 and 2 are upgraded on open).
   Save writes it (alone when only settings changed); Save As writes a new one; Import starts empty; Export does not touch it; with nothing to keep it is not written and an old one is deleted.

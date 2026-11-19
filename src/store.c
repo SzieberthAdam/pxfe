@@ -2184,6 +2184,19 @@ static Store *import_build(const char *folder, StoreProgress *prog, char err[PX_
     return s;
 }
 
+bool store_create(Store **out, char err[PX_ERR_LEN]) {
+    Store *s = store_new(err);
+    if (!s) return false;
+    sqlite3 *db = s->main->db;
+    if (!exec_sql(db, "PRAGMA synchronous = OFF; PRAGMA journal_mode = OFF;", err) || !exec_sql(db, SCHEMA, err) ||
+        !exec_sql(db, "INSERT INTO meta VALUES ('format', 'PXFDB'); INSERT INTO meta VALUES ('format_version', '1');", err) || !exec_sql(db, INDEXES, err)) {
+        store_close(s);
+        return false;
+    }
+    *out = s;   /* no file yet (info.path ""): store_save asks for Save As */
+    return true;
+}
+
 bool store_import_folder(const char *folder, const char *pxfdbPath, StoreProgress *prog, Store **out, char err[PX_ERR_LEN]) {
     double t0 = store_now();
     Store *s = import_build(folder, prog, err);

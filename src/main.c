@@ -149,6 +149,7 @@ static bool FlPending(void);                    /* font layers (below) */
 static bool FsDirty(void);
 static void CmdAddGlyph(void);
 static void NewFontOpen(void);
+static bool SaveAsDialog(void);
 static void ImportFontOpen(void);
 static FlLayer *FollowCopy(void);          /* fitdoc.inc: the settings of the layer the glyphs are drawn from, for an undo snapshot */
 static void FollowRestore(FlLayer *snap);
@@ -557,7 +558,7 @@ static bool DbDirty(void)
 
 static const char *DbName(void)
 {
-    return store ? BaseName(store_info(store)->path) : "";
+    return !store ? "" : store_info(store)->path[0] ? BaseName(store_info(store)->path) : "Untitled";   /* New Database: no file yet */
 }
 
 static char winTitle[PATH_MAX_LEN + 64];   /* the window title (play.inc asserts on it) */
@@ -1045,7 +1046,7 @@ static bool InstallStore(Store *s)
         return false;
     }
     Browser_LoadSettings(browser, IniPath());
-    IniSetLastDb(libRoot);
+    if (libRoot[0]) IniSetLastDb(libRoot);
     return true;
 }
 
@@ -1390,6 +1391,7 @@ static bool SaveDb(void)
     if (!CommitEdits()) return false;
     FlSync();
     bool dbMod = store_modified(store);
+    if (!store_info(store)->path[0]) return SaveAsDialog();   /* a new database: its first Save chooses the file */
     if (!dbMod && !FsDirty()) { Th_Toast(0, "No changes to save"); return true; }
     char err[PX_ERR_LEN] = "";
     if (dbMod && !store_save(store, err)) { ShowError("Cannot save", err[0] ? err : "Unknown error."); return false; }
@@ -1417,25 +1419,37 @@ static bool DoSaveAs(const char *path)
     return true;
 }
 
-static void SaveAsDialog(void)
+/* true when it saved now (false: cancelled, failed, or the Replace question is open) */
+static bool SaveAsDialog(void)
 {
-    if (!store) { Th_Toast(2, "No database is loaded"); return; }
+    if (!store) { Th_Toast(2, "No database is loaded"); return false; }
     char path[PATH_MAX_LEN];
-    if (!DlgSave(path, sizeof path, store_info(store)->path)) return;
+    if (!DlgSave(path, sizeof path, store_info(store)->path)) return false;
     Slashes(path);
-    if (Same(path, store_info(store)->path)) { SaveDb(); return; }
+    if (Same(path, store_info(store)->path)) return SaveDb();
     if (FileExistsAt(path)) {
         char msg[PATH_MAX_LEN + 200];
         snprintf(msg, sizeof msg, "%s already exists.\nSaving replaces it.", path);
         snprintf(saveAsPending, sizeof saveAsPending, "%s", path);
         ModalOpen(M_CONFIRM, A_SAVEAS_REPLACE, "Replace file?", msg, 2, "Cancel", "Replace", NULL, 1, 0, true);
-        return;
+        return false;
     }
-    DoSaveAs(path);
+    return DoSaveAs(path);
+}
+
+/* New Database: an empty library in memory, with no file until the first Save; the New Font dialog opens on it */
+static void NewDatabase(void)
+{
+    Store *s = NULL;
+    char err[PX_ERR_LEN] = "";
+    if (!store_create(&s, err)) { ShowError("Cannot create a database", err[0] ? err : "Unknown error."); return; }
+    if (!InstallStore(s)) return;
+    ShowTypefaces();
+    NewFontOpen();
 }
 
 /* ---- unsaved changes: Load, Import and quit ask first (Save / Discard / Cancel) ---- */
-enum { G_NONE, G_LOAD_DIALOG, G_LOAD_PATH, G_IMPORT_DIALOG, G_QUIT };
+enum { G_NONE, G_LOAD_DIALOG, G_LOAD_PATH, G_IMPORT_DIALOG, G_NEW_DB, G_QUIT };
 static struct { int kind; char path[PATH_MAX_LEN]; } guard;
 
 static void RunGuarded(void)
@@ -1445,6 +1459,7 @@ static void RunGuarded(void)
     if (k == G_LOAD_DIALOG) LoadDialog();
     else if (k == G_LOAD_PATH) LoadPath(guard.path, AFTER_LIBRARY, "");
     else if (k == G_IMPORT_DIALOG) ImportDialog();
+    else if (k == G_NEW_DB) NewDatabase();
     else if (k == G_QUIT) quit = true;
 }
 
@@ -2156,19 +2171,20 @@ static void DrawFileMenu(void)
     if (!fileMenu.open) return;
     const char *nodb = "No database is loaded";
     int off = store ? 0 : TH_MI_OFF;
-    ThMenuItem it[8] = {
-        {"New Font\xE2\x80\xA6", NULL, "file.new", nodb, off}, {"Import Font File\xE2\x80\xA6", NULL, "file.importfont", nodb, off | TH_MI_SEP},
+    ThMenuItem it[9] = {
+        {"New Database", NULL, "file.newdb"}, {"New Font\xE2\x80\xA6", NULL, "file.new", nodb, off}, {"Import Font File\xE2\x80\xA6", NULL, "file.importfont", nodb, off | TH_MI_SEP},
         {"Load\xE2\x80\xA6", "Ctrl+O", "file.load"}, {"Save", "Ctrl+S", "file.save", nodb, off}, {"Save As\xE2\x80\xA6", "Ctrl+Shift+S", "file.saveas", nodb, off | TH_MI_SEP},
         {"Import Folder\xE2\x80\xA6", NULL, "file.import"}, {"Export to Folder\xE2\x80\xA6", NULL, "file.export", nodb, off | TH_MI_SEP}, {"Quit", NULL, "file.quit"}};
-    switch (Th_Menu(&(ThMenu){it, 8, .x = fileMenu.anchor.x, .y = fileMenu.anchor.y + fileMenu.anchor.height + 4, .w = 276, .keep = fileMenu.anchor}, &fileMenu.open)) {
-    case 0: NewFontOpen(); break;
-    case 1: ImportFontOpen(); break;
-    case 2: Guard(G_LOAD_DIALOG, ""); break;
-    case 3: SaveDb(); break;
-    case 4: SaveAsDialog(); break;
-    case 5: Guard(G_IMPORT_DIALOG, ""); break;
-    case 6: ExportStart(); break;
-    case 7: RequestQuit(); break;
+    switch (Th_Menu(&(ThMenu){it, 9, .x = fileMenu.anchor.x, .y = fileMenu.anchor.y + fileMenu.anchor.height + 4, .w = 276, .keep = fileMenu.anchor}, &fileMenu.open)) {
+    case 0: Guard(G_NEW_DB, ""); break;
+    case 1: NewFontOpen(); break;
+    case 2: ImportFontOpen(); break;
+    case 3: Guard(G_LOAD_DIALOG, ""); break;
+    case 4: SaveDb(); break;
+    case 5: SaveAsDialog(); break;
+    case 6: Guard(G_IMPORT_DIALOG, ""); break;
+    case 7: ExportStart(); break;
+    case 8: RequestQuit(); break;
     default: break;
     }
 }
@@ -2257,11 +2273,12 @@ static void DrawEmptyState(Rectangle area)
     RRect(c, TH_PANEL, TH_LINE);
     const char *head = "No database loaded";
     Th_TextHead(head, Fl(c.x + (c.width - Th_MeasureHead(head).x) / 2), c.y + 32, TH_TEXT);
-    TextCentered("Load a .pxfdb database to browse and edit its fonts,", (Rectangle){c.x, c.y + 72, c.width, TH_LINE_H}, TH_TEXT_DIM);
+    TextCentered("Start a new database with an empty page, load a .pxfdb database,", (Rectangle){c.x, c.y + 72, c.width, TH_LINE_H}, TH_TEXT_DIM);
     TextCentered("or import a folder of pxtf, pxfm and pxgl files into a new one.", (Rectangle){c.x, c.y + 72 + TH_LINE_H, c.width, TH_LINE_H}, TH_TEXT_DIM);
-    float bx = c.x + (c.width - 2 * 190 - TH_GAP) / 2;
-    if (Th_Button((Rectangle){bx, c.y + 144, 190, TH_ROW_H + 4}, "Load Database…", TH_BTN_PRIMARY, "Load a .pxfdb database file  (Ctrl+O)")) Guard(G_LOAD_DIALOG, "");
-    if (Th_Button((Rectangle){bx + 190 + TH_GAP, c.y + 144, 190, TH_ROW_H + 4}, "Import Folder…", 0, "Import a folder of pxtf, pxfm and pxgl files into a new .pxfdb")) Guard(G_IMPORT_DIALOG, "");
+    float bw = 166, bx = c.x + (c.width - 3 * bw - 2 * TH_GAP) / 2;
+    if (Th_Button((Rectangle){bx, c.y + 144, bw, TH_ROW_H + 4}, "New Database", 0, "An empty database with a new font: no file until the first Save")) Guard(G_NEW_DB, "");
+    if (Th_Button((Rectangle){bx + bw + TH_GAP, c.y + 144, bw, TH_ROW_H + 4}, "Load Database…", TH_BTN_PRIMARY, "Load a .pxfdb database file  (Ctrl+O)")) Guard(G_LOAD_DIALOG, "");
+    if (Th_Button((Rectangle){bx + 2 * (bw + TH_GAP), c.y + 144, bw, TH_ROW_H + 4}, "Import Folder…", 0, "Import a folder of pxtf, pxfm and pxgl files into a new .pxfdb")) Guard(G_IMPORT_DIALOG, "");
     TextCentered("Ctrl+O", (Rectangle){c.x, c.y + 200, c.width, TH_LINE_H}, TH_TEXT_DIM);
 }
 

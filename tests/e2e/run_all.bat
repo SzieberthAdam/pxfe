@@ -51,6 +51,10 @@ call :run 07d_real "%REALD% --import-to tests\tmp\real2.pxfdb --font %REALH%"
 call :fresh
 call :run 07e_nodb ""
 call :fresh
+if exist tests\tmp\x07f.pxfdb del tests\tmp\x07f.pxfdb
+if exist tests\tmp\x07f.pxfdb-settings del tests\tmp\x07f.pxfdb-settings
+call :run 07f_new_database ""
+call :fresh
 call :run 08a_quit_prompt "%DB% --font %H1%"
 call :fresh
 call :run 08b_quit_save "%DB% --font %H1%"

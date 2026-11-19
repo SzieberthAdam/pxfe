@@ -1,0 +1,51 @@
+# 7f. Starting with a blank page: no arguments, New Database on the empty state makes an empty database in memory (no file) and opens
+# the New Font dialog; the first Save asks for the file (Save As), and the file holds the new font.
+wait 5
+assert hasstore 0
+assert w.New_Database 1
+click @New_Database
+wait 10
+assert hasstore 1
+assert storefonts 0
+assert nfopen 1
+assert wtitle Untitled
+click @nf.name
+wait 3
+key a ctrl
+type Blank
+wait 3
+click @Create
+wait 10
+assert nfopen 0
+assert docnew 1
+assert readonly 0
+assert glyphs 0
+click @Add_Glyph
+wait 4
+type A
+wait 2
+click @Add
+wait 6
+assert glyphs 1
+assert unsaved 1
+# the first Save is a Save As: the file is chosen, written, and the window takes its name
+setdialog save tests/tmp/x07f.pxfdb
+key s ctrl
+wait 12
+assert unsaved 0
+assert storefonts 1
+assert wtitle x07f.pxfdb
+assert sqlfile tests/tmp/x07f.pxfdb "select count(*) from pxfm" 1
+assert sqlfile tests/tmp/x07f.pxfdb "select count(*) from pxfm_glyph where code = 65" 1
+# the menu has New Database too; with nothing unsaved it starts another empty one at once
+click @Menu
+wait 4
+assert w.file.newdb 1
+click @file.newdb
+wait 10
+assert nfopen 1
+assert storefonts 0
+assert wtitle Untitled
+key escape
+wait 4
+assert nfopen 0
