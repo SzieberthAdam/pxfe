@@ -442,7 +442,9 @@ static struct { Rectangle v; float *s; } th_scr[16];
 static int th_scr_n;
 
 #define TH_REG_MAX 384
-static struct { char name[64]; Rectangle r; } th_reg[TH_REG_MAX];
+static struct { char name[64]; Rectangle r; int scr; } th_reg[TH_REG_MAX];   /* scr: the th_scr view of a View area the widget is in, else -1 */
+static int th_va_scr = -1;   /* while a View area draws its content: its th_scr slot */
+static bool th_scrollbar(Rectangle view, float *scroll, float content, float step, bool live, bool reg);
 static int th_reg_n = 0;
 
 static struct { char name[64], buf[4096], old[4096]; int cur, anc, start; bool seen, drag; double clickT; } th_ed;   /* the text field that has the keyboard; between anc and cur is selected */
@@ -458,6 +460,7 @@ void Th_Reg(const char *name, Rectangle r)
     if (th_reg_n >= TH_REG_MAX) return;
     snprintf(th_reg[th_reg_n].name, sizeof th_reg[0].name, "%s", name);
     th_reg[th_reg_n].r = r;
+    th_reg[th_reg_n].scr = th_va_scr;
     th_reg_n++;
 }
 
@@ -675,6 +678,47 @@ void Th_SectionSetOpen(const char *title, bool open)
     else if (!open && i < 0 && th_fold_n < TH_FOLD_MAX) snprintf(th_fold[th_fold_n++], sizeof th_fold[0], "%s", title);
 }
 
+bool Th_ViewAreaBegin(ThViewArea *va, Rectangle p, float maxH, float *y)
+{
+    va->p = p;
+    va->toggled = false;
+    float hy = p.y + (TH_VIEW_HDR - 24) / 2;
+    Th_SectionSetOpen("VIEW", va->open);
+    bool o = Th_Section("VIEW", p.x + 16, &hy, p.width - 32, NULL);
+    if (o != va->open) { va->open = o; va->toggled = true; va->scroll = 0; }
+    if (!va->open) {
+        va->view = (Rectangle){ p.x, p.y + TH_VIEW_HDR, p.width, 0 };
+        Th_HLine(p.x + 1, p.x + p.width, p.y + TH_VIEW_HDR - 1, TH_LINE);
+        return false;
+    }
+    float h = va->contentH > 0 ? va->contentH : maxH;
+    if (h > maxH) h = maxH;
+    if (h < 0) h = 0;
+    va->view = (Rectangle){ p.x, p.y + TH_VIEW_HDR, p.width, (float)(int)h };
+    float mx = va->contentH - va->view.height;
+    if (va->scroll > mx) va->scroll = mx > 0 ? mx : 0;
+    if (va->scroll < 0) va->scroll = 0;
+    va->prevMouseB = th_mouse_blocked;
+    bool in = Th_HoverFn ? Th_HoverFn(va->view) : CheckCollisionPointRec(GetMousePosition(), va->view);
+    if (!in) th_mouse_blocked = true;     /* an entry scrolled out of the area must not react */
+    BeginScissorMode((int)va->view.x + 1, (int)va->view.y, (int)va->view.width - 1, (int)va->view.height);
+    if (th_scr_n < 16) { th_va_scr = th_scr_n; th_scr[th_scr_n++] = (typeof(th_scr[0])){ va->view, &va->scroll }; }
+    *y = va->view.y + 4 - va->scroll;
+    return true;
+}
+
+void Th_ViewAreaEnd(ThViewArea *va, float y)
+{
+    EndScissorMode();
+    th_mouse_blocked = va->prevMouseB;
+    va->contentH = y + va->scroll - va->view.y + 8;
+    th_va_scr = -1;
+    th_scrollbar(va->view, &va->scroll, va->contentH, 48, true, false);   /* its th_scr slot was taken in Th_ViewAreaBegin */
+    Th_HLine(va->p.x + 1, va->p.x + va->p.width, va->view.y + va->view.height - 1, TH_LINE);
+}
+
+float Th_ViewAreaBottom(const ThViewArea *va) { return va->view.y + va->view.height; }
+
 bool Th_Section(const char *title, float x, float *y, float w, const char *right)
 {
     Rectangle r = { x - 4, *y, w + 4, 24 };
@@ -747,8 +791,11 @@ int Th_Stepper(Rectangle r, const char *value, const char *prefix, int flags)
         Th_VLine(k ? b[k].x : b[k].x + bw, s.y + 1, s.y + s.height - 1, TH_LINE);
         Color ink = off ? TH_TEXT_OFF : TH_TEXT;
         int cy = (int)(s.y + s.height / 2);
-        DrawRectangle((int)(b[k].x + bw / 2 - 4), cy, 8, 1, ink);
-        if (k) DrawRectangle((int)(b[k].x + bw / 2 - 0.5f), cy - 4, 1, 9, ink);
+        if (flags & TH_STEP_ARROWS) Th_Icon(k ? TH_IC_NEXT : TH_IC_PREV, b[k], ink);
+        else {
+            DrawRectangle((int)(b[k].x + bw / 2 - 4), cy, 8, 1, ink);
+            if (k) DrawRectangle((int)(b[k].x + bw / 2 - 0.5f), cy - 4, 1, 9, ink);
+        }
         if (hover && IsMouseButtonPressed(MOUSE_BUTTON_LEFT)) { step = dir; snprintf(hold, sizeof hold, "%s", prefix); holdDir = dir; holdT = GetTime() + 0.45; }
         else if (hover && holdDir == dir && !strcmp(hold, prefix) && IsMouseButtonDown(MOUSE_BUTTON_LEFT) && GetTime() > holdT) { step = dir; holdT += 0.05; }
     }
@@ -1188,6 +1235,13 @@ static float th_sb_grab;
 bool Th_ScrollInto(Rectangle r)
 {
     float cx = r.x + r.width / 2, cy = r.y + r.height / 2;
+    for (int i = th_reg_n - 1; i >= 0; i--) {   /* a widget of a View area scrolls that area (the tabs' view under it may cover the same place) */
+        if (th_reg[i].scr < 0 || th_reg[i].scr >= th_scr_n || memcmp(&th_reg[i].r, &r, sizeof r)) continue;
+        Rectangle v = th_scr[th_reg[i].scr].v;
+        if (cy >= v.y + 4 && cy <= v.y + v.height - 4) return false;
+        *th_scr[th_reg[i].scr].s += cy - (v.y + v.height / 2);
+        return true;
+    }
     int best = -1;
     for (int i = 0; i < th_scr_n; i++) {
         Rectangle v = th_scr[i].v;

@@ -32,7 +32,6 @@ assert bfilter -
 assert bvisible 3
 
 # Ctrl+F focuses the filter, and typing works with the mouse elsewhere
-click @bside_View
 wait 3
 move 300 500
 key escape

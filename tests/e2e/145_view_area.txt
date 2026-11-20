@@ -1,0 +1,98 @@
+# 145. The View area above the panel tabs, the glyph field of the glyph view, Auto Spacing (font 3b52125b: U+0020 , A H M x and the default glyph).
+# The View area folds and opens with its caption, in the font view and in the glyph view, and stays folded when the view changes.
+# The glyph field: the arrows step to the neighbours, a character or a code opens that glyph, a glyph the font has not is refused.
+# Auto Spacing: the selected glyphs with ink get x offset 0 and the advance one past the ink; one undo step; locked, it is off.
+wait 5
+assert w.VIEW_Fold 1
+assert w.zoom+ 1
+assert ptab 0
+click @VIEW_Fold
+wait 3
+assert w.zoom+ 0
+assert w.ptab_Font 1
+click @VIEW_Fold
+wait 3
+assert w.zoom+ 1
+# the glyph view: the glyph field
+click @cell:U+0041
+key enter
+wait 6
+assert editor 1
+assert eglyph U+0041
+assert w.eglyph.value 1
+click @eglyph+
+wait 6
+assert eglyph U+0048
+click @eglyph-
+wait 6
+assert eglyph U+0041
+click @eglyph.value
+wait 3
+type x
+key enter
+wait 6
+assert eglyph U+0078
+click @eglyph.value
+wait 3
+type U+004D
+key enter
+wait 6
+assert eglyph U+004D
+click @eglyph.value
+wait 3
+type Q
+key enter
+wait 3
+assert toast has no glyph
+assert eglyph U+004D
+# folded in the glyph view; the player opens it again for a widget in it
+click @VIEW_Fold
+wait 3
+assert w.ezoom+ 0
+assert w.gtab_Glyph 1
+click @ezoom+
+wait 3
+assert w.ezoom+ 1
+key left alt
+wait 6
+assert editor 0
+# Auto Spacing: locked it is off
+key a ctrl
+wait 2
+click @ptab_Glyph
+wait 3
+assert w.Auto_Spacing 1
+click @Auto_Spacing
+wait 3
+assert modified 0
+# unlocked: A gets advance 8 and x offset 1 first in the glyph view (two undo steps), then Auto Spacing puts it back in one
+click @Unlock
+wait 4
+click @cell:U+0041
+key enter
+wait 6
+click @g.advance+
+wait 3
+click @g.advance+
+wait 3
+click @g.offx+
+wait 3
+assert glyph U+0041 advance 8
+assert glyph U+0041 x 1
+key left alt
+wait 6
+key a ctrl
+wait 2
+click @Auto_Spacing
+wait 3
+assert toast 1 of
+assert glyph U+0041 x 0
+assert glyph U+0041 advance 6
+assert glyph U+0048 x 0
+assert glyph U+004D x 0
+assert glyph U+0078 x 0
+key z ctrl
+wait 3
+assert glyph U+0041 advance 8
+assert glyph U+0041 x 1
+assert modified 1

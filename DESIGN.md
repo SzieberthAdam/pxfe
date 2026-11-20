@@ -163,6 +163,13 @@ Exactly two forms, both in Unifont; nothing else prints a hash.
 - Used by every panel (the library side panel, the Font, Glyph and Usage tabs, the Glyphs view's panel, the Layers panel and its Add Layer popover, the Usage and Similar sections and the sample strip as fold headers) and by the full-hash field.
 - A panel never writes its own heading look (dialog and view titles are `Th_TextHead`); inline toolbar labels (MOVE, ADVANCE) use `Th_TextCap`, the primitive under it.
 
+#### View area
+
+- `Th_ViewAreaBegin(&va, panel, maxH, &y)` / `Th_ViewAreaEnd(&va, y)` / `Th_ViewAreaBottom(&va)`: the view settings of a panel, above its tabs, in the library views, the font view and the glyph view.
+- A 36 px header with the fold caption VIEW (`Th_Section`, registered as `VIEW_Fold`); open, the caller's content under it, at most half the panel tall (more scrolls inside), and a hairline under it; the tabs start at `Th_ViewAreaBottom`.
+- Its open state is the caller's and is kept in pxfe.ini, as the sample strip's: `viewopen` in `[browser]`, `viewFont` and `viewGlyph` in `[app]`.
+- Inside it no section is called VIEW: the caption is the area's.
+
 #### Label/value row
 
 - `Th_Row(x, &y, w, label, value, flags)`: the dim label in a `TH_ROW_LABEL_W` (108) column, the value right-aligned with an ellipsis; `TH_ROW_UNI` for Unifont.
@@ -393,7 +400,7 @@ The text folders (`pxtf/`, `pxfm/`, `pxgl/`, `palette/`) are reached only throug
 ### Export (`Menu ▸ Export to Folder…`)
 
 - A folder without library data gets every file of memory (committed first).
-- A folder with library data opens a dialog with the counts found and a choice: Append (write what the folder lacks and leave the files already there, since the same name is the same content; delete nothing), Overwrite (empty its `pxtf/`, `pxfm/`, `pxgl/` and `palette/`, nothing else, then write everything) or Cancel.
+- A folder with library data opens a dialog with the counts found and a choice: Update (write what the folder lacks and leave the files already there, since the same name is the same content; delete nothing), Overwrite (empty its `pxtf/`, `pxfm/`, `pxgl/` and `palette/`, nothing else, then write everything) or Cancel.
 - Overwrite offers "Make a backup first", on by default: the folder's data is imported into `<folder>-backup-<YYYYMMDD-HHMM>.pxfdb` beside it first; if that fails, nothing is deleted, and overwriting without a backup needs a second confirmation.
 - A summary says what was written, skipped and deleted; the sidecar is not touched.
 
@@ -535,8 +542,8 @@ The library views are Typefaces, Typeface and Fonts (`src/browser.c`).
 
 ### The side panel
 
-- Tabs **View | Typeface | Font | Similar** in the Typefaces and Typeface views, **View | Font | Similar** in the Fonts view.
-- View: Rescan in the heading row; FILTER: the name filter (substring over family, full name, style, designer, hash; `Ctrl+F` focuses it), the Style, Format and Colours dropdowns built from the values present, Clear filters; SAMPLE: the sample and its presets; VIEW: the zoom, the columns (1 to 8, or Auto) and the sort (name, size, format, glyph count).
+- The View area (see "View area"), then the tabs **Typeface | Font | Similar** in the Typefaces and Typeface views, **Font | Similar** in the Fonts view.
+- View: LIBRARY with the counts and Rescan; FILTER: the name filter (substring over family, full name, style, designer, hash; `Ctrl+F` focuses it), the Style, Format and Colours dropdowns built from the values present, Clear filters; SAMPLE: the sample and its presets; CARDS: the zoom, the columns (1 to 8, or Auto) and the sort (name, size, format, glyph count).
   In the Typeface view only the sample and the zoom.
 - Typeface and Font: see "The Typeface and Font tabs".
 - Similar: the similar fonts or typefaces of the selection, else "Select a font to see similar ones".
@@ -593,11 +600,12 @@ The library views are Typefaces, Typeface and Fonts (`src/browser.c`).
 
 ### The right panel
 
-Tabs **View | Font | Glyph | Similar | Layers**, remembered; selecting a glyph never changes the tab, and each tab scrolls by itself.
+The View area (see "View area"): the zoom stepper (1x to 16x, also Ctrl+wheel), Metrics and Captions.
+Under it the tabs **Font | Glyph | Similar | Layers**, remembered; selecting a glyph never changes the tab, and each tab scrolls by itself.
 
-- View: the zoom stepper (1x to 16x, also Ctrl+wheel), Metrics and Captions.
 - Font: the Font tab of "The Typeface and Font tabs", then FONT METRICS: every metric as an optional row (a check for "stated" and a number field), `RATIO` as two fields, `MONOSPACED` and `SYMBOLIC` as switches, and the Baseline row; changes show live on all cells.
-- Glyph: SELECTION: the selection's facts as text (with the character), "Open in Glyph View", the commands (Select Occurrences and Find in Library; Add Glyph, Clone, Set Default, Delete), the glyph hash; then the glyph usage.
+- Glyph: SELECTION: the selection's facts as text (with the character), "Open in Glyph View", the commands (Select Occurrences and Find in Library; Add Glyph, Clone, Set Default, Delete; Auto Spacing), the glyph hash; then the glyph usage.
+- Auto Spacing: every selected glyph with ink gets its ink from the pen (x offset 0 for a cropped bitmap) and the advance one past its last ink column, so one empty column follows it; glyphs without ink stay as they are; one undo step; a toast counts the glyphs changed.
 - Similar: the similar fonts and typefaces.
 - Layers: the font layers.
 - Every section caption folds (`Th_Section`), and the state lasts for the session.
@@ -640,13 +648,13 @@ The Baseline row (under Descent) has up and down buttons (`@Baseline_up`, `@Base
 ### The bar
 
 - One row, as tall as the right panel's tabs, so that their hairlines meet: the padlock, the current tool's options (Pixel-perfect; Filled; Set, Add, Sub, And with 8-way; Contiguous with 8-way), MOVE (four arrows: the selection, or without one the bitmap, by 1 cell) and ADVANCE.
-- The way back is the navigation bar, Alt+Left or Esc; the neighbours are in the View tab; the layers and kerning have tabs.
+- The way back is the navigation bar, Alt+Left or Esc; the neighbours are in the View area; the layers and kerning have tabs.
 
 ### The right panel
 
-Tabs **View | Glyph | Layers | Kerning** (`src/gpanel.inc`); opening the glyph view shows the Glyph tab.
+The View area (see "View area", `Editor_ViewPanel`), then the tabs **Glyph | Layers | Kerning** (`src/gpanel.inc`); opening the glyph view shows the Glyph tab.
 
-- View: the glyph's caption with the previous and next glyph (`PgUp`, `PgDn`), the zoom with Fit, Metrics and Checker (`Editor_ViewPanel`).
+- View: Glyph, a left arrow, a field and a right arrow (the arrows step to the previous and next glyph, as `PgUp`, `PgDn`; the field shows the glyph's character or code and opens the glyph typed, a character or a code, with an error toast when the font has none), the zoom with Fit, Metrics and Checker.
 - Glyph: the glyph's fields, Find in Library, the full pxgl hashes of the glyph as opened and as it is now, and the glyph usage.
 - Layers: session and font layers in one stack.
 - Kerning: the partner, the kerning of the pair and the glyph's pairs (`Editor_KernPanel`, see "Kerning").

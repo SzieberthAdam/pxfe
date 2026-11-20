@@ -1,4 +1,4 @@
-# 26. Export, Append: a folder that has some of the files and other files.  The dialog shows what is found; Append writes only what is
+# 26. Export, Update: a folder that has some of the files and other files.  The dialog shows what is found; Update writes only what is
 # missing, never changes an existing file, never deletes.  The duplicate being edited is committed first and exported too.
 wait 5
 click @Unlock
@@ -20,7 +20,7 @@ assert xfound_fonts 1
 assert xfound_typefaces 0
 assert xbackup 1
 shot tests/tmp/shots/v5_export_dialog.png
-click @Append
+click @Update
 wait 12
 assert xdopen 0
 assert modal Export_finished
@@ -38,6 +38,6 @@ assert file tests/tmp/xout/other/deep.txt contains keep me too
 assert samefile tests/tmp/xout/pxfm/4f/4fba4190f6ba7e10b296c7070234e1ce.pxfm tests/tmp/e2elib/pxfm/4f/4fba4190f6ba7e10b296c7070234e1ce.pxfm
 assert file $SAVEDPXFM exists
 assert file $SAVEDPXTF exists
-# Append does not make a backup and does not change the database file
+# Update does not make a backup and does not change the database file
 assert samefile tests/tmp/e2e.pxfdb testdata/lib.pxfdb
 assert dbmodified 1

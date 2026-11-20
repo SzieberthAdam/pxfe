@@ -1,7 +1,7 @@
 /* gpanel.inc - the right panel of the glyph view, included by main.c after panel.inc (DESIGN.md "Glyph view").
  * Four tabs: View (the glyph and its neighbours, zoom, metric lines, checker: Editor_ViewPanel), Glyph (code, character, advance, bitmap, offsets,
  * "Find in Library", the hashes of the original and of the current bitmap, the glyph usage), Layers (layers.c) and Kerning (Editor_KernPanel; the
- * glyph view draws the partner glyph while it shows).  glyphTab: 3 View, 0 Glyph, 2 Layers, 4 Kerning.
+ * glyph view draws the partner glyph while it shows).  glyphTab: 0 Glyph, 2 Layers, 4 Kerning; the View is the area above the tabs.
  * The tab is not remembered: the glyph view opens on Glyph.  Every tab scrolls by itself. */
 
 static void DrawGlyphInfo(float px, float *yp, int gi, PxCode insCode)
@@ -32,9 +32,17 @@ static void DrawGlyphPanel(Rectangle p)
 {
     DrawRectangleRec(p, TH_PANEL);
     Th_VLine(p.x, p.y, p.y + p.height, TH_LINE);
-    static const char *labels[4] = {"View", "Glyph", "Layers", "Kerning"};
-    static const int ids[4] = {3, 0, 2, 4};
-    int tab = glyphTab, c = PanelTabs(p, 4, labels, ids, tab, "gtab");
+    {   /* the view area above the tabs: the glyph's neighbours, zoom, Fit, Metrics, Checker */
+        float vy;
+        if (Th_ViewAreaBegin(&glyphView, p, ViewAreaMaxH(p), &vy)) { Editor_ViewPanel(ed, p.x + 16, &vy, PANEL_W - 32); Th_ViewAreaEnd(&glyphView, vy); }
+        if (glyphView.toggled) IniSetApp("viewGlyph", glyphView.open ? "1" : "0");
+        float b = Th_ViewAreaBottom(&glyphView);
+        p.height -= b - p.y;
+        p.y = b;
+    }
+    static const char *labels[3] = {"Glyph", "Layers", "Kerning"};
+    static const int ids[3] = {0, 2, 4};
+    int tab = glyphTab, c = PanelTabs(p, 3, labels, ids, tab, "gtab");
     if (c >= 0 && c != glyphTab) { glyphTab = c; tab = c; panelScroll = 0; }
     Rectangle cr = {p.x, p.y + PANEL_TABS_H, p.width, p.height - PANEL_TABS_H};   /* the scrolling content */
     float maxS0 = panelContentH - cr.height;
@@ -51,9 +59,7 @@ static void DrawGlyphPanel(Rectangle p)
     float px = p.x;
     float y = cr.y + 14 - panelScroll;
     int mask = 0;
-    if (tab == 3) {
-        if (Th_Section("VIEW", px + 16, &y, PANEL_W - 32, NULL)) Editor_ViewPanel(ed, px + 16, &y, PANEL_W - 32);
-    } else if (tab == 0 && g) {
+    if (tab == 0 && g) {
         if (Th_Section("GLYPH", px + 16, &y, PANEL_W - 32, NULL)) DrawGlyphInfo(px, &y, gi, insCode);
         static char insH[1][33];
         px_glyph_hash(g, insH[0]);            /* "" = no ink: no bitmap to look for */

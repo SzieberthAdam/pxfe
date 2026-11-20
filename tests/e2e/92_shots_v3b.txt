@@ -8,7 +8,6 @@ wait 4
 click @bside_Similar
 wait 6
 shot tests/shots/v3b_browser_similar_empty.png
-click @bside_View
 wait 4
 click @Filter
 type 00fa5b08

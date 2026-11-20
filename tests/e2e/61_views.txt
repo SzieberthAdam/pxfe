@@ -10,14 +10,11 @@ assert btab 0
 assert intypeface 0
 assert bboxes 2
 
-# ---- 7. the Typefaces view's panel: View | Typeface | Similar
-assert w.bside_View 1
+# ---- 7. the Typefaces view's panel: the View area above Typeface | Font | Similar
+assert w.VIEW_Fold 1
 assert w.bside_Typeface 1
 assert w.bside_Similar 1
-click @bside_View
-wait 3
-assert bside 0
-# ---- 5. the zoom of the View tab is the stepper: [-] 2x [+]
+# ---- 5. the zoom of the View area is the stepper: [-] 2x [+]
 assert w.bzoom- 1
 assert w.bzoom+ 1
 assert w.Zoom_1 0
@@ -64,14 +61,13 @@ assert bside 2
 dblclick @hdr:0
 wait 16
 assert nav 1
-assert w.bside_View 1
+assert w.VIEW_Fold 1
 assert w.bside_Typeface 1
 assert w.bside_Similar 1
 assert bside 2
 assert w.hash_typeface_full 1
 assert w.c.family 1
 shot tests/tmp/p1/td_3_typeface.png
-click @bside_View
 wait 3
 assert w.bzoom+ 1
 assert w.Zoom_5 0
@@ -110,7 +106,7 @@ assert nav 1
 click @Fonts
 wait 12
 assert nav 2
-assert w.bside_View 1
+assert w.VIEW_Fold 1
 assert w.bside_Typeface 0
 assert w.bside_Similar 1
 assert w.bzoom+ 1

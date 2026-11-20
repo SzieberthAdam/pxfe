@@ -258,6 +258,7 @@ call :fresh
 call :run 143_shots_picker "%DB% --font %H1%"
 call :fresh
 call :run 144_kerning "%DB% --font %H1%"
+call :run 145_view_area "%DB% --font %H1%"
 call :fresh
 call :run 70_panel_tabs "%DB%"
 

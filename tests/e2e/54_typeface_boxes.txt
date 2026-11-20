@@ -44,7 +44,6 @@ assert bsel 0
 click @bside_Similar
 wait 3
 assert bside 1
-click @bside_View
 wait 2
 click @card:1
 wait 2

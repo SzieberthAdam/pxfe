@@ -90,7 +90,7 @@ float Sample_Draw(SampleCache *cache, const PxFont *f, const char *text, float x
 typedef struct SampleEdit { int cur, anchor; bool hasSel, drag; float pxCol; float scroll; int seen; } SampleEdit;   /* zero-initialise */
 
 /* A multi-line text box on the shared text in `r`; registers `regName` for scripts.  blocked: a modal is open.  mouseClip (may be NULL):
- * the mouse only counts inside it (a scrolled panel).  Returns true when the text changed.
+ * the mouse only counts inside it and the text is clipped to it (a scrolled panel; its scissor is set again on return).  Returns true when the text changed.
  * While it has the focus it owns the keyboard (see Sample_TextFocused). */
 bool SampleEdit_Do(SampleEdit *e, Rectangle r, const char *placeholder, const char *regName, bool blocked, const Rectangle *mouseClip);
 bool SampleEdit_Focused(const SampleEdit *e);

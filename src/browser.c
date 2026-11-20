@@ -79,7 +79,8 @@ struct Browser {
 
     /* view state */
     int tab, zoom, cols, sortKey; bool sortDesc, mono, italic;
-    int sideTab;                   /* side panel: SIDE_* (shown as View | Typeface | Font | Similar) */
+    int sideTab;                   /* side panel: SIDE_* (shown as Typeface | Font | Similar; SIDE_VIEW is no tab any more) */
+    ThViewArea viewArea;           /* the View area above the side panel's tabs (open: kept in the ini) */
     bool tfTabShown;               /* the Typeface or Font tab was drawn this frame */
     char scHash[33]; PxtfTypeface scCont; bool scHas;   /* the typeface of the selected entry, for the Typeface tab */
     /* the Typeface view: the Typefaces tab narrowed to the variants of one typeface, drawn as large rows */
@@ -606,6 +607,7 @@ Browser *Browser_Create(Store *store, Insight *insight, char err[PX_ERR_LEN])
     double t0 = GetTime();
     Browser *b = (Browser *)calloc(1, sizeof *b);
     if (!b) { snprintf(err, PX_ERR_LEN, "out of memory"); return NULL; }
+    b->viewArea.open = true;
     b->store = store; b->insight = insight;
     snprintf(b->root, sizeof b->root, "%s", store_info(store)->path);
     if (!library_scan(b->store, &b->lib, err)) { free(b); return NULL; }
@@ -705,6 +707,7 @@ void Browser_LoadSettings(Browser *b, const char *iniPath)
         int iv = atoi(v);
         if (!strcmp(key, "tab")) { if (iv >= 0 && iv <= 1) b->tab = iv; }
         else if (!strcmp(key, "sidetab")) { if (iv >= 0 && iv <= 3) b->sideTab = iv; }
+        else if (!strcmp(key, "viewopen")) b->viewArea.open = iv != 0;
         else if (!strcmp(key, "zoom")) { if (iv >= 1 && iv <= 8) b->zoom = iv; }
         else if (!strcmp(key, "cols")) { if (iv >= 0 && iv <= 8) b->cols = iv; }
         else if (!strcmp(key, "sort")) { if (iv >= 0 && iv <= 3) b->sortKey = iv; }
@@ -754,8 +757,8 @@ void Browser_SaveSettings(const Browser *b, const char *iniPath)
     }
     char sec[1200];
     int m = snprintf(sec, sizeof sec,
-                     "[browser]\ntab=%d\nsidetab=%d\nzoom=%d\ncols=%d\nsort=%d\ndesc=%d\nmono=%d\nitalic=%d\nstyle=%s\nformat=%s\ncolors=%s\n",
-                     b->tab, b->sideTab, b->zoom, b->cols, b->sortKey, b->sortDesc, b->mono, b->italic, b->selStr[0], b->selStr[1], b->selStr[2]);
+                     "[browser]\ntab=%d\nsidetab=%d\nviewopen=%d\nzoom=%d\ncols=%d\nsort=%d\ndesc=%d\nmono=%d\nitalic=%d\nstyle=%s\nformat=%s\ncolors=%s\n",
+                     b->tab, b->sideTab, b->viewArea.open, b->zoom, b->cols, b->sortKey, b->sortDesc, b->mono, b->italic, b->selStr[0], b->selStr[1], b->selStr[2]);
     if (m > 0) { memcpy(out + o, sec, (size_t)m); o += (size_t)m; }
     px_write_file(iniPath, out, o);
     free(out);
@@ -1198,37 +1201,10 @@ static Rectangle wide_row(float x, float *y, float w, const char *label)
     return r;
 }
 
-static void panel_ui(Browser *b, Rectangle P, BrowserChoice *choice, bool *chosen)
+/* The View area above the side panel's tabs: LIBRARY (count, Rescan), FILTER, SAMPLE and CARDS (zoom, columns, sort). */
+static void view_area(Browser *b, float x, float w, float *yp, Rectangle clip)
 {
-    DrawRectangle((int)P.x, (int)P.y, (int)P.width, (int)P.height, TH_PANEL);
-    Th_VLine(P.x, P.y, P.y + P.height, TH_LINE);
-    /* the tabs: View | Typeface | Font | Similar in the Typefaces and Typeface views, View | Font | Similar in the Fonts view */
-    bool hasTfTab = b->tab == TAB_TYPEFACES;
-    int side = b->sideTab == SIDE_TYPEFACE && !hasTfTab ? SIDE_FONT : b->sideTab;
-    {
-        static const char *labels[4] = { "View", "Typeface", "Font", "Similar" }, *labels3[3] = { "View", "Font", "Similar" };
-        static const int ids4[4] = { SIDE_VIEW, SIDE_TYPEFACE, SIDE_FONT, SIDE_SIMILAR }, ids3[3] = { SIDE_VIEW, SIDE_FONT, SIDE_SIMILAR };
-        const int *ids = hasTfTab ? ids4 : ids3;
-        int nt = hasTfTab ? 4 : 3, cur = 0;
-        for (int i = 0; i < nt; i++) if (ids[i] == side) cur = i;
-        bool prevB0 = Th_InputBlocked();
-        if (b->pop.open) Th_SetInputBlocked(true);
-        int c = Th_Segmented(RR(P.x + PAD - 8, P.y + 8, P.width - 2 * PAD + 16, TH_ROW_H), &(ThSeg){ hasTfTab ? labels : labels3, nt, cur, 0u, "bside" });
-        Th_SetInputBlocked(prevB0);
-        if (c >= 0 && ids[c] != side) { b->sideTab = ids[c]; side = ids[c]; b->panelScroll = 0; }
-        Th_HLine(P.x + 1, P.x + P.width, P.y + 43, TH_LINE);
-    }
-    Rectangle SR = RR(P.x, P.y + 44, P.width, P.height - 44);      /* the scrolling part */
-    float x = P.x + PAD, w = P.width - 2 * PAD;
-    float top0 = SR.y + 12 - b->panelScroll;
-    float y = top0;
-
-    bool prevBlocked = Th_InputBlocked(), prevMouseB = Th_MouseOnly(), prevEaten = b->mouseEaten;
-    if (!pt_in(SR, GetMousePosition())) { Th_SetMouseBlocked(true); b->mouseEaten = true; }   /* the mouse only: a focused field keeps its keys */
-    if (b->pop.open) Th_SetInputBlocked(true);
-    BeginScissorMode((int)SR.x + 1, (int)SR.y, (int)SR.width - 1, (int)SR.height);
-
-    if (side == SIDE_VIEW) {
+    float y = *yp;
     {
         char ct[64];
         if (b->tfView[0]) snprintf(ct, sizeof ct, "%d font%s", b->nvis, b->nvis == 1 ? "" : "s");
@@ -1259,7 +1235,7 @@ static void panel_ui(Browser *b, Rectangle P, BrowserChoice *choice, bool *chose
     {
         float eh = SampleEdit_Height(6);
         if (eh < 30) eh = 30;
-        Rectangle clipR = SR;
+        Rectangle clipR = clip;
         SampleEdit_Do(&b->sampleEdit, RR(x, y, w, eh), "Sample text (Enter: new line)", "Sample", b->modalBlocked || b->pop.open, &clipR);
 
         y += eh + 8;
@@ -1283,7 +1259,7 @@ static void panel_ui(Browser *b, Rectangle P, BrowserChoice *choice, bool *chose
     }
 
     /* ---- view */
-    if (Th_Section("VIEW", x, &y, w, NULL)) {
+    if (Th_Section("CARDS", x, &y, w, NULL)) {
         char zt[8];
         int c;
         snprintf(zt, sizeof zt, "%dx", b->zoom);
@@ -1313,7 +1289,50 @@ static void panel_ui(Browser *b, Rectangle P, BrowserChoice *choice, bool *chose
         }
     }
 
+    *yp = y;
+}
+
+static void panel_ui(Browser *b, Rectangle P, BrowserChoice *choice, bool *chosen)
+{
+    DrawRectangle((int)P.x, (int)P.y, (int)P.width, (int)P.height, TH_PANEL);
+    Th_VLine(P.x, P.y, P.y + P.height, TH_LINE);
+    /* the View area, then the tabs: Typeface | Font | Similar in the Typefaces and Typeface views, Font | Similar in the Fonts view */
+    if (b->sideTab == SIDE_VIEW) b->sideTab = SIDE_FONT;   /* View was a tab once */
+    {
+        bool prevB0 = Th_InputBlocked();
+        if (b->pop.open) Th_SetInputBlocked(true);
+        float vy;
+        if (Th_ViewAreaBegin(&b->viewArea, P, (P.height - TH_VIEW_HDR) / 2, &vy)) { view_area(b, P.x + PAD, P.width - 2 * PAD, &vy, b->viewArea.view); Th_ViewAreaEnd(&b->viewArea, vy); }
+        Th_SetInputBlocked(prevB0);
+        float bt = Th_ViewAreaBottom(&b->viewArea);
+        P.height -= bt - P.y;
+        P.y = bt;
     }
+    bool hasTfTab = b->tab == TAB_TYPEFACES;
+    int side = b->sideTab == SIDE_TYPEFACE && !hasTfTab ? SIDE_FONT : b->sideTab;
+    {
+        static const char *labels[3] = { "Typeface", "Font", "Similar" }, *labels3[2] = { "Font", "Similar" };
+        static const int ids4[3] = { SIDE_TYPEFACE, SIDE_FONT, SIDE_SIMILAR }, ids3[2] = { SIDE_FONT, SIDE_SIMILAR };
+        const int *ids = hasTfTab ? ids4 : ids3;
+        int nt = hasTfTab ? 3 : 2, cur = 0;
+        for (int i = 0; i < nt; i++) if (ids[i] == side) cur = i;
+        bool prevB0 = Th_InputBlocked();
+        if (b->pop.open) Th_SetInputBlocked(true);
+        int c = Th_Segmented(RR(P.x + PAD - 8, P.y + 8, P.width - 2 * PAD + 16, TH_ROW_H), &(ThSeg){ hasTfTab ? labels : labels3, nt, cur, 0u, "bside" });
+        Th_SetInputBlocked(prevB0);
+        if (c >= 0 && ids[c] != side) { b->sideTab = ids[c]; side = ids[c]; b->panelScroll = 0; }
+        Th_HLine(P.x + 1, P.x + P.width, P.y + 43, TH_LINE);
+    }
+    Rectangle SR = RR(P.x, P.y + 44, P.width, P.height - 44);      /* the scrolling part */
+    float x = P.x + PAD, w = P.width - 2 * PAD;
+    float top0 = SR.y + 12 - b->panelScroll;
+    float y = top0;
+
+    bool prevBlocked = Th_InputBlocked(), prevMouseB = Th_MouseOnly(), prevEaten = b->mouseEaten;
+    if (!pt_in(SR, GetMousePosition())) { Th_SetMouseBlocked(true); b->mouseEaten = true; }   /* the mouse only: a focused field keeps its keys */
+    if (b->pop.open) Th_SetInputBlocked(true);
+    BeginScissorMode((int)SR.x + 1, (int)SR.y, (int)SR.width - 1, (int)SR.height);
+
 
     /* ---- the Typeface and Font tabs: drawn by the application (fields, lock, commands) */
     b->tfTabShown = side == SIDE_TYPEFACE || side == SIDE_FONT;

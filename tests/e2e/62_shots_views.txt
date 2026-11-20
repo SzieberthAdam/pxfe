@@ -9,7 +9,6 @@ click @hdr:0
 click @bside_Typeface
 wait 20
 shot tests/tmp/p1/real_1_typefaces_tab.png
-click @bside_View
 wait 10
 shot tests/tmp/p1/real_1b_typefaces_view.png
 dblclick @hdr:0

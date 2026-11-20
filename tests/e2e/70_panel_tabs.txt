@@ -1,7 +1,7 @@
 # 70. The panel tabs and their commands (testdata/lib, no font open).
 # 1 the library's Font tab: padlock, hash, Clone Font / Delete Font, Export Font and Export Typeface write packages, no right-click menu; 2 Clone Font needs the typeface unlocked, unlocking it from
 # the Typeface tab opens its font quietly and stays in the library; 3 Clone Font adds a variant naming the same font; 4 a press on the selected
-# entry opens it; 5 the font view's View, Font and Glyph tabs hold what the command bar had; 6 the glyph view's View tab and its sample strip;
+# entry opens it; 5 the font view's View area, Font and Glyph tabs hold what the command bar had; 6 the glyph view's View area and its sample strip;
 # 7 a text field selects (Ctrl+A, then typing replaces the selection).
 wait 16
 assert nav 0
@@ -70,11 +70,8 @@ wait 12
 assert inbrowser 0
 assert nav 3
 
-# ---- 5. the font view: View (zoom, metrics, captions), Font (padlock, fields, metrics), Glyph (the glyph commands)
-assert w.ptab_View 1
-click @ptab_View
-wait 3
-assert ptab 4
+# ---- 5. the font view: the View area (zoom, metrics, captions), Font (padlock, fields, metrics), Glyph (the glyph commands)
+assert w.VIEW_Fold 1
 assert w.zoom+ 1
 assert w.Metrics 1
 assert w.Captions 1
@@ -91,14 +88,11 @@ assert w.Find_in_Library 1
 assert w.Add_Glyph 1
 assert w.Set_Default 1
 
-# ---- 6. the glyph view: View | Glyph | Layers, the sample strip under it
+# ---- 6. the glyph view: the View area above Glyph | Layers | Kerning, the sample strip under it
 click @Open_in_Glyph_View
 wait 12
 assert editor 1
 assert gtab 0
-click @gtab_View
-wait 3
-assert gtab 3
 assert w.Checker 1
 assert w.ezoom+ 1
 assert w.sz+ 1
@@ -111,7 +105,6 @@ click @nav.0
 wait 12
 click @Typefaces
 wait 4
-click @bside_View
 wait 3
 click @Filter
 wait 2

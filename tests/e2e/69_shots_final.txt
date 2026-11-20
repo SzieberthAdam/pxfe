@@ -6,7 +6,6 @@ waitfor loading = 0 600000
 sleep 3500
 # 1400x900
 wait 30
-click @bside_View
 wait 20
 shot tests/tmp/p3/final/typefaces.png
 click @Menu
@@ -103,7 +102,6 @@ wait 20
 click @nav.0
 wait 40
 wait 30
-click @bside_View
 wait 20
 shot tests/tmp/p3/final/s_typefaces.png
 click @Menu

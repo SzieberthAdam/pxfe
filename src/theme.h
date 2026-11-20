@@ -153,6 +153,7 @@ int Th_Segmented(Rectangle r, const ThSeg *g);
 #define TH_STEP_NO_MINUS 1
 #define TH_STEP_NO_PLUS  2
 #define TH_STEP_EDIT     4
+#define TH_STEP_ARROWS   8   /* left and right triangles instead of minus and plus: a step through a sequence (the glyphs of a font) */
 int Th_Stepper(Rectangle r, const char *value, const char *prefix, int flags);
 Rectangle Th_StepperValue(Rectangle r);   /* the middle of the stepper r, where the value is */
 int Th_StepperHover(void);
@@ -279,6 +280,16 @@ void      Th_SectionSetOpen(const char *title, bool open);
 Rectangle Th_Row(float x, float *y, float w, const char *label, const char *value, int flags);
 Color     Th_ListRow(Rectangle r, int flags);
 Color     Th_Card(Rectangle r, int flags);
+
+/* The view area of a panel (DESIGN.md "View area"): above the panel's tabs, a header row with the fold caption VIEW (registered "VIEW Fold");
+ * open, the caller's content below it, at most `maxH` tall (taller content scrolls inside), and a hairline under it.  Th_ViewAreaBegin draws the
+ * header and, open, clips the content and returns true with *y its first line; the caller draws there and calls Th_ViewAreaEnd(va, y) with the y
+ * it reached.  Th_ViewAreaBottom is where the tabs start.  `open` is the caller's (it persists it); `toggled` is set for the frame the fold changed. */
+#define TH_VIEW_HDR 36
+typedef struct { bool open, toggled, prevMouseB; float scroll, contentH; Rectangle p, view; } ThViewArea;
+bool  Th_ViewAreaBegin(ThViewArea *va, Rectangle p, float maxH, float *y);
+void  Th_ViewAreaEnd(ThViewArea *va, float y);
+float Th_ViewAreaBottom(const ThViewArea *va);
 
 /* Scroll bar (DESIGN.md "Scroll bar"): a thin bar at the right edge of `view` (TH_SB_W of it is the bar's: content stays clear).  Th_ScrollBar takes
  * the wheel (`step` px a notch, 0: the caller's), the drag and a click on the track (the thumb centres there) for *scroll, clamps it to 0..content - view.height

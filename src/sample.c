@@ -617,7 +617,14 @@ bool SampleEdit_Do(SampleEdit *e, Rectangle r, const char *placeholder, const ch
     rr_fill((int)r.x, (int)r.y, (int)r.width, (int)r.height, TH_RADIUS, border);
     rr_fill((int)r.x + 1, (int)r.y + 1, (int)r.width - 2, (int)r.height - 2, TH_RADIUS - 1, TH_PANEL);
     Th_ScrollBar(r, &e->scroll, nlines * LH + 2 * EPAD, LH * 2, !blocked && (!mouseClip || CheckCollisionPointRec(m, *mouseClip)));
-    BeginScissorMode((int)r.x + 2, (int)r.y + 2, (int)r.width - 4, (int)r.height - 4);
+    {   /* inside the field, and inside mouseClip (the caller's clip, restored at the end) */
+        float x0 = r.x + 2, y0 = r.y + 2, x1 = r.x + r.width - 2, y1 = r.y + r.height - 2;
+        if (mouseClip) {
+            x0 = fmaxf(x0, mouseClip->x); y0 = fmaxf(y0, mouseClip->y);
+            x1 = fminf(x1, mouseClip->x + mouseClip->width); y1 = fminf(y1, mouseClip->y + mouseClip->height);
+        }
+        BeginScissorMode((int)x0, (int)y0, x1 > x0 ? (int)(x1 - x0) : 0, y1 > y0 ? (int)(y1 - y0) : 0);
+    }
     float th = Th_Measure("Ag").y;
     if (len == 0) Th_Text(placeholder, textX, r.y + EPAD + (LH - th) / 2, TH_TEXT_DIM);
     int sa, sb;
@@ -644,6 +651,7 @@ bool SampleEdit_Do(SampleEdit *e, Rectangle r, const char *placeholder, const ch
         ls = le + 1;
     }
     EndScissorMode();
+    if (mouseClip) BeginScissorMode((int)mouseClip->x + 1, (int)mouseClip->y, (int)mouseClip->width - 1, (int)mouseClip->height);
     return changed;
 }
 

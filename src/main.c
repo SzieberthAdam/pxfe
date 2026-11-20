@@ -143,7 +143,8 @@ static int lcap = 0;
 static float rowH = 0, contentH = 0;
 static int boxAbove = 6, boxBelow = 2; /* the font box of the current frame (px_font_box) */
 static float panelScroll = 0;          /* scroll of the right-hand panel */
-static int glyphTab = 0;               /* tab of the glyph view's right panel: 0 Glyph, 2 Layers, 3 View, 4 Kerning (not remembered) */
+static int glyphTab = 0;               /* tab of the glyph view's right panel: 0 Glyph, 2 Layers, 4 Kerning (not remembered) */
+static ThViewArea fontView = { .open = true }, glyphView = { .open = true };   /* the View areas above the panels' tabs (open: kept in pxfe.ini) */
 static bool TypefaceEditing(const char *pxtf);   /* panel.inc */
 static bool FlPending(void);                    /* font layers (below) */
 static bool FsDirty(void);
@@ -157,7 +158,7 @@ static void FitSnapDrop(void);
 static void LayersShiftY(float d);         /* fitdoc.inc: every font layer moves by d rows (the baseline moved) */
 static bool filledShapes = false;      /* the glyph view's Filled option for the rectangle and the ellipse (kept in pxfe.ini, key filled) */
 static bool pixelPerfect = false;      /* the glyph view's Pixel-perfect option (kept in pxfe.ini, key pixelPerfect) */
-static int panelTab = 0;               /* tab of the right-hand panel: 0 Font, 1 Glyph, 2 Similar, 3 Layers, 4 View (kept in pxfe.ini) */
+static int panelTab = 0;               /* tab of the right-hand panel: 0 Font, 1 Glyph, 2 Similar, 3 Layers (kept in pxfe.ini) */
 
 /* ------------------------------------------------------------------------------------------------
  * Small utilities
@@ -527,7 +528,7 @@ static void IniSetLastDb(const char *path) { IniSetApp("lastPxfdb", path); }
 
 static void PanelSetTab(int tab)   /* a click on the tab control: remembered in pxfe.ini */
 {
-    if (tab == panelTab || tab < 0 || tab > 4) return;
+    if (tab == panelTab || tab < 0 || tab > 3) return;
     panelTab = tab;
     panelScroll = 0;
     char v[8];
@@ -1144,7 +1145,7 @@ static void LoadDialog(void)
     if (DlgDb(path, sizeof path)) LoadPath(path, AFTER_LIBRARY, "");
 }
 
-/* Export: the folder is scanned; an empty one is written at once, one with library data asks Append / Overwrite / Cancel */
+/* Export: the folder is scanned; an empty one is written at once, one with library data asks Update / Overwrite / Cancel */
 static struct {
     bool open;
     char folder[PATH_MAX_LEN];
@@ -1714,6 +1715,38 @@ static void CmdSetDefault(void)
     Th_Toast(1, "The default glyph is now a copy of %s", cl);
 }
 
+/* Auto Spacing: every selected glyph with ink gets its ink from the pen (the x offset that puts its first ink column at 0, which is 0 for a
+ * cropped bitmap) and an advance one pixel past its last ink column, so one empty column follows it.  Glyphs without ink stay as they are.
+ * One undo step. */
+static void CmdAutoSpacing(void)
+{
+    if (readOnly) { Th_Toast(2, "The font is locked: unlock it first"); return; }
+    RecountSel();
+    if (selCount < 1) { Th_Toast(2, "Select the glyphs first (Ctrl+A: all of them)"); return; }
+    int changed = 0, inked = 0;
+    bool pushed = false;
+    for (int i = 0; i < font.count && i < selN; i++) {
+        if (!sel[i]) continue;
+        PxGlyph *g = &font.glyphs[i];
+        if (g->lazy) continue;
+        int l = -1, r = -1;
+        for (int cx = 0; cx < g->w; cx++)
+            for (int cy = 0; cy < g->h; cy++)
+                if (px_glyph_get(g, cx, cy) != '.') { if (l < 0) l = cx; r = cx; break; }
+        if (l < 0) continue;
+        inked++;
+        int nx = -l, na = r - l + 2;
+        if (g->x == nx && g->advance == na) continue;
+        if (!pushed) { PushUndo(0); pushed = true; g = &font.glyphs[i]; }
+        g->x = nx;
+        g->advance = na;
+        changed++;
+    }
+    if (changed) needHash = true;
+    if (!inked) Th_Toast(2, "The selected glyphs have no ink");
+    else Th_Toast(1, "Auto Spacing: %d of %d glyph%s changed", changed, inked, inked == 1 ? "" : "s");
+}
+
 static int zoomAnchor = -1;   /* glyph at the top of the view when the zoom changed; keeps its place after the re-layout */
 
 static void ApplyZoom(int z)
@@ -2263,7 +2296,7 @@ static void DrawEmptyState(Rectangle area)
     TextCentered("Ctrl+O", (Rectangle){c.x, c.y + 200, c.width, TH_LINE_H}, TH_TEXT_DIM);
 }
 
-/* The Export dialog: what the folder holds, Append or Overwrite, and the backup of the folder's current data */
+/* The Export dialog: what the folder holds, Update or Overwrite, and the backup of the folder's current data */
 /* ---- Add Glyph and New Font ---- */
 
 /* an empty glyph (no ink) with the code cp, or without a code point when cp < 0; it is drawn in the glyph view */
@@ -2376,7 +2409,7 @@ static void DrawExportDialog(int W, int H)
     bool fresh = xd.frame == frameNo;
     const float pw = 600, pad = 24;
     char l1[4][160], l2[4][160];
-    int n1 = WrapLines("Append adds what the folder does not have yet. Nothing that is there is changed or deleted.", pw - 2 * pad, l1, 4);
+    int n1 = WrapLines("Update adds what the folder does not have yet. Nothing that is there is changed or deleted.", pw - 2 * pad, l1, 4);
     int n2 = WrapLines("Overwrite deletes the contents of pxtf, pxfm and pxgl in the folder, then writes everything in memory there. Other files stay.", pw - 2 * pad, l2, 4);
     float ph = pad + TH_SIZE_HEAD + TH_PAD + 2 * TH_ROW_H + (n1 + n2) * TH_LINE_H + 4 + TH_PAD + 2 * TH_ROW_H + TH_PAD + TH_ROW_H + pad;
     Rectangle pr = {Fl((W - pw) / 2), Fl((H - ph) / 2.5f), pw, ph};
@@ -2412,7 +2445,7 @@ static void DrawExportDialog(int W, int H)
     y = pr.y + pr.height - pad - TH_ROW_H;
     int clicked = -1;
     float bx = pr.x + pr.width - pad;
-    const char *lb[3] = {"Cancel", "Append", "Overwrite"};
+    const char *lb[3] = {"Cancel", "Update", "Overwrite"};
     for (int i = 2; i >= 0; i--) {
         float bw = fmaxf(Th_ButtonW(lb[i]), 96);
         bx -= bw;
@@ -2658,7 +2691,9 @@ int main(int argc, char **argv)
     Sample_LoadIni(IniPath());   /* the shared sample text and the font view strip settings */
     { char v[8]; if (IniGetApp("pixelPerfect", v, sizeof v)) pixelPerfect = atoi(v) != 0; }
     { char v[8]; if (IniGetApp("filled", v, sizeof v)) filledShapes = atoi(v) != 0; }
-    { char v[8]; if (IniGetApp("fontTab", v, sizeof v)) { int t = atoi(v); panelTab = t < 0 || t > 4 ? 0 : t; } }
+    { char v[8]; if (IniGetApp("fontTab", v, sizeof v)) { int t = atoi(v); panelTab = t < 0 || t > 3 ? 0 : t; } }   /* 4, the old View tab: Font */
+    { char v[8]; if (IniGetApp("viewFont", v, sizeof v)) fontView.open = atoi(v) != 0; }
+    { char v[8]; if (IniGetApp("viewGlyph", v, sizeof v)) glyphView.open = atoi(v) != 0; }
     { char v[8]; if (IniGetApp("pickerMode", v, sizeof v)) Th_ColorPickSetMode(atoi(v)); }
 
     px_font_init(&font);
@@ -2772,8 +2807,8 @@ int main(int argc, char **argv)
                 int gi = Editor_GlyphIndex(ed);
                 if (er == EDITOR_CLOSE) {
                     CloseGlyphView();
-                } else if (er == EDITOR_PREV || er == EDITOR_NEXT) {
-                    int ni = gi + (er == EDITOR_NEXT ? 1 : -1);
+                } else if (er == EDITOR_PREV || er == EDITOR_NEXT || er == EDITOR_GOTO) {
+                    int ni = er == EDITOR_GOTO ? Editor_GotoIndex(ed) : gi + (er == EDITOR_NEXT ? 1 : -1);
                     if (ni >= 0 && ni < font.count) OpenEditor(ni);
                 } else if (er == EDITOR_LOCK) {
                     SetFontLocked(!readOnly);

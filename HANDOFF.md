@@ -64,7 +64,7 @@ The files of `handoff/` are old agent reports, kept for history.
 - `src/store.c`: an in-memory SQLite database that Load fills from a `.pxfdb`; Save writes a temp file with `VACUUM INTO` and replaces the file; a change counter tells whether memory differs from the file; Import and Export work on folders; the `palette` table, `pxfm.symbolic`, `pxfm.colors`, `store_palette_text`.
 - A pxfdb made before hex palettes is refused on open ("made by an older pixelglyphlib … rebuild it"); in `pixelglyphlib`, `pxfdb.pxfdb` opens and the two `pxfdb-with*-symbols.pxfdb` are refused.
 - New Database (`store_create`, `NewDatabase` in main.c): an empty store with no file (path ""), titled "Untitled"; `SaveDb` turns into Save As for it; script 07f.
-- `src/main.c`: the menu items, the Save button, the title and status bar markers, the Save / Discard / Cancel prompts, the export dialog (Append, Overwrite, backup).
+- `src/main.c`: the menu items, the Save button, the title and status bar markers, the Save / Discard / Cancel prompts, the export dialog (Update, Overwrite, backup).
 - `src/fsettings.c`: the sidecar `<db>-settings` (SQLite, schema 4: `layer`, `correction` by `PxCode`, `unlocked`; schema 1 to 3 are upgraded on open).
   Save writes it (alone when only settings changed); Save As writes a new one; Import starts empty; Export does not touch it; with nothing to keep it is not written and an old one is deleted.
 - Save runs on the UI thread; on the real library it freezes the window for the length of `TRACE saveas`.
@@ -99,7 +99,7 @@ The files of `handoff/` are old agent reports, kept for history.
 
 ## Library browser
 
-- `src/browser.c`: the Typefaces, Typeface and Fonts views; the side tabs View | Typeface | Font | Similar (View | Font | Similar in the Fonts view; `SIDE_*`, ini key `sidetab`), `sel_typeface`; the Typeface view (`tview_ui`, `Browser_OpenTypeface`, `Browser_CloseTypeface`); the Colours filter (`collect_colors`, ini key `colors`; `StoreEntry.colors`, `LibInfo.colors`).
+- `src/browser.c`: the Typefaces, Typeface and Fonts views; the View area (`view_area`, ini key `viewopen`) and the side tabs Typeface | Font | Similar (Font | Similar in the Fonts view; `SIDE_*`, ini key `sidetab`; `SIDE_VIEW` is read as Font), `sel_typeface`; the Typeface view (`tview_ui`, `Browser_OpenTypeface`, `Browser_CloseTypeface`); the Colours filter (`collect_colors`, ini key `colors`; `StoreEntry.colors`, `LibInfo.colors`).
 - A press on the selected entry opens it; there is no context menu, no pinned selection block and no button on cards or rows.
 - The Typeface and Font tabs are drawn by main.c through `Browser_SetInfoTab` (`DrawLibraryTab`, `DrawInfoTab`).
   Their commands (lock, Clone Font, Export, Delete) are queued with `LibCmd` and run at the end of the frame (`RunLibCommand`).
@@ -111,7 +111,7 @@ The files of `handoff/` are old agent reports, kept for history.
 
 ## Font view
 
-- `src/panel.inc`: the tabs View | Font | Glyph | Similar | Layers (`panelTab` 4, 0, 1, 2, 3; ini key `fontTab`); View has the zoom, Metrics and Captions; Font has `DrawInfoTab` and the metrics; Glyph has the selection (with its character), the glyph commands (`ButtonRow`), the glyph hash and the usage.
+- `src/panel.inc`: the View area (`DrawFontView`: the zoom, Metrics and Captions; `fontView`, ini key `viewFont`), then the tabs Font | Glyph | Similar | Layers (`panelTab` 0, 1, 2, 3; ini key `fontTab`, an old 4 is read as 0); Font has `DrawInfoTab` and the metrics; Glyph has the selection (with its character), the glyph commands (`ButtonRow`), the glyph hash and the usage.
 - There is no command bar, no info bar, no "..." menu and no grid context menu; the toolbar keeps Menu, the navigation, Undo, Redo and Save.
 - The Baseline row (`CmdBaseline`, `BaselineRow`); `GlyphFacts` (editable in the glyph view, text in the font view); `ParseHexCode`, `ParseCharCode`, `SetGlyphCode`.
 - `src/main.c`: `baseShift`, `undoBase`, `undoCode`; `DoUndoRedo` moves the font layers by the difference and follows the glyph by its code.
@@ -121,8 +121,8 @@ The files of `handoff/` are old agent reports, kept for history.
 
 ## Glyph view
 
-- `src/editor.c` and `.h`: the canvas, the bar, the status line; `Editor_SetGlyphIndex`; `Editor_ViewPanel` (the glyph's neighbours, zoom, Fit, Metrics, Checker) is the View tab of `gpanel.inc` (View | Glyph | Layers | Kerning, `glyphTab` 3, 0, 2, 4; the glyph usage is in the Glyph tab).
-- The bar is one row of `BAR_H` (44, the panel's `PANEL_TABS_H`); the View tab's neighbours reach the editor through `navReq`, returned by the next frame.
+- `src/editor.c` and `.h`: the canvas, the bar, the status line; `Editor_SetGlyphIndex`; `Editor_ViewPanel` (the glyph field `eglyph` with its arrows, zoom, Fit, Metrics, Checker) is the View area of `gpanel.inc` (`glyphView`, ini key `viewGlyph`), above Glyph | Layers | Kerning (`glyphTab` 0, 2, 4; the glyph usage is in the Glyph tab).
+- The bar is one row of `BAR_H` (44, the panel's `PANEL_TABS_H`); the View area's neighbours and the glyph field reach the editor through `navReq` (`EDITOR_GOTO` with `Editor_GotoIndex`), returned by the next frame.
 - The sample strip (`SampleStrip_Draw`) is under the glyph view as under the grid: it folds, resizes and has its own zoom.
 - `Editor_Flush` (called by `CommitEdits` and `CloseGlyphView`) drops floating pixels and draws or closes a curve or polygon being made; `Editor_CancelFloat` throws them away (Ctrl+Z).
 - `src/main.c` and `src/sample.c` draw with each glyph's own palette.

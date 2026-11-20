@@ -2,7 +2,6 @@
 # Run: tests\tmp\pxfe_e2e.exe tests\tmp\p2\real.pxfdb --size 1400x900 --ini tests\tmp\p2\typo.ini --play tests\e2e\66_shots_fields.txt
 waitfor loading = 0 600000
 wait 30
-click @bside_View
 wait 10
 shot tests/tmp/p2/c3/typefaces_idle.png
 click @Filter

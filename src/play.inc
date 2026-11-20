@@ -169,11 +169,20 @@ static bool CellCenter(const char *tok, float *x, float *y)
  * user looks for a command) and runs the line again.  False when every tab of this view was tried for this line. */
 static bool RevealTab(void)
 {
-    static const char *fontTabs[] = {"ptab_Font", "ptab_Glyph", "ptab_View", "ptab_Layers", NULL}, *glyphTabs[] = {"gtab_Glyph", "gtab_View", "gtab_Layers", "gtab_Kerning", NULL},
-                      *libTabs[] = {"bside_Font", "bside_Typeface", "bside_View", NULL};
+    static const char *fontTabs[] = {"ptab_Font", "ptab_Glyph", "ptab_Layers", NULL}, *glyphTabs[] = {"gtab_Glyph", "gtab_Layers", "gtab_Kerning", NULL},
+                      *libTabs[] = {"bside_Font", "bside_Typeface", NULL};
     const char **tabs = inFinder ? NULL : inBrowser ? libTabs : !hasFont ? NULL : inEditor ? glyphTabs : fontTabs;
     if (play.revealLine != play.lineNo) { play.revealLine = play.lineNo; play.revealStep = 0; }
     Rectangle tr;
+    if (tabs && play.revealStep == 0 && !Th_SectionOpen("VIEW") && Th_RegFind("VIEW_Fold", &tr)) {   /* a folded View area is opened first */
+        QClick((int)(tr.x + tr.width / 2), (int)(tr.y + tr.height / 2), MOUSE_BUTTON_LEFT, (Mods){false, false, false});
+        QWait(3);
+        play.revealStep = -1;   /* the tabs come next (the loop below starts at 0 again) */
+        play.retry = true;
+        play.cur = play.lineNo - 1;
+        return true;
+    }
+    if (play.revealStep < 0) play.revealStep = 0;
     while (tabs && tabs[play.revealStep]) {
         const char *tn = tabs[play.revealStep++];
         if (!Th_RegFind(tn, &tr)) continue;

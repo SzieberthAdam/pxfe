@@ -37,7 +37,7 @@ The edits of an unlocked font are committed into the store when its font view is
 A later commit replaces the earlier one (there are no in-between fonts), and `modified` is then relative to what the store holds.
 
 Import Folder reads a folder of pxtf, pxfm and pxgl files with strict readers into a new `.pxfdb` and loads it.
-Export to Folder writes memory into a folder: Append adds what is missing, Overwrite deletes the contents of `pxtf/`, `pxfm/` and `pxgl/` first, with an optional backup (the folder's current data imported into a `.pxfdb`).
+Export to Folder writes memory into a folder: Update adds what is missing, Overwrite deletes the contents of `pxtf/`, `pxfm/` and `pxgl/` first, with an optional backup (the folder's current data imported into a `.pxfdb`).
 
 Glyphs without a code point show as `#n` and are renumbered when one is deleted.
 
@@ -62,14 +62,15 @@ One command per line, `#` starts a comment.
   The navigation segment of an open glyph reads `U+0041` (`assert navseg 2 U+0041`), no longer "A U+0041".
 - Navigation (version 6): `nav` (0 Typefaces, 1 Typeface, 2 Fonts, 3 Font, 4 Glyph, 5 Glyphs), `navactive` (the blue segment), `intypeface`, `assert navseg <0|1|2> <text>`; the segments are `@nav.0`, `@nav.1`, `@nav.2` (also `@Typefaces`, `@Fonts`, `@Glyphs` where they read so); the way back to the open font is `key right alt`.
   In the Typeface view the rows' buttons are `@tv.open.N`, `@tv.dup.N` and `@tv.delete.N`; `blast` 6 is the opening of a typeface.
-- Panel tabs: `ptab` (right panel of the font view, shown as View | Font | Glyph | Similar | Layers: 4 View, 0 Font, 1 Glyph, 2 Similar, 3 Layers), `bside` (side panel of the browser, shown as View | Typeface | Font | Similar: 0 View, 1 Similar, 2 Typeface, 3 Font), `fside` (side panel of the Glyphs view: 0 View, 1 Usage).
-  The commands are in the tabs: `@Clone_Font`, `@Delete_Font`, `@Delete_Typeface`, the padlock `@Unlock` / `@Lock` (`@tf_lock` in a Typeface tab); the glyph commands `@Select_Occurrences`, `@Find_in_Library`, `@Add_Glyph`, `@Clone`, `@Set_Default`, `@Delete` in the font view's Glyph tab; `@zoom±`, `@Metrics`, `@Captions` in its View tab.
-  The tab buttons are `@ptab_Font`, `@ptab_Glyph`, `@ptab_Similar`, `@bside_View`, `@bside_Typeface`, `@bside_Similar`, `@fside_View`, `@fside_Usage`.
+- Panel tabs: `ptab` (right panel of the font view, shown as Font | Glyph | Similar | Layers: 0 Font, 1 Glyph, 2 Similar, 3 Layers), `bside` (side panel of the browser, shown as Typeface | Font | Similar: 1 Similar, 2 Typeface, 3 Font), `fside` (side panel of the Glyphs view: 0 View, 1 Usage).
+  The library views, the font view and the glyph view have a View area above the tabs; its caption is `@VIEW_Fold`, and the player opens a folded one before it tries the tabs for a widget it does not find.
+  The commands are in the tabs: `@Clone_Font`, `@Delete_Font`, `@Delete_Typeface`, the padlock `@Unlock` / `@Lock` (`@tf_lock` in a Typeface tab); the glyph commands `@Select_Occurrences`, `@Find_in_Library`, `@Add_Glyph`, `@Clone`, `@Set_Default`, `@Delete`, `@Auto_Spacing` in the font view's Glyph tab; `@zoom±`, `@Metrics`, `@Captions` in its View area.
+  The tab buttons are `@ptab_Font`, `@ptab_Glyph`, `@ptab_Similar`, `@bside_Typeface`, `@bside_Font`, `@bside_Similar`, `@fside_View`, `@fside_Usage`.
   The Typeface tab exists in the Typefaces and Typeface views only (version 7); its fields (`@c.family`, `@c.copyright`…; `@c.italic` is in the Font tab) and the boxed hash `@hash_typeface_full` are read-only until the typeface lock (`@tf_lock` in the tab and in the Typeface view's heading) unlocked the typeface; then `@hash_typeface_orig` shows the hash in the database beside the current one.
   A widget that is not drawn may be in a panel tab not shown: the player opens the view's tabs one after the other and runs the line again (for a click target, and for `assert w.X 1`).
   A widget drawn below the fold of a scrolled panel is scrolled to the panel's middle before the click (once a line).
   A script waits 10 frames after a click on a switch (the content changes height with the original hash box).
-- Zoom (version 7): every zoom is one stepper, `[-] 3x [+]`, registered as `@<prefix>-` and `@<prefix>+`: `@zoom` (font view toolbar), `@ezoom` (glyph view), `@sz` (the sample strip), `@bzoom` (the library views' View tab), `@fzoom` (the Glyphs view's View tab, `fzoom` is its value, default 3).
+- Zoom (version 7): every zoom is one stepper, `[-] 3x [+]`, registered as `@<prefix>-` and `@<prefix>+`: `@zoom` (font view toolbar), `@ezoom` (glyph view), `@sz` (the sample strip), `@bzoom` (the library views' View area), `@fzoom` (the Glyphs view's View tab, `fzoom` is its value, default 3).
   The Glyphs view's sort is `@fsort_Count`, `@fsort_Height`, `@fsort_Width`, the search `@finder.search`, Previous and Next `@finder.prev`, `@finder.next`.
   The rows of the usage and similar lists are `@usage_row_N` and `@similar_row_N`, and the panel's link is `@glyph_find`.
 - `assert glyph <cp> exists|size|top|y|x|advance|ink|pixel|hash`, where `<cp>` is `U+0041`, `#n`, `default`, any of them with `-V` for a variant, or the file form `U+000041-001`.
@@ -90,9 +91,9 @@ One command per line, `#` starts a comment.
 - `assert tabhash <hash>` (the hash in the Typeface tab's boxed field), `assert hashname` checks that the current hash of the font (and of its typeface) equals the hash it was opened with, names a row of the store and, for a root, a file of the library.
 - `waitfor <name> <op> <value> [ms]` idles until a state of `assert` holds (default timeout 60 s, a timeout is a failure).
 - `snapdir <dir>` takes the snapshot used by `assert snapdir`.
-- Glyph view: `gtab` (right panel, shown as View | Glyph | Layers | Kerning: 3 View, 0 Glyph with the glyph usage, 2 Layers, 4 Kerning; the tab buttons are `@gtab_View`, `@gtab_Glyph`, `@gtab_Layers`, `@gtab_Kerning`), `emetrics` (metric lines on), `ehidden` (the edited glyph's layer is hidden), `ezoom`; the View tab has `@ezoom±`, `@ezoom.fit`, `@Metrics`, `@Checker`, and the sample strip (`@sz±`) is under the glyph view as under the grid.
+- Glyph view: `gtab` (right panel, shown as Glyph | Layers | Kerning: 0 Glyph with the glyph usage, 2 Layers, 4 Kerning; the tab buttons are `@gtab_Glyph`, `@gtab_Layers`, `@gtab_Kerning`), `emetrics` (metric lines on), `ehidden` (the edited glyph's layer is hidden), `ezoom`; the View area has `@ezoom±`, `@ezoom.fit`, `@Metrics`, `@Checker`, and the sample strip (`@sz±`) is under the glyph view as under the grid.
   The bar has `@ezoom-`, `@ezoom+`, `@ezoom.fit`, `@Metrics` and the lock (`@Unlock` or `@Lock`).
-  The glyph view has no Back button: a script leaves it with `key left alt`; `@Previous_glyph` and `@Next_glyph` are in the View tab.
+  The glyph view has no Back button: a script leaves it with `key left alt`; the View area's glyph field is `@eglyph.value` (a character or a code, Enter opens it), its arrows `@eglyph-` and `@eglyph+`.
   Kerning: `ekern` (the Kerning tab shows and the partner is drawn), `assert ekernpartner <code>|none` (the glyph drawn after the edited one); the Kerning tab's widgets are `@kern.after` (the partner field), `@kern.prev`, `@kern.next`, `@kern-`, `@kern+`, `@kern.value` and the pairs `@kern.pair.N`.
   The panel has `@ghash_orig` and `@ghash_cur` (click copies the full glyph hash, `assert clip <text>` checks the clipboard) and `@glyph_find`.
 - Layers: `assert l.count`, `l.cur` (index of the "Current glyph" row), `l.sel`, `l.pop` (the Add Layer popover is open), `l.focus`, `l.fonts` (fonts in the layer glyph cache) and, per layer N from the top: `l.vis.N`, `l.op.N` (opacity %), `l.dx.N`, `l.dy.N`, `l.color.N` (`0xRRGGBB`), `l.same.N` (follows the edited glyph), `l.this.N` (from this font), `l.code.N`, `l.ink.N` (inked pixels, -1 = not in font).
@@ -127,7 +128,7 @@ One command per line, `#` starts a comment.
   `$GHASH` and `$GOHASH` in a script are the pxgl hash of the glyph being edited, now and when the font was opened.
   A value may be written `0xRRGGBB`.
 - `setdialog folder|pxfdb|save <path>` overrides the native dialogs (`none` clears them): the folder pickers of Import and Export, the Load dialog, and the Save dialogs of Save As, the import target and the backup.
-- Menu (formerly File) and export dialog: `@Menu`, `@file.load`, `@file.save`, `@file.saveas`, `@file.import`, `@file.export`, `@file.quit`, `@Save`; `assert filemenu`; the dialog has `xdopen`, `xfound_fonts|typefaces|glyphs`, `xbackup`, the widgets `@xd.backup`, `@xd.change`, `@Append`, `@Overwrite`, `@Cancel`; after an export `xw_*` (written), `xs_*` (skipped), `xd_*` (deleted) and `xbackupfailed`.
+- Menu (formerly File) and export dialog: `@Menu`, `@file.load`, `@file.save`, `@file.saveas`, `@file.import`, `@file.export`, `@file.quit`, `@Save`; `assert filemenu`; the dialog has `xdopen`, `xfound_fonts|typefaces|glyphs`, `xbackup`, the widgets `@xd.backup`, `@xd.change`, `@Update`, `@Overwrite`, `@Cancel`; after an export `xw_*` (written), `xs_*` (skipped), `xd_*` (deleted) and `xbackupfailed`.
 - `copyfile`, `writefile`, `delete`, `verifylib <pxfm> <libroot> [N]`, `shot <png>`, `expectquit`.
 
 Command line options for the console build: `--ini <file>`, `--font <hash>`, `--typeface <hash>`, `--unlock`, `--import-to <pxfdb>`, `--job-hold-ms N` (keep the progress screen at least that long), `--shot-job <png>` with `--shot-job-ms N` (a screenshot of the progress screen), `--play <script>`.
@@ -155,7 +156,7 @@ The environment variable `PXFE_TRACE=1` prints one `TRACE load ...` or `TRACE im
 - 23: modified marker (title, status bar, Save button) and the prompts of Import and Quit.
 - 24: Import with nothing loaded, a folder without data, a broken file (nothing written), a failing import that keeps the loaded database.
 - 25: Export to an empty folder (no dialog, byte equal files, summary).
-- 26: Append (existing file and other files untouched, new font committed and written).
+- 26: Update (existing file and other files untouched, new font committed and written).
 - 27: Overwrite with a backup (backup holds the old data, other files survive, folder equals memory).
 - 28: Overwrite when the backup fails (nothing deleted, second confirmation) and with the backup switched off.
 - 29: a font committed several times stays one font in the store (29_edit_replace); editing back to the original content gives the original hash again.

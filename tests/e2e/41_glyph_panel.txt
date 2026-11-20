@@ -1,4 +1,4 @@
-# 41. The glyph view's right panel: tabs View | Glyph | Layers (no Font, Typeface, Similar), the full glyph hashes
+# 41. The glyph view's right panel: the View area above the tabs Glyph | Layers | Kerning (no Font, Typeface, Similar), the full glyph hashes
 # (click copies), the usage of the glyph (with its code), Find in Library.  Font 3b52125b, glyph A.
 wait 5
 click @cell:U+0041
@@ -7,7 +7,7 @@ wait 6
 assert editor 1
 assert gtab 0
 assert w.gtab_Glyph 1
-assert w.gtab_View 1
+assert w.VIEW_Fold 1
 assert w.gtab_Layers 1
 assert w.ptab_Font 0
 assert w.ptab_Typeface 0

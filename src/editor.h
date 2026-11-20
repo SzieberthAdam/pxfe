@@ -6,7 +6,8 @@
 #include "pxfont.h"
 
 /* EDITOR_LOCK: the user clicked the padlock (main.c runs the same action as the font view's). */
-typedef enum { EDITOR_RUNNING = 0, EDITOR_CLOSE, EDITOR_PREV, EDITOR_NEXT, EDITOR_LOCK } EditorResult;
+/* EDITOR_GOTO: the View tab's glyph field named another glyph; Editor_GotoIndex is its index (main.c reopens the editor on it). */
+typedef enum { EDITOR_RUNNING = 0, EDITOR_CLOSE, EDITOR_PREV, EDITOR_NEXT, EDITOR_LOCK, EDITOR_GOTO } EditorResult;
 
 typedef struct Editor Editor; /* opaque, defined in editor.c */
 
@@ -20,6 +21,7 @@ void    Editor_Destroy(Editor *e);
 /* Start editing font->glyphs[glyphIndex]. The editor edits the font in place. */
 void    Editor_Open(Editor *e, PxFont *font, int glyphIndex, EditorBeforeChange beforeChange, void *user);
 int     Editor_GlyphIndex(const Editor *e);
+int     Editor_GotoIndex(const Editor *e);
 /* The glyph being edited moved inside the font (its code changed, the glyphs were sorted again): it stays the same glyph, the view stays as it is. */
 void    Editor_SetGlyphIndex(Editor *e, int glyphIndex);
 

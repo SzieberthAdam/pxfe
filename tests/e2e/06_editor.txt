@@ -261,14 +261,14 @@ shot tests/tmp/shots/06_editor_zoomed.png
 key pgdn
 wait 4
 assert editor_glyph U+002C
-click @Previous_glyph
+click @eglyph-
 wait 4
 assert editor_glyph U+0020
 # first glyph: PgUp does nothing
 key pgup
 wait 3
 assert editor_glyph U+0020
-click @Next_glyph
+click @eglyph+
 wait 4
 assert editor_glyph U+002C
 key pgdn

@@ -81,7 +81,8 @@ struct Editor {
     bool checker;
     bool showMetrics;   /* the metric lines are drawn */
     bool kernReq;       /* Shift+K was pressed (main.c shows or leaves the Kerning tab) */
-    EditorResult navReq;   /* the View tab's previous or next glyph was clicked: the next frame returns it */
+    EditorResult navReq;   /* the View tab's previous or next glyph was clicked, or its field named a glyph: the next frame returns it */
+    int gotoIndex;         /* the glyph the field named (EDITOR_GOTO) */
     Layers *layers;     /* the reference layers (session) */
     bool curHidden;     /* the edited glyph's layer is hidden: no editing */
 
@@ -1195,13 +1196,6 @@ static bool hit(Rectangle r) { return !Th_MouseBlocked() && CheckCollisionPointR
 
 static void sep(float x, float y, float h) { Th_VLine(x, y + 9, y + h - 9, TH_LINE); }
 
-static void glyph_label(const PxGlyph *g, char *buf, size_t n)
-{
-    if (!px_code_is_valid(g->code)) { snprintf(buf, n, "(no code point)"); return; }
-    px_code_label(g->code, buf, (int)n);   /* a code point is drawn as a glyph caption (Th_TextRich) */
-    if (px_code_is_uncoded(g->code)) snprintf(buf + strlen(buf), n - strlen(buf), "  (no code point)");
-}
-
 /* ------------------------------------------------------------------ the palette bar (see DESIGN.md, "The palette bar and the colour picker")
  *
  * A horizontal bar under the canvas and the tool strip, over the status line.  Its first row is the edited glyph: the transparent tile '.' (the
@@ -2225,6 +2219,7 @@ void Editor_SetOriginalHash(Editor *e, const char *hash)
 }
 
 int Editor_GlyphIndex(const Editor *e) { return e->gi; }
+int Editor_GotoIndex(const Editor *e) { return e->gotoIndex; }
 void Editor_SetGlyphIndex(Editor *e, int glyphIndex) { e->gi = glyphIndex; }
 
 bool Editor_CellCenter(const Editor *e, int x, int y, Vector2 *out)
@@ -2503,16 +2498,25 @@ int Editor_SelfTest(Editor *e, PxFont *f)
 /* The View tab of the glyph view's panel: the glyph with its neighbours, the zoom (Fit and a stepper), the metric lines and the checker under the glyph. */
 void Editor_ViewPanel(Editor *e, float x, float *y, float w)
 {
-    {
+    {   /* the glyph: [<] field [>], the arrows step to the neighbours (PgUp, PgDn), the field takes a character or a code and opens that glyph */
         const PxGlyph *g = G(e);
-        char name[48] = "";
-        if (g) glyph_label(g, name, sizeof name);
+        char lab[48] = "";
+        if (g) kern_label(g->code, lab, sizeof lab);
         Rectangle gr = Th_Row(x, y, w, "Glyph", NULL, 0);
-        float bh = TH_ROW_H, nx = gr.x + gr.width - bh, px = nx - 2 - bh;
-        if (Th_Button((Rectangle){px, gr.y, bh, bh}, "Previous glyph  (PgUp)", TH_BTN_ICON(TH_IC_PREV) | TH_BTN_OFF(e->gi > 0), "Previous glyph  (PgUp)")) e->navReq = EDITOR_PREV;
-        if (Th_Button((Rectangle){nx, gr.y, bh, bh}, "Next glyph  (PgDn)", TH_BTN_ICON(TH_IC_NEXT) | TH_BTN_OFF(e->font && e->gi + 1 < e->font->count), "Next glyph  (PgDn)")) e->navReq = EDITOR_NEXT;
-        float tw = Th_MeasureRich(name, TH_F_BODY);
-        Th_TextRich(name, px - 10 - tw, gr.y + (int)((bh - Th_Measure("A").y) / 2), TH_TEXT, TH_F_BODY, -1);
+        Rectangle sr = {gr.x + gr.width - 128, gr.y, 128, TH_ROW_H};
+        bool editing = Th_TextIs("eglyph.value");
+        int st = Th_Stepper(sr, NULL, "eglyph", TH_STEP_ARROWS | (editing ? TH_STEP_EDIT : (e->gi > 0 ? 0 : TH_STEP_NO_MINUS) | (e->font && e->gi + 1 < e->font->count ? 0 : TH_STEP_NO_PLUS)));
+        if (st < 0 && e->gi > 0) e->navReq = EDITOR_PREV;
+        if (st > 0 && e->font && e->gi + 1 < e->font->count) e->navReq = EDITOR_NEXT;
+        int tf = Th_TextField(Th_StepperValue(sr), "eglyph.value", lab, 40, TH_TF_BARE | TH_TF_COMMIT | TH_TF_SELECT, NULL);
+        if (tf & (TH_TF_ENTER | TH_TF_BLUR)) {
+            PxCode c;
+            int gi;
+            if (!strcmp(Th_TextValue(), lab)) { /* untouched */ }
+            else if (!kern_parse(Th_TextValue(), &c)) Th_Toast(TH_TOAST_ERR, "Type one character, or a code such as U+00E9");
+            else if ((gi = px_font_find_code(e->font, c)) < 0) Th_Toast(TH_TOAST_ERR, "The font has no glyph for %s", Th_TextValue());
+            else if (gi != e->gi) { e->gotoIndex = gi; e->navReq = EDITOR_GOTO; }
+        }
     }
     char zt[12];
     snprintf(zt, sizeof zt, "%dx", e->zoom);

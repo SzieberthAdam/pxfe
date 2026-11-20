@@ -517,6 +517,12 @@ static void DrawSelectionSection(float px, float *yp, PxCode insCode)
         else if (c == 2) CmdSetDefault();
         else if (c == 3) CmdDeleteAsk();
     }
+    {
+        static const char *lab[1] = {"Auto Spacing"};
+        const int fl[1] = {TH_BTN_OFF(!readOnly && selCount > 0)};
+        const char *tip[1] = {lock ? lock : "The selected glyphs: x offset 0 and the advance one pixel past the ink (glyphs without ink stay)"};
+        if (ButtonRow(x, &y, w, 1, lab, fl, tip) == 0) CmdAutoSpacing();
+    }
     if (selCount == 1) {
         char h[33];
         px_glyph_hash(&font.glyphs[fi], h);
@@ -526,10 +532,10 @@ static void DrawSelectionSection(float px, float *yp, PxCode insCode)
 }
 
 /* The View tab of the font view: the zoom of the grid, the metric lines and the captions of the cells. */
-static void DrawFontViewTab(float px, float *yp)
+static void DrawFontView(float px, float *yp)
 {
     float x = px + 16, w = PANEL_W - 32, y = *yp;
-    if (Th_Section("VIEW", x, &y, w, NULL)) {
+    {
         char zt[8];
         snprintf(zt, sizeof zt, "%dx", zoom);
         Rectangle zr = Th_Row(x, &y, w, "Zoom", NULL, 0);
@@ -573,6 +579,9 @@ static void DrawMetricsSection(float px, float *yp)
     *yp = y + 28;
 }
 
+/* The tallest a panel's View area gets (more scrolls inside it): half the panel. */
+static float ViewAreaMaxH(Rectangle p) { return (p.height - TH_VIEW_HDR) / 2; }
+
 /* The tab control of a panel: `labels` shown in order, `ids` the tab number each stands for; returns the id picked (-1: none). */
 static int PanelTabs(Rectangle p, int n, const char *const *labels, const int *ids, int cur, const char *name)
 {
@@ -603,9 +612,17 @@ static void DrawMetricsPanel(Rectangle p)
     if (inEditor) { DrawGlyphPanel(p); return; }   /* the glyph view has its own panel (gpanel.inc) */
     DrawRectangleRec(p, TH_PANEL);
     Th_VLine(p.x, p.y, p.y + p.height, TH_LINE);
-    static const char *labels[5] = {"View", "Font", "Glyph", "Similar", "Layers"};
-    static const int ids[5] = {4, 0, 1, 2, 3};
-    int tab = panelTab, c = PanelTabs(p, 5, labels, ids, tab, "ptab");
+    {   /* the view area above the tabs: zoom, Metrics, Captions */
+        float vy;
+        if (Th_ViewAreaBegin(&fontView, p, ViewAreaMaxH(p), &vy)) { DrawFontView(p.x, &vy); Th_ViewAreaEnd(&fontView, vy); }
+        if (fontView.toggled) IniSetApp("viewFont", fontView.open ? "1" : "0");
+        float b = Th_ViewAreaBottom(&fontView);
+        p.height -= b - p.y;
+        p.y = b;
+    }
+    static const char *labels[4] = {"Font", "Glyph", "Similar", "Layers"};
+    static const int ids[4] = {0, 1, 2, 3};
+    int tab = panelTab, c = PanelTabs(p, 4, labels, ids, tab, "ptab");
     if (c >= 0) { PanelSetTab(c); tab = c; }
     Rectangle cr = {p.x, p.y + PANEL_TABS_H, p.width, p.height - PANEL_TABS_H};   /* the scrolling content */
     float maxS0 = panelContentH - cr.height;
@@ -639,8 +656,7 @@ static void DrawMetricsPanel(Rectangle p)
     float px = p.x;
     float y = cr.y + 14 - panelScroll;
     int mask = 0;
-    if (tab == 4) DrawFontViewTab(px, &y);
-    else if (tab == 0) {
+    if (tab == 0) {
         DrawInfoTab(false, px, PANEL_W, &y, NULL, origContHash, contVariant, origHash, true);
         DrawMetricsSection(px, &y);
     } else if (tab == 1) {
