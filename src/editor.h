@@ -60,10 +60,8 @@ struct Layers;
 struct Layers *Editor_Layers(Editor *e);
 /* The metric lines are on (the "Metrics" toggle of the glyph view's bar). */
 bool    Editor_ShowMetrics(const Editor *e);
-void    Editor_ViewPanel(Editor *e, float x, float *y, float w);   /* the View tab of the panel: zoom, metrics, checker */
-/* The bar's Layers toggle: main.c tells it whether the Layers tab is showing and takes the click (true once). */
-void    Editor_SetLayersTabActive(Editor *e, bool on);
-bool    Editor_TakeLayersRequest(Editor *e);
+void    Editor_ViewPanel(Editor *e, float x, float *y, float w);   /* the View tab of the panel: the glyph and its neighbours, zoom, metrics, checker */
+void    Editor_KernPanel(Editor *e, float x, float *y, float w);   /* the Kerning tab of the panel: the partner, the kerning, the glyph's pairs */
 /* The edited glyph's layer is hidden: the editing tools are disabled. */
 bool    Editor_CurrentHidden(const Editor *e);
 
@@ -96,8 +94,11 @@ void    Editor_SetFilled(Editor *e, bool on);
 int     Editor_PolyVertices(const Editor *e);
 bool    Editor_Contiguous(const Editor *e);
 
-/* Kerning (see DESIGN.md, "Kerning"): the bar's Kerning draws a partner glyph after the edited one and edits the pair's kerning.
- * Editor_KernPartner: the partner's code while Kerning is on, else PX_NO_CODE; Editor_SetKernPartner turns Kerning on with that partner. */
+/* Kerning (see DESIGN.md, "Kerning"): while the Kerning tab shows (main.c calls Editor_SetKerning every frame) a partner glyph is drawn after the
+ * edited one and the pair's kerning is edited.  Editor_TakeKernRequest: Shift+K was pressed (main.c shows the tab, or leaves it).
+ * Editor_KernPartner: the partner's code while Kerning is on, else PX_NO_CODE; Editor_SetKernPartner chooses the partner. */
+void    Editor_SetKerning(Editor *e, bool on);
+bool    Editor_TakeKernRequest(Editor *e);
 bool    Editor_Kerning(const Editor *e);
 PxCode  Editor_KernPartner(const Editor *e);
 void    Editor_SetKernPartner(Editor *e, PxCode code);

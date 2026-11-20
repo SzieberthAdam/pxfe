@@ -36,7 +36,7 @@ click @ecell:2,3 right
 click @ecell:0,0
 click @ecell:0,0 right
 wait 3
-click @Back
+key left alt
 wait 4
 assert editor 0
 assert glyph U+0020 size 4x4

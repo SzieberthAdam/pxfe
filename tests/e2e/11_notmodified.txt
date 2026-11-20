@@ -37,7 +37,7 @@ assert modified 1
 click @ecell:1,1 right
 wait 3
 assert modified 0
-click @Back
+key left alt
 wait 4
 assert modified 0
 assert unsaved 1

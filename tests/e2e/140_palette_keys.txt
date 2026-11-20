@@ -244,7 +244,7 @@ assert eslotof:11223380 2
 assert eunused 1
 assert epal 3
 # the unused slot goes when the view leaves the glyph: the glyph keeps only the colours its pixels use
-click @Back
+key left alt
 wait 4
 assert editor 0
 dblclick @cell:U+0048

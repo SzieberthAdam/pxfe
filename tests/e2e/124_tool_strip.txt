@@ -24,7 +24,8 @@ assert etool 0
 # version 23: more columns, the palette bar under the strip and the sample strip under the glyph view take some of the height
 resize 1110 520
 wait 8
-assert etoolcols 4
+# the glyph bar is one row (44 px): one column fewer than with two rows
+assert etoolcols 3
 click @Lasso
 wait 2
 assert etool 6

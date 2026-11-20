@@ -72,7 +72,7 @@ assert flayer 0 dx 0
 assert glyph U+0041 left 0
 assert glyph U+0048 size 6x8
 assert fitlastkept 1
-click @Back
+key left alt
 wait 6
 assert editor 0
 # commit and save: the layer is written beside the database under the hash of the committed font

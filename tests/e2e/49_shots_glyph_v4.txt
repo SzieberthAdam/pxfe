@@ -64,6 +64,6 @@ wait 4
 shot tests/shots/v4_glyph_hidden.png
 click @lay_eye_2
 wait 3
-click @Back
+key left alt
 wait 4
 shot tests/shots/v4_glyph_back_to_grid.png

@@ -168,7 +168,7 @@ assert eglyph U+005A
 assert glyph U+005A exists 1
 assert kern U+005A #0 -1
 # a glyph without a code point gets one: the later uncoded glyph is renumbered, the pairs of both follow
-click @Back
+key left alt
 wait 4
 assert editor 0
 click @cell:#0
@@ -194,7 +194,7 @@ assert kern #0 U+0044 1
 assert kerncount 2
 assert glyph U+0044 hash f83ad16c225c33bc1d6bfe2178677638
 # the default glyph's code is dim (it cannot be re-coded), its advance is a field
-click @Back
+key left alt
 wait 4
 click @cell:default
 wait 3
@@ -206,7 +206,7 @@ wait 3
 assert glyph default advance 7
 assert eglyph default
 # the font view's selection stays a plain list of facts
-click @Back
+key left alt
 wait 4
 click @ptab_Glyph
 wait 3

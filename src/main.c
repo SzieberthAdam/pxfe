@@ -143,7 +143,7 @@ static int lcap = 0;
 static float rowH = 0, contentH = 0;
 static int boxAbove = 6, boxBelow = 2; /* the font box of the current frame (px_font_box) */
 static float panelScroll = 0;          /* scroll of the right-hand panel */
-static int glyphTab = 0;               /* tab of the glyph view's right panel: 0 Glyph, 2 Layers, 3 View (not remembered) */
+static int glyphTab = 0;               /* tab of the glyph view's right panel: 0 Glyph, 2 Layers, 3 View, 4 Kerning (not remembered) */
 static bool TypefaceEditing(const char *pxtf);   /* panel.inc */
 static bool FlPending(void);                    /* font layers (below) */
 static bool FsDirty(void);
@@ -2761,10 +2761,10 @@ int main(int argc, char **argv)
             if (inEditor) {
                 Layers_SetStore(Editor_Layers(ed), store);
                 Layers_SetFontDoc(Editor_Layers(ed), flDoc);
-                Th_SetInputBlocked(uiBlocked || (Th_TextIs(NULL) && !Th_TextIsIn("kern.")) || Layers_PopoverOpen(Editor_Layers(ed))); /* a field being edited owns the keyboard (the glyph view's own fields, kern.*, are in it) */
-                Editor_SetLayersTabActive(ed, glyphTab == 2);
+                Th_SetInputBlocked(uiBlocked || Th_TextIs(NULL) || Layers_PopoverOpen(Editor_Layers(ed))); /* a field being edited owns the keyboard */
+                Editor_SetKerning(ed, glyphTab == 4);   /* the partner glyph is drawn while the Kerning tab shows */
                 EditorResult er = Editor_UpdateDraw(ed, edArea);
-                if (Editor_TakeLayersRequest(ed)) { glyphTab = 2; panelScroll = 0; }
+                if (Editor_TakeKernRequest(ed)) { glyphTab = glyphTab == 4 ? 0 : 4; panelScroll = 0; }   /* Shift+K */
                 Th_SetInputBlocked(uiBlocked);
                 if (Editor_TakeChanged(ed)) needHash = true;
                 if (Editor_PixelPerfect(ed) != pixelPerfect) { pixelPerfect = Editor_PixelPerfect(ed); IniSetApp("pixelPerfect", pixelPerfect ? "1" : "0"); }

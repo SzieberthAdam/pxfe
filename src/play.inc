@@ -169,7 +169,7 @@ static bool CellCenter(const char *tok, float *x, float *y)
  * user looks for a command) and runs the line again.  False when every tab of this view was tried for this line. */
 static bool RevealTab(void)
 {
-    static const char *fontTabs[] = {"ptab_Font", "ptab_Glyph", "ptab_View", "ptab_Layers", NULL}, *glyphTabs[] = {"gtab_Glyph", "gtab_View", "gtab_Layers", NULL},
+    static const char *fontTabs[] = {"ptab_Font", "ptab_Glyph", "ptab_View", "ptab_Layers", NULL}, *glyphTabs[] = {"gtab_Glyph", "gtab_View", "gtab_Layers", "gtab_Kerning", NULL},
                       *libTabs[] = {"bside_Font", "bside_Typeface", "bside_View", NULL};
     const char **tabs = inFinder ? NULL : inBrowser ? libTabs : !hasFont ? NULL : inEditor ? glyphTabs : fontTabs;
     if (play.revealLine != play.lineNo) { play.revealLine = play.lineNo; play.revealStep = 0; }
@@ -455,7 +455,7 @@ static bool GetInt(const char *name, long *v)
     else if (!strcmp(name, "editor_default")) *v = inEditor && ed && Editor_GlyphIndex(ed) < font.count && font.glyphs[Editor_GlyphIndex(ed)].code == PX_CODE_DEFAULT;
     else if (!strncmp(name, "l.", 2)) return LayerStat(name + 2, v);
     else if (!strncmp(name, "w.", 2)) { Rectangle wr; *v = Th_RegFind(name + 2, &wr); }          /* assert w.<widget> 0|1: a widget of that name was drawn in the last frame */
-    else if (!strcmp(name, "gtab")) *v = glyphTab;                                                   /* tab of the glyph view's right panel: 0 Glyph, 2 Layers, 3 View */
+    else if (!strcmp(name, "gtab")) *v = glyphTab;                                                   /* tab of the glyph view's right panel: 0 Glyph, 2 Layers, 3 View, 4 Kerning */
     else if (!strcmp(name, "emetrics")) *v = ed ? Editor_ShowMetrics(ed) : -1;                      /* metric lines of the glyph view on */
     else if (!strcmp(name, "ehidden")) *v = ed ? Editor_CurrentHidden(ed) : -1;                     /* the edited glyph's layer is hidden */
     else if (!strcmp(name, "etool")) *v = ed ? Editor_Tool(ed) : -1;

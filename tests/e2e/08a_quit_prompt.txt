@@ -47,7 +47,7 @@ click @ecell:1,1
 wait 3
 assert undo 1
 assert glyph U+0020 empty
-click @Back
+key left alt
 wait 3
 assert editor 1
 key esc

@@ -122,7 +122,7 @@ wait 2
 assert undo 5
 
 # the clipboard survives the glyph: paste into U+0078 (a new glyph view, no selection)
-click @Back
+key left alt
 wait 4
 sleep 600
 dblclick @cell:U+0078
@@ -147,7 +147,7 @@ assert glyph U+0078 pixel 1 1 .
 key v ctrl
 wait 3
 assert efloating 1
-click @Back
+key left alt
 wait 4
 assert editor 0
 assert undo 6

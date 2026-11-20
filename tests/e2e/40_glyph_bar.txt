@@ -21,7 +21,7 @@ assert w.Delete 0
 assert w.zoom+ 0
 assert w.zoom- 0
 # the editor's own bar
-assert w.Back 1
+assert w.Back 0
 assert w.Fit 1
 assert w.ezoom- 1
 assert w.ezoom+ 1
@@ -83,7 +83,7 @@ assert modified 1
 assert undo 1
 shot tests/tmp/shots/40_glyph_bar_unlocked.png
 # Back: the font view has its rows again
-click @Back
+key left alt
 wait 5
 assert editor 0
 assert w.Captions 1

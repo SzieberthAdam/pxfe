@@ -110,7 +110,7 @@ drag @ecell:0,0 @ecell:4,0
 wait 4
 assert glyph U+0041 ink 23
 assert glyph U+0041 size 5x8
-click @Back
+key left alt
 wait 6
 assert editor 0
 assert fitkept 1

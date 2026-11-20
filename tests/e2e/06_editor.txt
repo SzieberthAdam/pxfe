@@ -20,7 +20,7 @@ key enter
 wait 5
 assert editor 1
 assert editor_glyph U+0048
-click @Back
+key left alt
 wait 4
 assert editor 0
 assert dirty 0

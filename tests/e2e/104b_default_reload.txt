@@ -18,7 +18,7 @@ key enter
 wait 5
 assert editor 1
 assert editor_default 1
-click @Back
+key left alt
 wait 4
 assert editor 0
 assert modified 0

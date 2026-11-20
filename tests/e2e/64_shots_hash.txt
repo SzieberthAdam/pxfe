@@ -38,7 +38,7 @@ shot tests/tmp/p2/c1/editor_changed.png
 click @gtab_Glyph
 wait 5
 shot tests/tmp/p2/c1/editor_glyph_tab.png
-click @Back
+key left alt
 wait 10
 click @ptab_Font
 wait 10

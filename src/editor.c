@@ -19,8 +19,7 @@
 #include "selection.h"
 #include "theme.h"
 
-#define TOOLBAR_H 40
-#define PALETTE_H 34
+#define BAR_H 44          /* the bar over the canvas: the height of the right panel's tabs (PANEL_TABS_H) */
 #define STATUS_H TH_ROW_H
 #define MARGIN 3          /* cells of free space around the box when fitting */
 #define MAX_BITMAP 4096
@@ -81,8 +80,8 @@ struct Editor {
     uint32_t inkColor;  /* else the ink: a colour (0xRRGGBBAA), which the glyph may not have yet (drawing adds it to its palette) */
     bool checker;
     bool showMetrics;   /* the metric lines are drawn */
-    bool layersActive;  /* the Layers tab of the right panel is showing (set by main.c; lights the bar's Layers toggle) */
-    bool layersReq;     /* the Layers toggle was clicked (main.c selects the tab) */
+    bool kernReq;       /* Shift+K was pressed (main.c shows or leaves the Kerning tab) */
+    EditorResult navReq;   /* the View tab's previous or next glyph was clicked: the next frame returns it */
     Layers *layers;     /* the reference layers (session) */
     bool curHidden;     /* the edited glyph's layer is hidden: no editing */
 
@@ -168,7 +167,7 @@ struct Editor {
     Rectangle cv;        /* canvas rectangle of the last frame (for scripted input) */
 
     /* kerning (see DESIGN.md, "Kerning"): the partner glyph is drawn after the edited one, at its advance plus the pair's kerning */
-    bool kernOn;         /* the bar's Kerning (Shift+K); kept across glyphs */
+    bool kernOn;         /* the Kerning tab of the right panel is showing (main.c sets it every frame) */
     PxCode kernCode;     /* the partner's code, PX_NO_CODE before one is chosen; kept across glyphs */
     int kernStart, kernCx;   /* a kerning drag: the value and the cell column at the press */
 };
@@ -454,9 +453,10 @@ static PxCode kern_neighbour(const Editor *e, int dir)
 }
 
 /* Kerning on (the partner: the one chosen before while the font has it, else the first pair of the glyph, else the glyph itself) or off. */
-static void kern_toggle(Editor *e)
+static void kern_set_on(Editor *e, bool on)
 {
-    if (e->kernOn) { e->kernOn = false; if (e->mode == M_KERN) e->mode = M_NONE; if (!e->userZoom) e->needFit = true; return; }
+    if (on == e->kernOn) return;
+    if (!on) { e->kernOn = false; if (e->mode == M_KERN) e->mode = M_NONE; if (!e->userZoom) e->needFit = true; return; }
     PxGlyph *g = G(e);
     if (!g) return;
     PxCode c = e->kernCode;
@@ -1625,52 +1625,16 @@ static void zoom_by(Editor *e, int delta)
     e->userZoom = true;
 }
 
-/* Draws the glyph view's bar (two rows) inside r; returns the height used. */
+/* Draws the glyph view's bar inside r: one row as tall as the right panel's tabs, so that their hairlines meet; returns its height.
+ * The lock on the left, the tools' options, the move and advance controls on the right (the ink is the palette bar's, under the canvas;
+ * the neighbours are in the View tab, the layers and kerning have tabs of their own). */
 static float draw_toolbar(Editor *e, Rectangle area)
 {
     PxGlyph *g = G(e);
-    float h1 = TOOLBAR_H, total = h1 + PALETTE_H;
-
+    float total = BAR_H, bh = TH_ROW_H;
     DrawRectangle((int)area.x, (int)area.y, (int)area.width, (int)total, TH_PANEL_ALT);
-    Th_HLine(area.x, area.x + area.width, area.y + h1 - 1, TH_LINE_SOFT);
     Th_HLine(area.x, area.x + area.width, area.y + total - 1, TH_LINE);
-
-    /* ---- row 1: Back, previous / next, the glyph's name, zoom, metrics, layers (the tools are in the strip at the left of the canvas) */
-    float x = area.x + 10, y = area.y + 6, bh = TH_ROW_H, gap = 10;
-    if (Th_Button((Rectangle){x, y, Th_ButtonW("Back"), bh}, "Back", 0, NULL)) e->result = EDITOR_CLOSE;
-    x += Th_ButtonW("Back") + gap;
-    sep(x, area.y, h1); x += gap;
-
-    if (Th_Button((Rectangle){x, y, bh, bh}, "Previous glyph  (PgUp)", TH_BTN_ICON(TH_IC_PREV) | TH_BTN_OFF(e->gi > 0), "Previous glyph  (PgUp)")) e->result = EDITOR_PREV;
-    x += bh + 2;
-    if (Th_Button((Rectangle){x, y, bh, bh}, "Next glyph  (PgDn)", TH_BTN_ICON(TH_IC_NEXT) | TH_BTN_OFF(e->gi + 1 < e->font->count), "Next glyph  (PgDn)")) e->result = EDITOR_NEXT;
-    x += bh + 8;
-
-    {
-        char name[48] = "";
-        if (g) glyph_label(g, name, sizeof name);
-        Vector2 nm = { Th_MeasureRich(name, TH_F_BODY), Th_Measure("A").y };
-        Th_TextRich(name, x, area.y + (int)((h1 - 1 - nm.y) / 2), TH_TEXT, TH_F_BODY, -1);
-        x += (nm.x > 72 ? nm.x : 72) + 8;
-    }
-    sep(x, area.y, h1); x += gap;
-
-    {
-        int extra = e->layers ? Layers_Count(e->layers) - 1 : 0;
-        char ll[24];
-        if (extra > 0) snprintf(ll, sizeof ll, "Layers %d", extra); else snprintf(ll, sizeof ll, "Layers");
-        Rectangle lr = {x, y, Th_ButtonW(ll), bh};
-        Th_Reg("Layers", lr);
-        if (Th_Button(lr, ll, e->layersActive ? TH_BTN_ACTIVE : 0, "Reference layers: trace or compare other glyphs")) e->layersReq = true;
-        x += lr.width + 8;
-        Rectangle kr = {x, y, Th_ButtonW("Kerning"), bh};
-        Th_Reg("Kerning", kr);
-        if (Th_Button(kr, "Kerning", e->kernOn ? TH_BTN_ACTIVE : 0, "Kerning: draw a second glyph after this one and set the pair's kerning  (Shift+K)")) kern_toggle(e);
-        x += kr.width;
-    }
-
-    /* ---- row 2: the lock on the left, the tools' options, the move and advance controls on the right (the ink is the palette bar's, under the canvas) */
-    float y2 = area.y + h1 + 3;
+    float y2 = area.y + (int)((total - 1 - bh) / 2);
     float px = area.x + 2;
     float rx = area.x + area.width - 10;
     bool hasSel = !sel_empty(&e->sel);
@@ -1683,7 +1647,7 @@ static float draw_toolbar(Editor *e, Rectangle area)
         rx = sr.x;
         Vector2 lm = Th_MeasureCap("ADVANCE");
         rx -= lm.x + 8; Th_TextCap("ADVANCE", rx, y2 + (int)((bh - lm.y) / 2), TH_TEXT_DIM);
-        rx -= 8; sep(rx, area.y + h1, PALETTE_H); rx -= 10;
+        rx -= 8; sep(rx, area.y, total); rx -= 10;
 
         rx -= bh; if (Th_Button((Rectangle){rx, y2, bh, bh}, "Move bitmap down  (Shift+Down)", TH_BTN_ICON(TH_IC_DOWN) | TH_BTN_OFF((g->w > 0 || hasSel) && !locked(e)), hasSel ? "Move the selection down one cell  (Arrow keys)" : "Move bitmap down  (Shift+Down)")) { if (hasSel) sel_nudge(e, 0, 1); else move_bitmap(e, 0, 1); }
         rx -= bh; if (Th_Button((Rectangle){rx, y2, bh, bh}, "Move bitmap up  (Shift+Up)", TH_BTN_ICON(TH_IC_UP) | TH_BTN_OFF((g->w > 0 || hasSel) && !locked(e)), hasSel ? "Move the selection up one cell  (Arrow keys)" : "Move bitmap up  (Shift+Up)")) { if (hasSel) sel_nudge(e, 0, -1); else move_bitmap(e, 0, -1); }
@@ -1696,45 +1660,6 @@ static float draw_toolbar(Editor *e, Rectangle area)
     if (Th_Lock(((Rectangle){px + 8, y2, bh, bh}), e->readOnly, e->readOnly ? "The font is locked: unlock it to edit it" : "Lock the font: nothing can change it")) e->result = EDITOR_LOCK;
     /* the tools' own controls, between the lock and the move buttons: Pixel-perfect for the pencil and the shapes, and for the selection tools
      * how a new shape meets the selection and the wand's connectivity (a font with a big palette leaves them no room: the keys work) */
-    if (e->kernOn && g) {
-        /* Kerning: AFTER [<] [partner] [>]   KERNING [-] n [+] (the tool options give way; the tools still draw) */
-        float sx = px + 8 + bh + 10, fw = 120, nw = 100;
-        Vector2 ac = Th_MeasureCap("AFTER"), kc = Th_MeasureCap("KERNING");
-        float need = ac.x + 8 + bh + 2 + fw + 2 + bh + 18 + kc.x + 8 + nw;
-        if (sx + 16 + need < rx - 8) {
-            sep(sx - 4, area.y + h1, PALETTE_H);
-            sx += 6;
-            Th_TextCap("AFTER", sx, y2 + (int)((bh - ac.y) / 2), TH_TEXT_DIM);
-            sx += ac.x + 8;
-            bool pairs = kern_neighbour(e, 1) != PX_NO_CODE;
-            Rectangle pr = {sx, y2, bh, bh};
-            Th_Reg("kern.prev", pr);
-            if (Th_Button(pr, "Previous kerning pair", TH_BTN_ICON(TH_IC_PREV) | TH_BTN_OFF(pairs), "The previous glyph this one has a kerning pair with")) kern_set_partner(e, kern_neighbour(e, -1));
-            sx += bh + 2;
-            char lab[48];
-            kern_label(e->kernCode, lab, sizeof lab);
-            int tf = Th_TextField((Rectangle){sx, y2, fw, bh}, "kern.after", lab, 40, TH_TF_COMMIT | TH_TF_SELECT, "glyph");
-            if (tf & (TH_TF_ENTER | TH_TF_BLUR)) {
-                PxCode c;
-                int pi;
-                if (!strcmp(Th_TextValue(), lab)) { /* untouched */ }
-                else if (!kern_parse(Th_TextValue(), &c)) Th_Toast(TH_TOAST_ERR, "Type one character, or a code such as U+00E9");
-                else if ((pi = px_font_find_code(e->font, c)) < 0) Th_Toast(TH_TOAST_ERR, "The font has no glyph for %s", Th_TextValue());
-                else kern_set_partner(e, e->font->glyphs[pi].code);
-            }
-            sx += fw + 2;
-            Rectangle nr = {sx, y2, bh, bh};
-            Th_Reg("kern.next", nr);
-            if (Th_Button(nr, "Next kerning pair", TH_BTN_ICON(TH_IC_NEXT) | TH_BTN_OFF(pairs), "The next glyph this one has a kerning pair with")) kern_set_partner(e, kern_neighbour(e, 1));
-            sx += bh + 18;
-            Th_TextCap("KERNING", sx, y2 + (int)((bh - kc.y) / 2), TH_TEXT_DIM);
-            sx += kc.x + 8;
-            int nv;
-            bool can = kern_partner(e) >= 0 && !locked(e);
-            if (Th_Number((Rectangle){sx, y2, nw, bh}, "kern", kern_value(e), -KERN_MAX, KERN_MAX, TH_NUM_WHEEL | (can ? 0 : TH_TF_DISABLED), &nv)) { set_kern(e, nv); close_edit_cmd(e); }
-        }
-        return total;
-    }
     bool freehand = e->tool == T_PENCIL || e->tool == T_LINE || e->tool == T_CURVE, solid = e->tool == T_RECT || e->tool == T_ELLIPSE || e->tool == T_POLY || e->tool == T_CONTOUR, bucket = e->tool == T_FILL;
     if ((freehand || solid || bucket || is_sel_tool(e->tool)) && g) {
         static const char *const modeLab[4] = {"Set", "Add", "Sub", "And"};
@@ -1742,7 +1667,7 @@ static float draw_toolbar(Editor *e, Rectangle area)
         float sx = px + 8 + bh + 10, segW = 4 * 40, ppW = Th_ButtonW("Pixel-perfect"), tgW = Th_ButtonW("8-way"), fiW = Th_ButtonW("Filled");
         float coW = Th_ButtonW("Contiguous"), need = freehand ? ppW : solid ? fiW : bucket ? coW + 8 + tgW : segW + (e->tool == T_WAND ? tgW + 8 : 0);
         if (sx + 16 + need < rx - 8) {
-            sep(sx - 4, area.y + h1, PALETTE_H);
+            sep(sx - 4, area.y, total);
             sx += 6;
             if (freehand) {
                 Th_Toggle((Rectangle){sx, y2, ppW, bh}, "Pixel-perfect", &e->pixPerfect, locked(e) ? TH_BTN_DISABLED : 0,
@@ -2253,8 +2178,8 @@ void Editor_Destroy(Editor *e)
 
 struct Layers *Editor_Layers(Editor *e) { return e->layers; }
 bool Editor_ShowMetrics(const Editor *e) { return e->showMetrics; }
-void Editor_SetLayersTabActive(Editor *e, bool on) { e->layersActive = on; }
-bool Editor_TakeLayersRequest(Editor *e) { bool r = e->layersReq; e->layersReq = false; return r; }
+bool Editor_TakeKernRequest(Editor *e) { bool r = e->kernReq; e->kernReq = false; return r; }
+void Editor_SetKerning(Editor *e, bool on) { kern_set_on(e, on); }
 bool Editor_CurrentHidden(const Editor *e) { return e->curHidden; }
 const char *Editor_OriginalHash(const Editor *e) { return e->hasOrig ? e->origHash : NULL; }
 
@@ -2358,7 +2283,8 @@ static EditorResult editor_frame(Editor *e, Rectangle area)
     box_update(e);
     Layers_SetContext(e->layers, e->font, g->code);
     e->curHidden = !Layers_CurrentVisible(e->layers);
-    e->result = EDITOR_RUNNING;
+    e->result = e->navReq;   /* the View tab's neighbours, clicked in the panel after the last frame */
+    e->navReq = EDITOR_RUNNING;
     e->tip = NULL;
     SetMouseCursor(MOUSE_CURSOR_DEFAULT);
     Vector2 mouse = GetMousePosition();
@@ -2382,7 +2308,7 @@ static EditorResult editor_frame(Editor *e, Rectangle area)
             if (!ctrl && !shift && e->mode == M_NONE) key_slot(e, ch);
     }
     if (!ctrl && e->mode == M_NONE && !typing) {
-        if (shift && IsKeyPressed(KEY_K)) kern_toggle(e);   /* Kerning, also in a locked font (a viewer) */
+        if (shift && IsKeyPressed(KEY_K)) e->kernReq = true;   /* the Kerning tab, also in a locked font (a viewer): main.c shows it or leaves it */
         if (!locked(e) && shift) {   /* the tools: Shift and their letter */
             for (int t = 0; t < T_COUNT; t++)
                 if (kTool[t].keycode && IsKeyPressed(kTool[t].keycode)) set_tool(e, (Tool)t);
@@ -2574,9 +2500,20 @@ int Editor_SelfTest(Editor *e, PxFont *f)
 }
 
 
-/* The View tab of the glyph view's panel: the zoom (Fit and a stepper), the metric lines and the checker under the glyph. */
+/* The View tab of the glyph view's panel: the glyph with its neighbours, the zoom (Fit and a stepper), the metric lines and the checker under the glyph. */
 void Editor_ViewPanel(Editor *e, float x, float *y, float w)
 {
+    {
+        const PxGlyph *g = G(e);
+        char name[48] = "";
+        if (g) glyph_label(g, name, sizeof name);
+        Rectangle gr = Th_Row(x, y, w, "Glyph", NULL, 0);
+        float bh = TH_ROW_H, nx = gr.x + gr.width - bh, px = nx - 2 - bh;
+        if (Th_Button((Rectangle){px, gr.y, bh, bh}, "Previous glyph  (PgUp)", TH_BTN_ICON(TH_IC_PREV) | TH_BTN_OFF(e->gi > 0), "Previous glyph  (PgUp)")) e->navReq = EDITOR_PREV;
+        if (Th_Button((Rectangle){nx, gr.y, bh, bh}, "Next glyph  (PgDn)", TH_BTN_ICON(TH_IC_NEXT) | TH_BTN_OFF(e->font && e->gi + 1 < e->font->count), "Next glyph  (PgDn)")) e->navReq = EDITOR_NEXT;
+        float tw = Th_MeasureRich(name, TH_F_BODY);
+        Th_TextRich(name, px - 10 - tw, gr.y + (int)((bh - Th_Measure("A").y) / 2), TH_TEXT, TH_F_BODY, -1);
+    }
     char zt[12];
     snprintf(zt, sizeof zt, "%dx", e->zoom);
     Rectangle zr = Th_Row(x, y, w, "Zoom", NULL, 0);
@@ -2589,4 +2526,67 @@ void Editor_ViewPanel(Editor *e, float x, float *y, float w)
     *y += TH_ROW_H + 2;
     Th_Switch((Rectangle){x, *y, w, TH_ROW_H}, "Checker", &e->checker, TH_CK_RIGHT, "Checker");
     *y += TH_ROW_H + 2;
+}
+
+/* The Kerning tab of the glyph view's panel (see DESIGN.md, "Kerning"): the partner drawn after the edited glyph (a field and the arrows that step
+ * through the glyph's pairs), the kerning of the pair, and the glyph's pairs, a click on one makes it the partner. */
+void Editor_KernPanel(Editor *e, float x, float *y, float w)
+{
+    PxGlyph *g = G(e);
+    if (!g) return;
+    float bh = TH_ROW_H;
+    Rectangle ar = Th_Row(x, y, w, "After", NULL, 0);
+    bool pairs = kern_neighbour(e, 1) != PX_NO_CODE;
+    Rectangle pr = {ar.x, ar.y, bh, bh}, nr = {ar.x + ar.width - bh, ar.y, bh, bh};
+    Th_Reg("kern.prev", pr);
+    if (Th_Button(pr, "Previous kerning pair", TH_BTN_ICON(TH_IC_PREV) | TH_BTN_OFF(pairs), "The previous glyph this one has a kerning pair with")) kern_set_partner(e, kern_neighbour(e, -1));
+    Th_Reg("kern.next", nr);
+    if (Th_Button(nr, "Next kerning pair", TH_BTN_ICON(TH_IC_NEXT) | TH_BTN_OFF(pairs), "The next glyph this one has a kerning pair with")) kern_set_partner(e, kern_neighbour(e, 1));
+    char lab[48];
+    kern_label(e->kernCode, lab, sizeof lab);
+    int tf = Th_TextField((Rectangle){pr.x + bh + 4, ar.y, nr.x - 4 - (pr.x + bh + 4), bh}, "kern.after", lab, 40, TH_TF_COMMIT | TH_TF_SELECT, "glyph");
+    if (tf & (TH_TF_ENTER | TH_TF_BLUR)) {
+        PxCode c;
+        int pi;
+        if (!strcmp(Th_TextValue(), lab)) { /* untouched */ }
+        else if (!kern_parse(Th_TextValue(), &c)) Th_Toast(TH_TOAST_ERR, "Type one character, or a code such as U+00E9");
+        else if ((pi = px_font_find_code(e->font, c)) < 0) Th_Toast(TH_TOAST_ERR, "The font has no glyph for %s", Th_TextValue());
+        else kern_set_partner(e, e->font->glyphs[pi].code);
+    }
+    Rectangle kr = Th_Row(x, y, w, "Kerning", NULL, 0);
+    int nv;
+    bool can = kern_partner(e) >= 0 && !locked(e);
+    if (Th_Number((Rectangle){kr.x + kr.width - 100, kr.y, 100, bh}, "kern", kern_value(e), -KERN_MAX, KERN_MAX, TH_NUM_WHEEL | (can ? 0 : TH_TF_DISABLED), &nv)) { set_kern(e, nv); close_edit_cmd(e); }
+    Th_TextSmall("Ctrl+Left / Ctrl+Right, or drag the second glyph", x, *y, TH_TEXT_DIM);
+    *y += 22 + TH_GAP;
+
+    /* the glyph's pairs, in code order */
+    PxCode *pc = (PxCode *)malloc(sizeof(PxCode) * (size_t)(e->font->kernCount > 0 ? e->font->kernCount : 1));
+    int n = 0;
+    for (int i = 0; pc && i < e->font->kernCount; i++) {
+        const PxKern *k = &e->font->kern[i];
+        if (k->first != g->code || k->value == 0 || px_font_find_code(e->font, k->second) < 0) continue;
+        int j = n++;
+        while (j > 0 && pc[j - 1] > k->second) { pc[j] = pc[j - 1]; j--; }
+        pc[j] = k->second;
+    }
+    PxCode pick = PX_NO_CODE;
+    float ty = (bh - Th_Measure("A").y) / 2;
+    for (int i = 0; i < n; i++) {
+        Rectangle rr = {x, *y, w, bh};   /* on the panel's margins */
+        bool hv = !Th_MouseBlocked() && CheckCollisionPointRec(GetMousePosition(), rr);
+        Th_ListRow(rr, (pc[i] == e->kernCode ? TH_LR_SELECTED : 0) | (hv ? TH_LR_HOVER : 0));
+        char a[48], rn[24];
+        kern_label(pc[i], a, sizeof a);
+        Th_Text(a, x + 8, rr.y + (int)ty, TH_TEXT);
+        const char *v = TextFormat("%d", px_font_kern(e->font, g->code, pc[i]));
+        Th_Text(v, x + w - 8 - Th_Measure(v).x, rr.y + (int)ty, TH_TEXT_DIM);
+        snprintf(rn, sizeof rn, "kern.pair.%d", i);
+        Th_Reg(rn, rr);
+        if (hv && IsMouseButtonPressed(MOUSE_BUTTON_LEFT)) pick = pc[i];
+        *y += bh + 2;
+    }
+    free(pc);
+    if (pick != PX_NO_CODE) kern_set_partner(e, pick);
+    if (n == 0) { Th_TextSmall("This glyph has no kerning pairs yet", x, *y, TH_TEXT_DIM); *y += 22; }
 }

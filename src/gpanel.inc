@@ -1,6 +1,7 @@
 /* gpanel.inc - the right panel of the glyph view, included by main.c after panel.inc (DESIGN.md "Glyph view").
- * Three tabs: View (zoom, metric lines, checker: Editor_ViewPanel), Glyph (code, character, advance, bitmap, offsets, "Find in Library",
- * the hashes of the original and of the current bitmap, the glyph usage) and Layers (layers.c).  glyphTab: 3 View, 0 Glyph, 2 Layers.
+ * Four tabs: View (the glyph and its neighbours, zoom, metric lines, checker: Editor_ViewPanel), Glyph (code, character, advance, bitmap, offsets,
+ * "Find in Library", the hashes of the original and of the current bitmap, the glyph usage), Layers (layers.c) and Kerning (Editor_KernPanel; the
+ * glyph view draws the partner glyph while it shows).  glyphTab: 3 View, 0 Glyph, 2 Layers, 4 Kerning.
  * The tab is not remembered: the glyph view opens on Glyph.  Every tab scrolls by itself. */
 
 static void DrawGlyphInfo(float px, float *yp, int gi, PxCode insCode)
@@ -31,9 +32,9 @@ static void DrawGlyphPanel(Rectangle p)
 {
     DrawRectangleRec(p, TH_PANEL);
     Th_VLine(p.x, p.y, p.y + p.height, TH_LINE);
-    static const char *labels[3] = {"View", "Glyph", "Layers"};
-    static const int ids[3] = {3, 0, 2};
-    int tab = glyphTab, c = PanelTabs(p, 3, labels, ids, tab, "gtab");
+    static const char *labels[4] = {"View", "Glyph", "Layers", "Kerning"};
+    static const int ids[4] = {3, 0, 2, 4};
+    int tab = glyphTab, c = PanelTabs(p, 4, labels, ids, tab, "gtab");
     if (c >= 0 && c != glyphTab) { glyphTab = c; tab = c; panelScroll = 0; }
     Rectangle cr = {p.x, p.y + PANEL_TABS_H, p.width, p.height - PANEL_TABS_H};   /* the scrolling content */
     float maxS0 = panelContentH - cr.height;
@@ -62,6 +63,8 @@ static void DrawGlyphPanel(Rectangle p)
             Insight_SetPalette(insight, &font, gi);
         }
         mask = INSIGHT_SECTION_USAGE;
+    } else if (tab == 4) {
+        if (Th_Section("KERNING", px + 16, &y, PANEL_W - 32, NULL)) Editor_KernPanel(ed, px + 16, &y, PANEL_W - 32);
     } else if (tab == 2) {
         float used = Layers_DrawPanel(Editor_Layers(ed), (Rectangle){px, y - 8, p.width, 0}, cr);
         y = y - 8 + used;

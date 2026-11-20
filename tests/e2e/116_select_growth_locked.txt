@@ -124,7 +124,7 @@ drag @ecell:0,0 @ecell:5,4
 key right
 wait 2
 assert efloating 1
-click @Back
+key left alt
 wait 4
 assert editor 0
 assert undo 5

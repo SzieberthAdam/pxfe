@@ -34,7 +34,7 @@ wait 6
 click @lay_row_1
 wait 6
 shot tests/tmp/imp/5_glyph_A.png
-click @Back
+key left alt
 wait 6
 click @cell:U+0067
 key enter

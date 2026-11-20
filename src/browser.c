@@ -1458,16 +1458,17 @@ static void draw_boxes(Browser *b, const TfCtx *c)
                 char fam[300], sty[300], buf[320];
                 bool ho;
                 entry_names(e0, fam, sizeof fam, sty, sizeof sty, &ho);
-                float hw = e0->pxtf[0] ? Th_HashShort("Typeface", e0->pxtf, 0, 0, TH_HASH_MEASURE, NULL) + 12 : 0;
                 float tx = cx + 14, tw = c->cardW - 28;
-                Th_FitText(fam, ho ? 2 : 3, tw - hw, buf, sizeof buf);
+                /* row 1: the family name, the whole width; row 2: format and variants, and at the right the typeface hash and the lock */
+                float mk = unlock_mark(tx + tw, cy + 34, true, e0->pxtf);
+                float hw = e0->pxtf[0] && !ho ? Th_HashShort("Typeface", e0->pxtf, 0, 0, TH_HASH_MEASURE | TH_HASH_SMALL, NULL) + 12 : 0;
+                Th_FitText(fam, ho ? 2 : 3, tw, buf, sizeof buf);
                 if (ho) Th_HashShort("Typeface", e0->pxtf[0] ? e0->pxtf : e0->pxfm, tx, cy + 12, 0, NULL); else Th_TextHead(buf, tx, cy + 6, TH_TEXT);
-                float hy = Th_BesideHead(cy + 6);   /* the hash stands on the family name's baseline */
-                float mk = unlock_mark(tx + tw, hy, true, e0->pxtf);
-                if (e0->pxtf[0] && !ho) Th_HashShort("Typeface", e0->pxtf, tx + tw - mk, hy, TH_HASH_RIGHT, NULL);
-                char det[160];
+                if (e0->pxtf[0] && !ho) Th_HashShort("Typeface", e0->pxtf, tx + tw - mk, cy + 36, TH_HASH_RIGHT | TH_HASH_SMALL, NULL);
+                char det[160], detf[200];
                 snprintf(det, sizeof det, "%s%s%d variant%s", e0->format[0] ? e0->format : "", e0->format[0] ? "  \xC2\xB7  " : "", bx->n, bx->n == 1 ? "" : "s");
-                Th_TextSmall(det, tx, cy + 36, TH_TEXT_DIM);
+                Th_FitText(det, 1, tw - mk - hw, detf, sizeof detf);
+                Th_TextSmall(detf, tx, cy + 36, TH_TEXT_DIM);
             }
             Th_HLine(cx + 14, cx + c->cardW - 14, cy + HDR_H - 1, TH_LINE_SOFT);
             /* the variants */

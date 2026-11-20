@@ -28,7 +28,7 @@ click @ecell:0,0
 click @ecell:0,0 right
 wait 3
 shot tests/tmp/shots/104_default_editor.png
-click @Back
+key left alt
 wait 4
 assert editor 0
 assert glyph default size 4x4
@@ -54,7 +54,7 @@ key enter
 wait 5
 drag @ecell:1,0 @ecell:1,1
 wait 3
-click @Back
+key left alt
 wait 4
 assert glyph default ink 15
 assert glyph U+0048 ink 13
@@ -106,7 +106,7 @@ key enter
 wait 5
 drag @ecell:0,6 @ecell:4,6
 wait 3
-click @Back
+key left alt
 wait 4
 assert glyph default size 5x5
 assert glyph U+0078 size 5x4

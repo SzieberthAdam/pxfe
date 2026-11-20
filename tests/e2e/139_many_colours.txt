@@ -66,7 +66,7 @@ drag @ecell:0,1 @ecell:3,1
 wait 3
 key c ctrl
 wait 2
-click @Back
+key left alt
 wait 4
 sleep 600
 dblclick @cell:U+0042
@@ -93,7 +93,7 @@ key b shift
 wait 2
 
 # W has 36 colours: a 37th (S's first, D43C40, in the bar's row of the font's other colours) is refused
-click @Back
+key left alt
 wait 4
 sleep 600
 dblclick @cell:U+0057

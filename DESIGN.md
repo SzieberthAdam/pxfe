@@ -122,7 +122,7 @@ Exactly two forms, both in Unifont; nothing else prints a hash.
 
 - `Th_HashShort(kind, hash, x, y, flags, copyName)`: a dim kind word (`Font`, `Typeface`, `Glyph`, or none) and the first 8 characters.
   `TH_HASH_ACCENT` marks a changed state, `TH_HASH_RIGHT` right-aligns, `TH_HASH_MEASURE` only measures, `TH_HASH_SMALL` fits a line of small text; with `copyName` a click copies the full hash.
-- `Th_HashField(x, &y, w, caption, hash, name, what, flags)`: a caption and a 28 px box with the full hash, never wrapped or cut; a click copies it with the toast "`what` hash copied"; an empty hash reads "no ink", a NULL hash "not known".
+- `Th_HashField(x, &y, w, caption, hash, name, what, flags)`: a caption and a 28 px box with the full hash, never wrapped or cut, on the panel's margins (16 px, as the caption and the rows); a click copies it with the toast "`what` hash copied"; an empty hash reads "no ink", a NULL hash "not known".
 - The clipboard, the toast and the hint live in `theme.c` (hooks `Th_HoverFn`, `Th_NoticeFn` set by `main.c`).
 - A font or typeface without a name shows its short hash; a name is never built from a hash.
 - The short form is used by cards, rows, headings, the selection block, the info bar, the status bar, the glyph bar, and the Usage, Similar and Layers lists; the full form by the Font, Typeface and Glyph tabs and the glyph view's Glyph tab.
@@ -495,7 +495,7 @@ The style segment carries the "*" modified marker.
 - Opening a variant row, a Typeface view row or a Fonts card shows the Font view.
 - In the Font and Glyph views the first segment goes to the Typeface view; for an orphaned font it leads to the Typefaces list, and the style segment shows the font's own name.
 - In the Glyph view the style segment returns to the Font view.
-- Alt+Left (and the glyph bar's Back) goes one level up: Glyph, Font, Typeface, Typefaces; from the Glyphs view it returns where it came from.
+- Alt+Left goes one level up: Glyph, Font, Typeface, Typefaces; from the Glyphs view it returns where it came from.
   Alt+Right goes back to the font that was open, in the view it was left in.
 - Leaving a font view commits its edits.
 
@@ -522,7 +522,8 @@ The library views are Typefaces, Typeface and Fonts (`src/browser.c`).
 
 ### Lists
 
-- Typefaces: one box per typeface: family, typeface hash, format and variant count in the header, and one row per variant: style, size, glyphs, flags, font hash and sample.
+- Typefaces: one box per typeface: the family in the header's first row, format, variant count and the typeface hash (small) in its second, and one row per variant: style, size, glyphs, flags, font hash and sample.
+  The hashes stand on the baseline of the text beside them.
   Filters work on variants: a box shows when any variant matches, with only the matching variants.
   A variant row selects that font, the header the typeface.
 - Fonts: one card per font: family and style (or the hash), details (format, size `ASCENT + DESCENT`, glyph count, Mono, Symbolic, ratio, hash) and the sample, pixel perfect.
@@ -638,16 +639,17 @@ The Baseline row (under Descent) has up and down buttons (`@Baseline_up`, `@Base
 
 ### The bar
 
-- Row 1: Back, previous and next glyph (`PgUp`, `PgDn`), the glyph's caption, Layers ("Layers 2" with two reference layers; a click shows the Layers tab) and Kerning.
-- Row 2: the padlock, the current tool's options (Pixel-perfect; Filled; Set, Add, Sub, And with 8-way; Contiguous with 8-way) or, while Kerning is on, the kerning controls, MOVE (four arrows: the selection, or without one the bitmap, by 1 cell) and ADVANCE.
+- One row, as tall as the right panel's tabs, so that their hairlines meet: the padlock, the current tool's options (Pixel-perfect; Filled; Set, Add, Sub, And with 8-way; Contiguous with 8-way), MOVE (four arrows: the selection, or without one the bitmap, by 1 cell) and ADVANCE.
+- The way back is the navigation bar, Alt+Left or Esc; the neighbours are in the View tab; the layers and kerning have tabs.
 
 ### The right panel
 
-Tabs **View | Glyph | Layers** (`src/gpanel.inc`); opening the glyph view shows the Glyph tab.
+Tabs **View | Glyph | Layers | Kerning** (`src/gpanel.inc`); opening the glyph view shows the Glyph tab.
 
-- View: the zoom with Fit, Metrics and Checker (`Editor_ViewPanel`).
+- View: the glyph's caption with the previous and next glyph (`PgUp`, `PgDn`), the zoom with Fit, Metrics and Checker (`Editor_ViewPanel`).
 - Glyph: the glyph's fields, Find in Library, the full pxgl hashes of the glyph as opened and as it is now, and the glyph usage.
 - Layers: session and font layers in one stack.
+- Kerning: the partner, the kerning of the pair and the glyph's pairs (`Editor_KernPanel`, see "Kerning").
 
 ### The facts of a glyph
 
@@ -666,11 +668,11 @@ Tabs **View | Glyph | Layers** (`src/gpanel.inc`); opening the glyph view shows 
 
 ### Kerning
 
-- The bar's Kerning (`Shift+K`) draws a second glyph, the partner, after the edited one: its pen is at the edited glyph's advance plus the kerning of the pair (edited glyph, partner).
+- While the Kerning tab shows (`Shift+K` shows it, or leaves it for the Glyph tab), a second glyph, the partner, is drawn after the edited one: its pen is at the edited glyph's advance plus the kerning of the pair (edited glyph, partner).
   The partner is drawn in its own colours over the layers, on a faint box as wide as its advance, with a dashed line at its pen labelled "Kerning -1".
-- Turned on, the partner is the one chosen before while the font has it, else the edited glyph's first pair, else the edited glyph itself.
-  The partner stays when the view moves to another glyph, and Kerning stays on.
-- Row 2 of the bar: AFTER, previous pair, the partner field, next pair, then KERNING and a number box (-999 to 999).
+- When the tab shows, the partner is the one chosen before while the font has it, else the edited glyph's first pair, else the edited glyph itself.
+  The partner stays when the view moves to another glyph.
+- The tab: After (previous pair, the partner field, next pair), Kerning (a number box, -999 to 999), a hint, and the edited glyph's pairs with their values in code order; a click on one makes it the partner.
 - The field takes one character, the word `space`, or a code as the Code point field takes it (`U+00E9`, `#3`, `default`); a glyph the font has not is refused with a toast.
 - The arrows step through the partners the edited glyph has a pair with, in code order, round the end.
 - The kerning is changed by the number box (and the wheel over it), by `Ctrl+Left` and `Ctrl+Right` (one cell a press), and by dragging the partner's ink sideways, cell by cell.
@@ -808,7 +810,7 @@ Tools are Shift+letter; the plain keys pick a slot of the palette bar.
 | Ctrl+Z, Ctrl+Y | undo, redo (a float, curve or polygon being made is thrown away first) |
 | Arrow keys | move the selection by 1 cell, Shift+arrow by 8; with no selection Shift+arrow moves the bitmap |
 | PgUp, PgDn | previous and next glyph |
-| Shift+K | Kerning on or off |
+| Shift+K | the Kerning tab, or back to the Glyph tab |
 | Ctrl+Left, Ctrl+Right | the kerning of the pair shown, by 1 |
 
 ## Selection and moving
@@ -847,7 +849,7 @@ A move lifts the selected pixels into a float drawn over the glyph, their origin
 - Whole cells only, relative to the cell where the press began.
 - Arrows nudge 1 cell, Shift+arrow 8 (`NUDGE_BIG`); without a selection Shift+arrow moves the bitmap by 1.
 - A `.` cell of the float does not overwrite; a move first clears all the cells it came from.
-- Drop: Enter, another tool, a press outside the float with the marquee or lasso (it also deselects), leaving the glyph (Back, previous and next, the padlock, Save, Export, any commit through `Editor_Flush`, navigation).
+- Drop: Enter, another tool, a press outside the float with the marquee or lasso (it also deselects), leaving the glyph (Alt+Left, previous and next, the padlock, Save, Export, any commit through `Editor_Flush`, navigation).
 - Cancel: Esc (the next Esc deselects), Ctrl+Z or Ctrl+Y while pixels float, with no undo step; a drop that changes nothing takes none either.
 - A drop may land outside the bitmap and the box: the bitmap grows (`ensure`) and is cropped to its ink (`px_glyph_crop`); beyond 4096 cells it is refused with a toast and cancelled.
 - The float and the clipboard carry their colours, mapped into the target palette (`px_glyph_add_colors`, reusing slots); a drop that would pass 36 colours is refused with a toast and cancelled.
@@ -890,7 +892,7 @@ When the slots reorder, the swatches slide to their places in 200 ms with a cubi
 ### The unused-slot rule
 
 - Opening a glyph remembers its palette P0 (not again when the same glyph of the same font reopens, as after undo or redo).
-- Leaving the glyph (Back, previous or next, the padlock) and saving, committing or closing (`Editor_Flush`) first canonicalize it; if its palette is P0 nothing changes; else if P0's first k entries are the colours in use it goes back to P0 (a read or shared palette stays reused); else the palette is cut to the used colours.
+- Leaving the glyph (Alt+Left, previous or next, the padlock) and saving, committing or closing (`Editor_Flush`) first canonicalize it; if its palette is P0 nothing changes; else if P0's first k entries are the colours in use it goes back to P0 (a read or shared palette stays reused); else the palette is cut to the used colours.
 - So unused slots live while the glyph is edited, and go when it is left unless they were in the palette it was opened with.
 
 ### The colour picker
@@ -1082,7 +1084,7 @@ While a menu is open, Up, Down, Home, End, Enter and Escape are the menu's: `Th_
 
 ### Font model and storage
 
-- Kerning pairs are edited only with the edited glyph first: the glyph view shows no partner before it, and no list of a font's pairs.
+- Kerning pairs are edited only with the edited glyph first: the glyph view shows no partner before it, and lists only the edited glyph's pairs.
 - WOFF2 is not supported, as a layer or as an import.
 
 ### Design system

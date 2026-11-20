@@ -36,7 +36,7 @@ assert glyph U+0020 empty
 assert dirty 0
 key delete
 wait 3
-click @Back
+key left alt
 wait 4
 assert editor 0
 assert modified 0

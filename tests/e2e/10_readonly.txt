@@ -40,7 +40,7 @@ click @ecell:3,3 right
 wait 3
 assert undo 0
 assert modified 0
-click @Back
+key left alt
 wait 4
 assert editor 0
 assert snapdir unchanged
