@@ -274,7 +274,7 @@ This file and `HANDOFF.md` follow the author's Markdown protocol: a heading has 
 - A font without `ASCENT` or `DESCENT` is drawn in a box taken from the glyphs; that box is never written.
   Changing `ASCENT` or `DESCENT` moves no glyph, only the box.
 - `SYMBOLIC` marks a symbol font, whose codes are not the characters' code points.
-- Kerning pairs are kept and written but not edited; deleting a glyph drops its pairs, cloning does not copy them.
+- Kerning pairs are edited in the glyph view (see "Kerning"); deleting a glyph drops its pairs, cloning does not copy them.
 
 ### Codes
 
@@ -638,8 +638,8 @@ The Baseline row (under Descent) has up and down buttons (`@Baseline_up`, `@Base
 
 ### The bar
 
-- Row 1: Back, previous and next glyph (`PgUp`, `PgDn`), the glyph's caption, and Layers ("Layers 2" with two reference layers; a click shows the Layers tab).
-- Row 2: the padlock, the current tool's options (Pixel-perfect; Filled; Set, Add, Sub, And with 8-way; Contiguous with 8-way), MOVE (four arrows: the selection, or without one the bitmap, by 1 cell) and ADVANCE.
+- Row 1: Back, previous and next glyph (`PgUp`, `PgDn`), the glyph's caption, Layers ("Layers 2" with two reference layers; a click shows the Layers tab) and Kerning.
+- Row 2: the padlock, the current tool's options (Pixel-perfect; Filled; Set, Add, Sub, And with 8-way; Contiguous with 8-way) or, while Kerning is on, the kerning controls, MOVE (four arrows: the selection, or without one the bitmap, by 1 cell) and ADVANCE.
 
 ### The right panel
 
@@ -663,6 +663,23 @@ Tabs **View | Glyph | Layers** (`src/gpanel.inc`); opening the glyph view shows 
 - Drawing with a colour the glyph lacks adds it to the glyph's palette; with no room, nothing is drawn and a toast says so (at most once a second).
 - When a glyph opens and the ink is not a colour of the font, the ink becomes the font's first colour.
 - The status line shows `ink . (transparent)`, `ink #RRGGBB (key 3)` or `ink #RRGGBB (not in this glyph)`.
+
+### Kerning
+
+- The bar's Kerning (`Shift+K`) draws a second glyph, the partner, after the edited one: its pen is at the edited glyph's advance plus the kerning of the pair (edited glyph, partner).
+  The partner is drawn in its own colours over the layers, on a faint box as wide as its advance, with a dashed line at its pen labelled "Kerning -1".
+- Turned on, the partner is the one chosen before while the font has it, else the edited glyph's first pair, else the edited glyph itself.
+  The partner stays when the view moves to another glyph, and Kerning stays on.
+- Row 2 of the bar: AFTER, previous pair, the partner field, next pair, then KERNING and a number box (-999 to 999).
+- The field takes one character, the word `space`, or a code as the Code point field takes it (`U+00E9`, `#3`, `default`); a glyph the font has not is refused with a toast.
+- The arrows step through the partners the edited glyph has a pair with, in code order, round the end.
+- The kerning is changed by the number box (and the wheel over it), by `Ctrl+Left` and `Ctrl+Right` (one cell a press), and by dragging the partner's ink sideways, cell by cell.
+  A press on a cell where the partner has ink and the edited glyph has none drags the kerning; the cursor shows it.
+- Every change is one undo step (a drag is one); 0 removes the pair.
+- Locked, the partner is shown and the kerning cannot change.
+- The status line adds `kerning A V -1`.
+- The partner fits in the view when it is chosen, unless the zoom was set by hand.
+- Tests: `144_kerning`.
 
 ## Tools of the glyph view
 
@@ -791,6 +808,8 @@ Tools are Shift+letter; the plain keys pick a slot of the palette bar.
 | Ctrl+Z, Ctrl+Y | undo, redo (a float, curve or polygon being made is thrown away first) |
 | Arrow keys | move the selection by 1 cell, Shift+arrow by 8; with no selection Shift+arrow moves the bitmap |
 | PgUp, PgDn | previous and next glyph |
+| Shift+K | Kerning on or off |
+| Ctrl+Left, Ctrl+Right | the kerning of the pair shown, by 1 |
 
 ## Selection and moving
 
@@ -1063,7 +1082,7 @@ While a menu is open, Up, Down, Home, End, Enter and Escape are the menu's: `Th_
 
 ### Font model and storage
 
-- Kerning pairs are not edited.
+- Kerning pairs are edited only with the edited glyph first: the glyph view shows no partner before it, and no list of a font's pairs.
 - WOFF2 is not supported, as a layer or as an import.
 
 ### Design system

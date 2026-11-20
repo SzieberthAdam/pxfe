@@ -13,7 +13,7 @@ It is written in C99 with raylib 6 and SQLite 3.
 - Imports a folder of text files (`pxtf/`, `pxfm/`, `pxgl/`, `palette/`) into a new database, and exports a database into such a folder.
 - Reads and writes pxfp and pxtp packages, to carry a font or a typeface between databases.
 - Browses the library by typeface, font and glyph, and finds glyph usage and similar fonts and typefaces.
-- Edits a font's metrics and glyphs, and draws glyphs with pencil, line, curve, shape, fill, selection and palette tools.
+- Edits a font's metrics, glyphs and kerning, and draws glyphs with pencil, line, curve, shape, fill, selection and palette tools.
 - Draws fonts of several colours, with per-glyph palettes and a colour picker.
 - Imports outline and bitmap font files, and finds a font in a picture of it.
 

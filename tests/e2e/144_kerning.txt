@@ -1,0 +1,129 @@
+# 144. Kerning in the glyph view (font 3b52125b: A, H, M, x, KERNING A M -1).  Shift+K and the bar's Kerning draw a partner glyph after the edited one,
+# at its advance plus the pair's kerning; the partner is first the glyph's first pair.  The field takes a character or a code, the arrows step through
+# the glyph's pairs, the partner stays when the view moves to another glyph.  The number box, Ctrl+Left / Ctrl+Right and a drag of the partner's ink
+# change the kerning, one undo step each; 0 removes the pair.  Locked, the partner is shown and nothing changes.
+wait 5
+click @cell:U+0041
+key enter
+wait 6
+assert editor 1
+assert eglyph U+0041
+assert ekern 0
+assert ekernpartner none
+assert w.kern.after 0
+# locked: the partner is shown, the kerning cannot change
+key k shift
+wait 4
+assert ekern 1
+assert ekernpartner U+004D
+assert w.kern.after 1
+assert w.kern.value 1
+shot tests/tmp/shots/144_locked.png
+click @kern+
+wait 3
+key right ctrl
+wait 3
+drag @ecell:5,5 @ecell:7,5
+wait 4
+assert kern U+0041 U+004D -1
+assert undo 0
+assert modified 0
+# unlocked: the number box steps, 0 removes the pair
+click @Unlock
+wait 4
+assert readonly 0
+click @kern+
+wait 3
+assert kern U+0041 U+004D 0
+assert kerncount 0
+click @kern+
+wait 3
+assert kern U+0041 U+004D 1
+assert kerncount 1
+assert modified 1
+# Ctrl+Left and Ctrl+Right step it too, one undo step a press
+key left ctrl
+wait 3
+key left ctrl
+wait 3
+key left ctrl
+wait 3
+assert kern U+0041 U+004D -2
+key z ctrl
+wait 3
+assert kern U+0041 U+004D -1
+key right ctrl
+wait 3
+assert kern U+0041 U+004D 0
+key z ctrl
+wait 3
+assert kern U+0041 U+004D -1
+# a drag of the partner's ink: M's pen is at 6 - 1 = 5 and its bottom-left cell (box row 5) is ink, A has none there
+drag @ecell:5,5 @ecell:7,5
+wait 4
+assert kern U+0041 U+004D 1
+assert glyph U+0041 ink 12
+shot tests/tmp/shots/144_dragged.png
+key z ctrl
+wait 3
+assert kern U+0041 U+004D -1
+assert glyph U+0041 ink 12
+# the field: a character, a glyph the font has not, a code
+click @kern.after
+wait 3
+type H
+key enter
+wait 3
+assert ekernpartner U+0048
+assert kern U+0041 U+0048 0
+click @kern-
+wait 3
+assert kern U+0041 U+0048 -1
+assert kerncount 2
+click @kern.after
+wait 3
+type Q
+key enter
+wait 3
+assert toast has no glyph
+assert ekernpartner U+0048
+click @kern.after
+wait 3
+type U+0078
+key enter
+wait 3
+assert ekernpartner U+0078
+# the arrows step through A's pairs in code order (H, M), round the end
+click @kern.next
+wait 3
+assert ekernpartner U+0048
+click @kern.next
+wait 3
+assert ekernpartner U+004D
+click @kern.next
+wait 3
+assert ekernpartner U+0048
+click @kern.prev
+wait 3
+assert ekernpartner U+004D
+# the partner stays on the next glyph; H has no pair with M
+key pgdn
+wait 6
+assert eglyph U+0048
+assert ekern 1
+assert ekernpartner U+004D
+assert kern U+0048 U+004D 0
+click @kern-
+wait 3
+assert kern U+0048 U+004D -1
+assert kerncount 3
+# off and on again with the bar's button
+click @Kerning
+wait 3
+assert ekern 0
+assert ekernpartner none
+assert w.kern.after 0
+click @Kerning
+wait 3
+assert ekern 1
+assert ekernpartner U+004D

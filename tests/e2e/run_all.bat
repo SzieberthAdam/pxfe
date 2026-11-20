@@ -257,6 +257,8 @@ call :run 142_shots_bar_many "%DB% --font b6a511befd442427c26d8d6dc6033a90"
 call :fresh
 call :run 143_shots_picker "%DB% --font %H1%"
 call :fresh
+call :run 144_kerning "%DB% --font %H1%"
+call :fresh
 call :run 70_panel_tabs "%DB%"
 
 echo.

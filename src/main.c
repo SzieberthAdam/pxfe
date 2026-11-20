@@ -2761,7 +2761,7 @@ int main(int argc, char **argv)
             if (inEditor) {
                 Layers_SetStore(Editor_Layers(ed), store);
                 Layers_SetFontDoc(Editor_Layers(ed), flDoc);
-                Th_SetInputBlocked(uiBlocked || Th_TextIs(NULL) || Layers_PopoverOpen(Editor_Layers(ed))); /* a field being edited owns the keyboard */
+                Th_SetInputBlocked(uiBlocked || (Th_TextIs(NULL) && !Th_TextIsIn("kern.")) || Layers_PopoverOpen(Editor_Layers(ed))); /* a field being edited owns the keyboard (the glyph view's own fields, kern.*, are in it) */
                 Editor_SetLayersTabActive(ed, glyphTab == 2);
                 EditorResult er = Editor_UpdateDraw(ed, edArea);
                 if (Editor_TakeLayersRequest(ed)) { glyphTab = 2; panelScroll = 0; }

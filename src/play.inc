@@ -483,6 +483,7 @@ static bool GetInt(const char *name, long *v)
     else if (!strcmp(name, "epickerrgb")) *v = (long)(Th_ColorPickValue() >> 8);                    /* the colour it shows, 0xRRGGBB */
     else if (!strcmp(name, "epickera")) *v = (long)(Th_ColorPickValue() & 0xFFu);                   /* and its alpha */
     else if (!strcmp(name, "ezoom")) *v = ed ? Editor_Zoom(ed) : -1;
+    else if (!strcmp(name, "ekern")) *v = ed ? Editor_Kerning(ed) : -1;                              /* the glyph view's Kerning is on */
     else if (!strcmp(name, "eselcount")) *v = ed ? Editor_SelCount(ed) : -1;                        /* cells selected in the glyph view */
     else if (!strcmp(name, "efloating")) *v = ed ? Editor_Floating(ed) : -1;                        /* selected pixels are lifted and float over the glyph */
     else if (!strcmp(name, "epp")) *v = ed ? Editor_PixelPerfect(ed) : -1;                           /* the glyph view's Pixel-perfect option is on */
@@ -752,6 +753,11 @@ static void DoAssert(char **t, int n)
         int sg = n > 2 ? atoi(t[2]) : -1;
         ok = sg >= 0 && sg < 3 && !strcmp(navText[sg], want);
         if (!ok) PlayLog("  actual segment '%s'", sg >= 0 && sg < 3 ? navText[sg] : "(none)");
+    } else if (!strcmp(k, "ekernpartner")) {
+        /* assert ekernpartner <code>|none: the partner glyph Kerning draws after the edited one */
+        PxCode want = PX_NO_CODE, have = ed ? Editor_KernPartner(ed) : PX_NO_CODE;
+        ok = n >= 3 && (!strcmp(t[2], "none") || PlayCode(t[2], &want)) && have == want;
+        if (!ok) { char l[40] = "none"; if (have != PX_NO_CODE) px_code_label(have, l, sizeof l); PlayLog("  actual partner %s", l); }
     } else if (!strcmp(k, "kern")) {
         PxCode a, b;
         ok = n >= 5 && PlayCode(t[2], &a) && PlayCode(t[3], &b) && px_font_kern(&font, a, b) == atoi(t[4]);

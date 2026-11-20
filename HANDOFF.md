@@ -12,7 +12,8 @@ The files of `handoff/` are old agent reports, kept for history.
 
 - `build.bat` and `build.bat e2e` build with no warnings.
 - `build.bat test` passes: 33 colormath, 243 pxfont, 44 selection, 110 raster, 249 outline, 148 bmsrc, 86 fit, 62 sheet, 120 fsettings, 101 pxtf and 203 store checks, 0 failed.
-- `tests\e2e\run_all.bat` passes: 117 scripts, 0 failed.
+- `tests\e2e\run_all.bat` runs 118 scripts (2026-11-20): `01_grid` and `07d_real` fail (they import the real library; they failed before the kerning change too).
+  `139_many_colours`, `143_shots_picker` and `70_panel_tabs` have failed once each in a full run and passed alone (timing flakes).
 - `tests\e2e\run_reallib.bat` loads `pixelglyphlib\pxfdb.pxfdb` read-only and imports the folder into `tests\tmp\real.pxfdb`.
 - Plain `build.bat` fails only at the link step when a running `pxfe.exe` locks the file; closing it is enough.
 
@@ -125,6 +126,15 @@ The files of `handoff/` are old agent reports, kept for history.
 - `Editor_Flush` (called by `CommitEdits` and `CloseGlyphView`) drops floating pixels and draws or closes a curve or polygon being made; `Editor_CancelFloat` throws them away (Ctrl+Z).
 - `src/main.c` and `src/sample.c` draw with each glyph's own palette.
 - Tests: `06_editor`, `110b_type_mouse_away_glyph`.
+
+## Kerning
+
+- `src/editor.c`: `kern_partner`, `kern_value`, `kern_pen`, `set_kern`, `kern_set_partner`, `kern_neighbour`, `kern_toggle`, `kern_label`, `kern_parse`, `kern_hit`; the drag mode `M_KERN`; the controls are a branch of row 2 in `draw_toolbar`.
+- `src/editor.h`: `Editor_Kerning`, `Editor_KernPartner`, `Editor_SetKernPartner` (nothing calls the last one yet).
+- The bar's field `kern.after` is in the glyph view, which runs while main.c blocks the keyboard for any focused field.
+  main.c leaves the `kern.*` fields out of that block, and the editor keeps its own keys off while any field has the keyboard.
+- `src/pxfont.c`: `px_font_set_kern` (0 removes the pair), `px_font_kern`.
+- Tests: `144_kerning` (`assert ekern`, `assert ekernpartner`, `assert kern`).
 
 ## Tools of the glyph view
 

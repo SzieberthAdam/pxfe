@@ -96,6 +96,12 @@ void    Editor_SetFilled(Editor *e, bool on);
 int     Editor_PolyVertices(const Editor *e);
 bool    Editor_Contiguous(const Editor *e);
 
+/* Kerning (see DESIGN.md, "Kerning"): the bar's Kerning draws a partner glyph after the edited one and edits the pair's kerning.
+ * Editor_KernPartner: the partner's code while Kerning is on, else PX_NO_CODE; Editor_SetKernPartner turns Kerning on with that partner. */
+bool    Editor_Kerning(const Editor *e);
+PxCode  Editor_KernPartner(const Editor *e);
+void    Editor_SetKernPartner(Editor *e, PxCode code);
+
 /* Set true by the editor whenever it changed the font; main.c clears it after reading. */
 bool    Editor_TakeChanged(Editor *e);
 
