@@ -1,4 +1,4 @@
-# 113. Selection shapes and modes (version 16), font 0820dc69 unlocked, glyph U+0020 (empty, advance 4: the font box across it is 4 x 8 cells).
+# 113. Selection shapes and modes (version 16), font 3b52125b unlocked, glyph U+0020 (empty, advance 4: the font box across it is 4 x 8 cells).
 # Select all, deselect, invert, the marquee (square with Shift after the press), add / subtract / intersect with Shift, Alt and the bar, the lasso, a click.
 wait 5
 click @Unlock

@@ -11,7 +11,7 @@ click @Fonts
 wait 4
 assert btotal 4
 click @Filter
-type 0820dc
+type 3b5212
 wait 4
 # the old hash is gone: the font was changed in place
 assert bvisible 0

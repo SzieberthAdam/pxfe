@@ -1,4 +1,4 @@
-# 124. The tool strip at the left of the glyph view (version 18), font 0820dc69 unlocked, glyph U+0020.
+# 124. The tool strip at the left of the glyph view (version 18), font 3b52125b unlocked, glyph U+0020.
 # One column in a tall window, two in a short one; a click on a button of the strip chooses the tool; the canvas follows the strip.
 wait 5
 click @Unlock

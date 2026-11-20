@@ -6,7 +6,7 @@ copyfile tests/tmp/e2e.pxfdb tests/tmp/e2e_before.pxfdb
 click @Fonts
 wait 4
 click @Filter
-type 408c4d
+type 894ef8
 wait 4
 assert bvisible 1
 sleep 600

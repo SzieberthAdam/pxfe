@@ -1,4 +1,4 @@
-# 114. Magic wand (version 16), font 0820dc69 unlocked, glyph U+0020 (empty, advance 4).
+# 114. Magic wand (version 16), font 3b52125b unlocked, glyph U+0020 (empty, advance 4).
 # The wand selects the cells joined to the one clicked that hold the same pixel character: 4-connected, 8-connected with the "8-way" toggle;
 # Shift adds, Alt subtracts; the region is the glyph box and the bitmap.
 wait 5

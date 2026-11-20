@@ -28,13 +28,13 @@ assert xbackupfailed 1
 assert modal The_backup_failed
 shot tests/tmp/shots/v5_export_backup_failed.png
 assert file tests/tmp/xout_backup.pxfdb missing
-assert file tests/tmp/xout/pxfm/08/0820dc69a21b1cdb3a44d2cff7d884d8.pxfm exists
+assert file tests/tmp/xout/pxfm/3b/3b52125b2e5f6466823baa4fa3186fa0.pxfm exists
 assert file tests/tmp/xout/pxfm/aa/aa000000000000000000000000000000.pxfm exists
 # Cancel: nothing is deleted
 click @Cancel
 wait 4
 assert modal none
-assert file tests/tmp/xout/pxfm/08/0820dc69a21b1cdb3a44d2cff7d884d8.pxfm exists
+assert file tests/tmp/xout/pxfm/3b/3b52125b2e5f6466823baa4fa3186fa0.pxfm exists
 assert file tests/tmp/xout/pxfm/aa/aa000000000000000000000000000000.pxfm exists
 # again, then Overwrite Without Backup: the old contents go, memory is written, other files stay
 click @Menu
@@ -53,7 +53,7 @@ assert xw_fonts 4
 key enter
 wait 4
 assert file tests/tmp/xout/pxfm/aa/aa000000000000000000000000000000.pxfm missing
-assert file tests/tmp/xout/pxfm/08/0820dc69a21b1cdb3a44d2cff7d884d8.pxfm exists
+assert file tests/tmp/xout/pxfm/3b/3b52125b2e5f6466823baa4fa3186fa0.pxfm exists
 assert file tests/tmp/xout/keep.txt contains keep me
 assert file tests/tmp/xout_backup.pxfdb missing
 # the dialog with the backup switched off: a second confirmation names the loss
@@ -73,7 +73,7 @@ shot tests/tmp/shots/v5_export_nobackup.png
 click @Cancel
 wait 4
 assert modal none
-assert file tests/tmp/xout/pxfm/08/0820dc69a21b1cdb3a44d2cff7d884d8.pxfm exists
+assert file tests/tmp/xout/pxfm/3b/3b52125b2e5f6466823baa4fa3186fa0.pxfm exists
 click @Menu
 wait 3
 click @file.export
@@ -90,5 +90,5 @@ assert xd_fonts 4
 assert xw_fonts 4
 key enter
 wait 4
-assert file tests/tmp/xout/pxfm/08/0820dc69a21b1cdb3a44d2cff7d884d8.pxfm exists
+assert file tests/tmp/xout/pxfm/3b/3b52125b2e5f6466823baa4fa3186fa0.pxfm exists
 assert file tests/tmp/xout/keep.txt contains keep me

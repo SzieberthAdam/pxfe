@@ -1,4 +1,4 @@
-# 19. Uncoded glyphs (testdata font fa96e358: space, A, H, default H, and two glyphs without a code point, #0 and #1).
+# 19. Uncoded glyphs (testdata font 54caf68f: space, A, H, default H, and two glyphs without a code point, #0 and #1).
 # The grid names them "#n", deleting renumbers the rest, "No Code Point" in the clone dialog adds one at the end.
 wait 5
 click @Unlock

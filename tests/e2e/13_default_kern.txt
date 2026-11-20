@@ -1,4 +1,4 @@
-# 13. Default glyph and kerning (font 0820dc69 has KERNING A M -1 and a default glyph that copies the space): set default copies a glyph, deleting that glyph keeps the default and drops its pairs, clone does not copy kerning.
+# 13. Default glyph and kerning (font 3b52125b has KERNING A M -1 and a default glyph that copies the space): set default copies a glyph, deleting that glyph keeps the default and drops its pairs, clone does not copy kerning.
 wait 5
 click @Unlock
 wait 4

@@ -1,4 +1,4 @@
-# 132. The eyedropper (version 20), font 408c4d7d (colours 0 and 1; glyph U+0020), unlocked, as in 06b.
+# 132. The eyedropper (version 20), font 894ef821 (colours 0 and 1; glyph U+0020), unlocked, as in 06b.
 # Shift+I (version 23; I before) and the strip's Eyedropper pick the colour of the pixel under the cursor as the ink (version 22: inks are colours, so the asserts
 # name the colour with einkrgb and the swatches by #RRGGBB, since the font's colour list reorders as the space gains colours); with the Eyedropper tool the right button picks too;
 # '.' (empty space) is an ink of every font; Alt held at the click does the same for the Pencil, Line, Rectangle, Ellipse, Curve, Polygon, Contour and Fill.

@@ -1,6 +1,6 @@
 # 49. Screenshots of the version 4 glyph view (tests/shots/v4_glyph_*.png), on testdata: an original, a duplicate, each tab of the
 # right panel, the Add Layer popover, layers with two references in colours, the current glyph hidden.  Not part of run_all.bat.
-# Run with the original font:  pxfe_e2e.exe <tests\tmp\e2elib\pxfm\08\0820dc69a21b1cdb3a44d2cff7d884d8.pxfm> --play tests\e2e\49_shots_glyph_v4.txt
+# Run with the original font:  pxfe_e2e.exe <tests\tmp\e2elib\pxfm\08\3b52125b2e5f6466823baa4fa3186fa0.pxfm> --play tests\e2e\49_shots_glyph_v4.txt
 wait 5
 click @cell:U+0041
 key enter

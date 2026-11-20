@@ -5,7 +5,7 @@ copyfile tests/tmp/e2e.pxfdb tests/tmp/e2e_before.pxfdb
 click @Fonts
 wait 4
 click @Filter
-type 0820dc
+type 3b5212
 wait 4
 click @card:0
 wait 3

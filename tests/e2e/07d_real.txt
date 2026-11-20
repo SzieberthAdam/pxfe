@@ -23,7 +23,7 @@ wait 12
 assert saved pxfm
 assert unsaved 0
 assert sqlfile tests/tmp/real2.pxfdb "select count(*) from pxfm" 1
-assert sqlfile tests/tmp/real2.pxfdb "select count(*) from pxfm_glyph where code = 57344" 1
+assert sqlfile tests/tmp/real2.pxfdb "select count(*) from pxfm_glyph where code = 234881024" 1
 # the clone shares the pxgl of A: the glyph table has the same rows as before
 setdialog folder tests/tmp/xout
 click @Menu
@@ -34,4 +34,4 @@ key enter
 wait 3
 verifylib $SAVEDPXFM tests/tmp/xout 195
 assert file $SAVEDPXFM contains ASCENT\t11
-assert file $SAVEDPXFM contains GLYPH\t00E000
+assert file $SAVEDPXFM contains GLYPH\tU+00E000-000

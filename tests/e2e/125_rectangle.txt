@@ -1,4 +1,4 @@
-# 125. The Rectangle tool (version 19), font 0820dc69 unlocked, glyph U+0020 (empty, advance 4; font box rows 0..7, @ecell:x,y).
+# 125. The Rectangle tool (version 19), font 3b52125b unlocked, glyph U+0020 (empty, advance 4; font box rows 0..7, @ecell:x,y).
 # A drag draws the outline from corner to corner in one undo step; Shift makes a square, Ctrl draws from the centre, both together a square from the centre;
 # the modifiers count at the release; the bar's Filled toggle draws it solid; Esc cancels; the right button draws '.'.
 wait 5

@@ -1,4 +1,4 @@
-# 117. The Line tool (version 17), font 0820dc69 unlocked, glyph U+0020 (empty, advance 4; font box rows 0..7, @ecell:x,y).
+# 117. The Line tool (version 17), font 3b52125b unlocked, glyph U+0020 (empty, advance 4; font box rows 0..7, @ecell:x,y).
 # A drag draws one line, one undo step; Shift constrains the angle (0, 14, 27, 45, 63, 76, 90 degrees, clean slopes), Ctrl draws from the centre,
 # Esc cancels, the right button draws with '.', the key L and the strip's Line and Curve buttons.
 wait 5

@@ -38,7 +38,7 @@
 #define FL_CACHE_PIX (8 * 1000 * 1000)
 #define FL_MAX_EM 1600.0f        /* the biggest em (size * zoom) that is rasterised; above it the layer is not drawn */
 
-typedef struct FlCorr { int32_t code; float dx, dy, dsize; int hidden; } FlCorr;
+typedef struct FlCorr { PxCode code; float dx, dy, dsize; int hidden; } FlCorr;
 
 enum { FL_UNOPENED = 0, FL_OK = 1, FL_FAILED = -1 };
 
@@ -57,7 +57,7 @@ typedef struct FlLayer {
     BmSource *bm;
     bool metaChanged;            /* the stored size / mtime was updated by a reload: the owner persists it */
     double checked;              /* GetTime() of the last look at the file's size and time */
-    struct { bool valid; int32_t code; FitParams p; FitCorr c; float shift; } snap;   /* the last answer of FlLayer_Shift */
+    struct { bool valid; PxCode code; FitParams p; FitCorr c; float shift; } snap;   /* the last answer of FlLayer_Shift */
 } FlLayer;
 
 /* one document's font layers, in stack order (0 = top); rev grows with every change that has to be persisted */
@@ -86,33 +86,33 @@ void FlLayer_Label(FlLayer *l, char *out, int n);
 bool FlLayer_SetFace(FlLayer *l, int face);
 
 /* corrections: the stored one for a code (NULL: none), set / remove (all defaults remove) */
-const FlCorr *FlLayer_Corr(const FlLayer *l, int32_t code);
-void          FlLayer_SetCorr(FlLayer *l, int32_t code, const FlCorr *c);
+const FlCorr *FlLayer_Corr(const FlLayer *l, PxCode code);
+void          FlLayer_SetCorr(FlLayer *l, PxCode code, const FlCorr *c);
 
 typedef struct FlPlace { float dx, dy; float scale; bool hidden; float dsize; } FlPlace;   /* dsize: the correction's factor alone */
 /* Where and how big for a glyph: the layer's offset and scale with the code's correction.  scale is the effective one (layer scale *
  * dsize; for a bitmap source a whole number >= 1).  Pure. */
-void FlLayer_Place(const FlLayer *l, int32_t code, FlPlace *out);
+void FlLayer_Place(const FlLayer *l, PxCode code, FlPlace *out);
 /* The size an outline layer is drawn with, in pixels per em of the edited font: its own em or the font box times its scale, times the
  * correction of the place (p may be NULL). */
 float FlLayer_Em(const FlLayer *l, int fontPx, const FlPlace *p);
 /* The placement of an outline layer as fit.h draws pixels from it (without the correction of a glyph), and the correction of a code
  * (false: it has none; out then holds the defaults). */
 void FlLayer_FitParams(const FlLayer *l, int fontPx, FitParams *out);
-bool FlLayer_FitCorr(const FlLayer *l, int32_t code, FitCorr *out);
+bool FlLayer_FitCorr(const FlLayer *l, PxCode code, FitCorr *out);
 /* A layer the glyphs are drawn from in smooth mode moves each glyph by a quarter pixel step to meet the pixels (fit.h): how far, in
  * pixels of the edited font, for this code (0 for every other layer).  The outline is drawn moved by as much.  Needs FlLayer_Ready. */
-float FlLayer_Shift(FlLayer *l, int32_t code, int fontPx);
+float FlLayer_Shift(FlLayer *l, PxCode code, int fontPx);
 /* Whole number for a bitmap scale */
 int  fl_bitmap_k(float scale);
 
 /* -1 the source has no glyph for the code, 0 it has one without ink, 1 it has ink (needs FlLayer_Ready) */
-int FlLayer_Has(FlLayer *l, int32_t code, int fontPx);
+int FlLayer_Has(FlLayer *l, PxCode code, int fontPx);
 /* Drawn pixels of the glyph at its natural size (for the tests), -1 not in font */
-int FlLayer_InkCount(FlLayer *l, int32_t code, int fontPx);
+int FlLayer_InkCount(FlLayer *l, PxCode code, int fontPx);
 /* Draws the glyph.  (ox, oy): screen position of the glyph origin (the pen on the baseline), z: screen pixels per edited pixel (the
  * canvas zoom); fontPx: the edited font's pixel size.  tint: the colour with the alpha of the layer's opacity. */
-void FlLayer_Draw(FlLayer *l, int32_t code, int ox, int oy, int z, int fontPx, const FlPlace *p, Color tint);
+void FlLayer_Draw(FlLayer *l, PxCode code, int ox, int oy, int z, int fontPx, const FlPlace *p, Color tint);
 
 /* the texture cache (test hook): entries in it */
 int  FlCache_Count(void);

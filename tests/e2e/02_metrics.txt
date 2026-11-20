@@ -270,5 +270,5 @@ assert file $SAVEDPXFM contains ASCENT\t6
 assert file $SAVEDPXFM contains XHEIGHT\t4
 assert file $SAVEDPXFM contains QUADWIDTH\t9
 assert file $SAVEDPXFM contains STRIKEOUTPOSITION\t2
-assert file $SAVEDPXFM contains GLYPH\t000048\t0,0\t6
+assert file $SAVEDPXFM contains GLYPH\tU+000048-000\t6\t0\t0
 verifylib $SAVEDPXFM tests/tmp/xout 7

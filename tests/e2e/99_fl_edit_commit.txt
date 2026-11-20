@@ -1,6 +1,6 @@
 # 99. A font with layers edited in place: unlocking keeps the layers, a pixel edit gives the font its own hash, committing moves the layers to
 # that hash (nothing stays under the old one), a second layer added after the edit goes with it; Save; the font opens again with both.
-# Font 0820dc69 with one outline layer.
+# Font 3b52125b with one outline layer.
 wait 5
 assert readonly 1
 addlayerfile testdata/outline/NotoSub.ttf
@@ -39,7 +39,7 @@ wait 12
 assert unsaved 0
 assert sidecar exists
 assert sqlfile tests/tmp/e2e.pxfdb-settings "select count(*) from layer" 2
-assert sqlfile tests/tmp/e2e.pxfdb-settings "select count(*) from layer where font = '0820dc69a21b1cdb3a44d2cff7d884d8'" 0
+assert sqlfile tests/tmp/e2e.pxfdb-settings "select count(*) from layer where font = '3b52125b2e5f6466823baa4fa3186fa0'" 0
 assert sqlfile tests/tmp/e2e.pxfdb-settings "select count(distinct font) from layer" 1
 assert sqlfile tests/tmp/e2e.pxfdb "select count(*) from pxfm" 4
 # the edited font again: its own single layer

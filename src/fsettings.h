@@ -28,7 +28,7 @@
  *   unlocked(kind INTEGER NOT NULL, hash TEXT NOT NULL, PRIMARY KEY (kind, hash))     version 3.  The fonts (kind 0, pxfm hash) and
  *            typefaces (kind 1, pxtf hash) the user unlocked for editing; every other one is locked.  The rows follow the hash when
  *            editing changes it (fs_rename_font, fs_rename_typeface).
- *   correction(font TEXT NOT NULL, layer INTEGER NOT NULL, code INTEGER NOT NULL, dx REAL, dy REAL,
+ *   correction(font TEXT NOT NULL, layer INTEGER NOT NULL, code INTEGER NOT NULL (a glyph code, pxfont.h CODES; version 4: of pxfm version 3), dx REAL, dy REAL,
  *              dsize REAL NOT NULL,              factor multiplied onto the layer's scale, 1.0 = none
  *              hidden INTEGER NOT NULL, PRIMARY KEY (layer, code))
  *   A correction row exists only if it differs from the defaults (dx = dy = 0, dsize = 1, hidden = 0).
@@ -43,8 +43,9 @@
 
 #include <stdbool.h>
 #include <stdint.h>
+#include "pxfont.h"   /* PxCode */
 
-#define FS_SCHEMA_VERSION 3
+#define FS_SCHEMA_VERSION 4
 #define FS_ERR_LEN 256
 #define FS_HASH_LEN 33         /* 32 hex characters + NUL */
 #define FS_PATH_LEN 1100
@@ -122,9 +123,9 @@ bool fs_remove_layer(FSettings *fs, int id);             /* with its corrections
 bool fs_move_layer(FSettings *fs, int id, int newPosition);   /* clamped to the stack */
 
 /* corrections of a layer (the layer id implies the font).  get: found?  set: all-default deletes the row. */
-bool fs_get_correction(FSettings *fs, int layerId, int32_t code, FsCorrection *out);
-bool fs_set_correction(FSettings *fs, int layerId, int32_t code, const FsCorrection *c);
-int fs_list_corrections(FSettings *fs, int layerId, int32_t *codes, int max);   /* ascending; returns the count (can be > max), -1 on error */
+bool fs_get_correction(FSettings *fs, int layerId, PxCode code, FsCorrection *out);
+bool fs_set_correction(FSettings *fs, int layerId, PxCode code, const FsCorrection *c);
+int fs_list_corrections(FSettings *fs, int layerId, PxCode *codes, int max);   /* ascending; returns the count (can be > max), -1 on error */
 bool fs_clear_corrections(FSettings *fs, int layerId);
 
 #endif

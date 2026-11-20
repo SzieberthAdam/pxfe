@@ -1,5 +1,5 @@
 # 43. Changing layers in the glyph view: colour (swatch, hex), opacity (slider, typed), offset (spinners, typed, Alt+drag in the
-# canvas), order (the current glyph moves too), visibility, removal.  Duplicate of 0820dc69, glyph A.
+# canvas), order (the current glyph moves too), visibility, removal.  Duplicate of 3b52125b, glyph A.
 wait 5
 click @Unlock
 wait 4

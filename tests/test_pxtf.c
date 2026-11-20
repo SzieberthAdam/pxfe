@@ -173,12 +173,12 @@ static void test_save(void) {
     pxtf_free(&c);
 }
 
-#define H_EXAMPLE "0820dc69a21b1cdb3a44d2cff7d884d8"
-#define H_GREY "408c4d7dd946543f8e9b4553dd1ba62e"
-#define H_NOASC "e6109c134eda8d747bac9a3c2a62d204"
-#define H_UNC "fa96e3583da8e003fc25404ac00f764e"
-#define T_SANS "b925951bb94de1d15ec27404b3261476"
-#define T_UNC "b5fbcdd0dd5009013337c15e57fa7672"
+#define H_EXAMPLE "3b52125b2e5f6466823baa4fa3186fa0"
+#define H_GREY "894ef821e147533c34b39e2131016133"
+#define H_NOASC "4fba4190f6ba7e10b296c7070234e1ce"
+#define H_UNC "54caf68fe9ec18634701a55bfc87b5c0"
+#define T_SANS "8e8c94921267d3c2c72ec93d3b0cf63d"
+#define T_UNC "b7ed69ab357b00edcb64d1160fbf71b4"
 
 static int find_entry(const Library *lib, LibKind kind, const char *pxtf, int variant) {
     for (int i = 0; i < lib->count; i++)
@@ -215,11 +215,11 @@ static void test_library(void) {
     library_entry_title(&lib.e[c1], title, sizeof title);
     CHECK(strcmp(title, "Test Sans Regular") == 0, "title");
     library_entry_title(&lib.e[gi], title, sizeof title);
-    CHECK(strcmp(title, "408c4d7d") == 0, "title of an unnamed font is its short hash");
+    CHECK(strcmp(title, "894ef821") == 0, "title of an unnamed font is its short hash");
 
     /* the loader */
     LibLoader *L = libloader_create(st, 3, 2);
-    int32_t cps[] = {0x41, 0x48};
+    PxCode cps[] = {px_code_cp(0x41), px_code_cp(0x48)};
     CHECK(!libloader_request(L, H_EXAMPLE, cps, 2), "request queued");
     const char hashes[1][33] = {H_EXAMPLE};
     libloader_set_wanted(L, hashes, 1);
@@ -230,7 +230,7 @@ static void test_library(void) {
     CHECK(got && r.info.boxStated && r.info.boxExact && r.info.above == 6 && r.info.below == 2 && r.info.hasRatio == false && true, "info: stated box");
     if (got) {
         const PxFont *f = &r.font->font;
-        CHECK(!f->glyphs[px_font_find(f, 0x41)].lazy && !f->glyphs[px_font_find(f, 0x48)].lazy && f->glyphs[px_font_find(f, 0x4D)].lazy, "only the requested glyphs have bitmaps");
+        CHECK(!f->glyphs[px_font_find_cp(f, 0x41)].lazy && !f->glyphs[px_font_find_cp(f, 0x48)].lazy && f->glyphs[px_font_find_cp(f, 0x4D)].lazy, "only the requested glyphs have bitmaps");
         library_apply_result(&lib, &r);
         CHECK(lib.e[fi].info.ready && lib.e[fi].info.glyphCount == 6 && lib.e[c1].info.ready, "info applied to font and typeface entries");
         libloader_release(L, r.font);
@@ -240,11 +240,11 @@ static void test_library(void) {
     CHECK(lf != NULL, "libloader_get");
     libloader_release(L, lf);
     /* more code points: merged, the old ones stay loaded */
-    int32_t more[] = {0x4D};
+    PxCode more[] = {px_code_cp(0x4D)};
     libloader_request(L, H_EXAMPLE, more, 1);
     got = false;
     for (int i = 0; i < 500 && !got; i++) { got = libloader_poll(L, &r); if (!got) Sleep(10); }
-    CHECK(got && r.font && !r.font->font.glyphs[px_font_find(&r.font->font, 0x4D)].lazy && !r.font->font.glyphs[px_font_find(&r.font->font, 0x41)].lazy, "new code points are added, old ones kept");
+    CHECK(got && r.font && !r.font->font.glyphs[px_font_find_cp(&r.font->font, 0x4D)].lazy && !r.font->font.glyphs[px_font_find_cp(&r.font->font, 0x41)].lazy, "new code points are added, old ones kept");
     if (got) libloader_release(L, r.font);
     /* the no-ascent font gets probe glyphs, an unknown font fails, LRU of 2 */
     libloader_request(L, H_NOASC, cps, 1);
@@ -294,7 +294,7 @@ static void test_library(void) {
     DeleteFileA(TMP "/unit_drafts/a.pxfd"); DeleteFileA(TMP "/unit_drafts/b.pxfd"); DeleteFileA(TMP "/unit_drafts/c.pxfd");
     CHECK(px_save_draft(&f, &info, TMP "/unit_drafts/a.pxfd", err) && px_save_draft(&f, NULL, TMP "/unit_drafts/b.pxfd", err), "two drafts saved");
     FILE *fp = fopen(TMP "/unit_drafts/c.pxfd", "wb");
-    fputs("PXFEDRAFT\t2\nNAME\told\n", fp);
+    fputs("PXFEDRAFT\t3\nNAME\told\n", fp);
     fclose(fp);
     px_draft_info_free(&info);
     px_font_free(&f);
@@ -302,7 +302,7 @@ static void test_library(void) {
     int ia = -1;
     for (int i = 0; i < lib.count; i++) if (strcmp(lib.e[i].name ? lib.e[i].name : "", "Duplicate of Test Sans") == 0) ia = i;
     CHECK(lib.count == 2 && ia >= 0, "two drafts listed");
-    CHECK(lib.nerrors == 1 && strstr(lib.errors[0], "version 2 draft") != NULL, "a version 2 draft is skipped with a message that says so");
+    CHECK(lib.nerrors == 1 && strstr(lib.errors[0], "version 3 draft") != NULL, "a version 3 draft is skipped with a message that says so");
     if (ia >= 0) {
         LibEntry *e = &lib.e[ia];
         CHECK(e->kind == LIB_DRAFT && strcmp(e->pxfm, H_EXAMPLE) == 0 && strcmp(e->pxtf, T_SANS) == 0 && strcmp(e->family, "Test Sans") == 0 &&

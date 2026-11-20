@@ -1,4 +1,4 @@
-# 131. The paint bucket is clipped to the selection (version 20), font 0820dc69 unlocked, glyph U+0020 (empty, advance 4; font box rows 0..7).
+# 131. The paint bucket is clipped to the selection (version 20), font 3b52125b unlocked, glyph U+0020 (empty, advance 4; font box rows 0..7).
 # The selection is a wall and a limit: only its cells are filled, a click outside it fills nothing, with and without Contiguous.
 wait 5
 click @Unlock

@@ -33,7 +33,7 @@ typedef struct UsageRow {
     char label[96];
     char codes[640];            /* every code of the row: "U+0041, #3, U+0061" (or, for fonts holding all glyphs, "1,234 glyphs") */
     int ncodes;
-    int32_t code0;
+    PxCode code0;
     int off;                    /* first of its ncodes codes in UsageRes.codes */
 } UsageRow;
 
@@ -47,10 +47,10 @@ typedef struct UsageRes {
     Texture2D tex;
     int nFonts, nTypefaces;
     int nVariants;              /* typeface variants (pxtf rows) that name a font holding the bitmap */
-    int useCode, nUse;          /* nUse: fonts that hold the bitmap under the code useCode (cached; useCode -2 = not computed) */
+    PxCode useCode; int nUse;          /* nUse: fonts that hold the bitmap under the code useCode (cached; useCode -2 = not computed) */
     UsageRow *rows; int nRows;
     int best;                   /* row with the most codes, -1 none */
-    int32_t *codes;             /* the codes of every row, grouped (single glyph) */
+    PxCode *codes;              /* the codes of every row, grouped (single glyph) */
 } UsageRes;
 
 typedef struct SimRow {
@@ -92,16 +92,14 @@ struct Insight {
     bool showAll;
     Rectangle vis; bool visSet;
     char tip[200]; Vector2 tipPos;
-    int32_t prefer;             /* a click on a row selects this code in the font when the row has it */
+    PxCode prefer;             /* a click on a row selects this code in the font when the row has it */
 };
 
 /* ------------------------------------------------------------------ small helpers */
 
-static void code_text(int32_t c, char *out, size_t cap)
+static void code_text(PxCode c, char *out, size_t cap)
 {
-    if (px_code_is_uncoded(c)) snprintf(out, cap, "#%d", (int)(c - PX_CODE_UNCODED_FIRST));
-    else if (c == PX_CODE_DEFAULT) snprintf(out, cap, "default");
-    else snprintf(out, cap, "U+%04X", (unsigned)c);
+    px_code_label(c, out, (int)cap);
 }
 
 static void make_label(const char *family, const char *style, char *out, size_t cap)
@@ -122,7 +120,7 @@ static int cmp_ci(const char *a, const char *b)
 
 /* ------------------------------------------------------------------ worker: usage */
 
-typedef struct UTmp { char label[96]; char pxfm[33], pxtf[33]; int variant; int32_t code; } UTmp;
+typedef struct UTmp { char label[96]; char pxfm[33], pxtf[33]; int variant; PxCode code; } UTmp;
 
 static int utmp_cmp(const void *pa, const void *pb)
 {
@@ -213,7 +211,7 @@ static UsageRes *job_usage(StoreConn *c, char (*hashes)[33], int n, unsigned gen
             i = j;
         }
         r->nRows = nr;
-        r->codes = (int32_t *)malloc((size_t)(ul.count + 1) * sizeof(int32_t));
+        r->codes = (PxCode *)malloc((size_t)(ul.count + 1) * sizeof(PxCode));
         for (int i = 0; i < ul.count; i++) r->codes[i] = tmp[i].code;
         free(tmp);
         store_usage_list_free(&ul);
@@ -306,24 +304,27 @@ static const StoreEntry *names_find(const StoreEntryList *l, const int *ix, cons
 static bool make_sample(StoreConn *c, const char *pxfm, SimRow *r)
 {
     static const char *const kHam = "Hamburg", *const kAa = "AaBbCc";
-    int32_t codes[16]; int nc = 0;
-    for (const char *p = kHam; *p; p++) codes[nc++] = (unsigned char)*p;
-    for (const char *p = kAa; *p; p++) codes[nc++] = (unsigned char)*p;
+    PxCode codes[16]; int nc = 0;
+    for (const char *p = kHam; *p; p++) codes[nc++] = px_code_cp((unsigned char)*p);
+    for (const char *p = kAa; *p; p++) codes[nc++] = px_code_cp((unsigned char)*p);
     PxFont f; char err[PX_ERR_LEN];
     px_font_init(&f);
     if (!store_load_font(c, pxfm, codes, nc, &f, err)) return false;
-    int32_t pick[8]; int np = 0;
+    PxCode pick[8]; int np = 0;
     int have = 0;
-    for (const char *p = kHam; *p; p++) if (px_font_find(&f, (unsigned char)*p) >= 0) have++;
-    if (have >= 6) { for (const char *p = kHam; *p; p++) pick[np++] = (unsigned char)*p; }
+    for (const char *p = kHam; *p; p++) if (px_font_find_cp(&f, (unsigned char)*p) >= 0) have++;
+    if (have >= 6) { for (const char *p = kHam; *p; p++) pick[np++] = px_code_cp((unsigned char)*p); }
     else {
         have = 0;
-        for (const char *p = kAa; *p; p++) if (px_font_find(&f, (unsigned char)*p) >= 0) have++;
-        if (have >= 2) { for (const char *p = kAa; *p; p++) pick[np++] = (unsigned char)*p; }
+        for (const char *p = kAa; *p; p++) if (px_font_find_cp(&f, (unsigned char)*p) >= 0) have++;
+        if (have >= 2) { for (const char *p = kAa; *p; p++) pick[np++] = px_code_cp((unsigned char)*p); }
         else {
-            int32_t more[8]; int nm = 0;
-            for (int i = 0; i < f.count && nm < 6; i++)
-                if (px_code_is_codepoint(f.glyphs[i].code) && f.glyphs[i].code > 0x20 && f.glyphs[i].code != 0xA0) more[nm++] = f.glyphs[i].code;
+            PxCode more[8]; int nm = 0;
+            for (int i = 0; i < f.count && nm < 6; i++) {
+                PxCode c = f.glyphs[i].code;
+                int32_t cp = px_code_codepoint(c);
+                if (cp > 0x20 && cp != 0xA0 && px_code_variant(c) == 0) more[nm++] = c;
+            }
             if (nm) { store_load_glyph_bitmaps(c, &f, more, nm, err); for (int i = 0; i < nm; i++) pick[np++] = more[i]; }
         }
     }
@@ -332,7 +333,7 @@ static bool make_sample(StoreConn *c, const char *pxfm, SimRow *r)
     int used = 0;
     int px0[8], pgi[8];
     for (int i = 0; i < np; i++) {
-        int gi = px_font_find(&f, pick[i]);
+        int gi = px_font_find_code(&f, pick[i]);
         if (gi < 0) continue;
         const PxGlyph *g = &f.glyphs[gi];
         if (pen > INS_SAMPLE_MAXW) break;
@@ -585,7 +586,7 @@ bool Insight_Busy(const Insight *in)
     return b;
 }
 
-void Insight_SetPreferredCode(Insight *in, int32_t code) { if (in) in->prefer = code; }
+void Insight_SetPreferredCode(Insight *in, PxCode code) { if (in) in->prefer = code; }
 
 static int cmp_pstr(const void *a, const void *b) { return strcmp(*(const char *const *)a, *(const char *const *)b); }
 
@@ -625,7 +626,7 @@ int Insight_UsageCodeFonts(const Insight *in)
 }
 
 /* The code a click on the row selects: the preferred one when the row has the glyph under it, else the first. */
-static int32_t row_code(const Insight *in, const UsageRow *r)
+static PxCode row_code(const Insight *in, const UsageRow *r)
 {
     const UsageRes *u = in->usage;
     if (in->prefer >= 0 && u && u->codes && u->nGlyphs == 1)

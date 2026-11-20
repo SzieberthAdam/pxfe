@@ -19,7 +19,7 @@ static void LowerKey(const char *key, char *out, size_t cap)
 
 static int GlyphTopOf(int32_t cp)
 {
-    int i = px_font_find(&font, cp);
+    int i = px_font_find_cp(&font, cp);
     if (i < 0 || font.glyphs[i].w <= 0) return -1;
     return px_glyph_top(&font.glyphs[i]);
 }
@@ -34,7 +34,7 @@ static int DefaultMetric(PxMetric m)
     case PXM_DESCENT: return b;
     case PXM_CAPHEIGHT: { int t = GlyphTopOf('H'); return t > 0 ? t : (a * 7 + 5) / 10; }
     case PXM_XHEIGHT: { int t = GlyphTopOf('x'); return t > 0 ? t : (a * 5 + 5) / 10; }
-    case PXM_QUADWIDTH: { int i = px_font_find(&font, 'M'); return i >= 0 && font.glyphs[i].advance > 0 ? font.glyphs[i].advance : a + b; }
+    case PXM_QUADWIDTH: { int i = px_font_find_cp(&font, 'M'); return i >= 0 && font.glyphs[i].advance > 0 ? font.glyphs[i].advance : a + b; }
     case PXM_UNDERLINEPOSITION: return -1;
     case PXM_STRIKEOUTPOSITION: { int xh = font.has[PXM_XHEIGHT] ? font.m[PXM_XHEIGHT] : (a * 5 + 5) / 10; return xh / 2 > 0 ? xh / 2 : 1; }
     case PXM_UNDERLINETHICKNESS: case PXM_STRIKEOUTTHICKNESS: return 1;
@@ -348,22 +348,7 @@ static bool TypefaceEditing(const char *pxtf)
 
 /* ---- editing the facts of a glyph (the glyph view's Glyph tab) ---- */
 
-/* hex digits of a code, "U+" or "0x" before them allowed; up to FFFFFF (SetGlyphCode says what is wrong with it) */
-static bool ParseHexCode(const char *in, int32_t *cp)
-{
-    while (*in == ' ') in++;
-    if ((in[0] == 'U' || in[0] == 'u') && in[1] == '+') in += 2;
-    else if (in[0] == '0' && (in[1] == 'x' || in[1] == 'X')) in += 2;
-    long v = 0;
-    int n = 0;
-    for (; (in[n] >= '0' && in[n] <= '9') || ((in[n] | 32) >= 'a' && (in[n] | 32) <= 'f'); n++) v = v * 16 + (in[n] <= '9' ? in[n] - '0' : (in[n] | 32) - 'a' + 10);
-    if (n == 0 || n > 6) return false;
-    for (const char *q = in + n; *q; q++) if (*q != ' ') return false;
-    *cp = (int32_t)v;
-    return true;
-}
-
-/* one character (UTF-8), or the word "space" */
+/* one character (UTF-8), or the word "space": its code point */
 static bool ParseCharCode(const char *in, int32_t *cp)
 {
     if (!strcmp(in, " ") || !strcmp(in, "space")) { *cp = 0x20; return true; }
@@ -381,18 +366,24 @@ static bool ParseCharCode(const char *in, int32_t *cp)
     return true;
 }
 
-/* Gives glyph gi (not the default glyph) another code point.  A code another glyph has, the code of the default glyph and a number that is no code point
- * are refused with a message.  The glyph keeps its bitmap, offsets and advance and moves to its place in the order; its kerning pairs follow the new
- * code.  Returns the glyph's index afterwards (gi when nothing changed). */
-static int SetGlyphCode(int gi, int32_t cp)
+/* Gives glyph gi (not the default glyph) another code: a code point or a variant of one (U+0041-001).  A code another glyph has, the default glyph's
+ * codes and a symbol's (#n) are refused with a message, and so is a symbol that has variants (they would lose their glyph 0).  The glyph keeps its
+ * bitmap, offsets and advance and moves to its place in the order; its kerning pairs follow the new code.  Returns the glyph's index afterwards (gi when
+ * nothing changed). */
+static int SetGlyphCode(int gi, PxCode cp)
 {
     if (readOnly || gi < 0 || gi >= font.count) return gi;
-    int32_t oc = font.glyphs[gi].codepoint;
+    PxCode oc = font.glyphs[gi].code;
     if (cp == oc) return gi;
+    char cl[40];
+    px_code_label(cp, cl, sizeof cl);
     if (oc == PX_CODE_DEFAULT) { Th_Toast(TH_TOAST_ERR, "The default glyph keeps its code"); return gi; }
-    if (cp == PX_CODE_DEFAULT) { Th_Toast(TH_TOAST_ERR, "FFFFFF is the code of the default glyph: use Set Default"); return gi; }
-    if (!px_code_is_codepoint(cp)) { Th_Toast(TH_TOAST_ERR, "%X is no code point (the largest is 10FFFF)", (unsigned)cp); return gi; }
-    if (px_font_find(&font, cp) >= 0) { Th_Toast(TH_TOAST_ERR, "U+%04X belongs to another glyph of this font: re-code or delete that one first", (unsigned)cp); return gi; }
+    if (px_code_is_default(cp)) { Th_Toast(TH_TOAST_ERR, "%s is a code of the default glyph: use Set Default", cl); return gi; }
+    if (!px_code_is_codepoint(cp)) { Th_Toast(TH_TOAST_ERR, "%s is no code point: type U+XXXX, or U+XXXX-V for a variant", cl); return gi; }
+    if (px_code_is_uncoded(oc) && px_code_variant(oc) == 0 && gi + 1 < font.count && px_code_base(font.glyphs[gi + 1].code) == oc) {
+        Th_Toast(TH_TOAST_ERR, "This glyph has variants, which need it: re-code or delete them first"); return gi;
+    }
+    if (px_font_find_code(&font, cp) >= 0) { Th_Toast(TH_TOAST_ERR, "%s belongs to another glyph of this font: re-code or delete that one first", cl); return gi; }
     PxGlyph t;
     if (!px_glyph_copy(&t, &font.glyphs[gi]) && font.glyphs[gi].pix) return gi;
     PushUndo(0);
@@ -400,16 +391,17 @@ static int SetGlyphCode(int gi, int32_t cp)
     int nk = 0;
     for (int i = 0; kept && i < font.kernCount; i++)
         if (font.kern[i].first == oc || font.kern[i].second == oc) kept[nk++] = font.kern[i];
-    px_font_remove_glyph(&font, gi);   /* drops the pairs of the old code, and renumbers the later uncoded glyphs when it was one */
-    t.codepoint = cp;
+    px_font_remove_glyph(&font, gi);   /* drops the pairs of the old code, and renumbers the later symbols when it was one */
+    t.code = cp;
     int ni = px_font_add_glyph(&font, &t);
     px_glyph_free(&t);
     for (int i = 0; i < nk; i++) {   /* the pairs follow the glyph (the other side of a pair may have been renumbered) */
-        int32_t a = kept[i].first, b = kept[i].second;
-        bool ao = a == oc, bo = b == oc;   /* decided before the renumbering: a later uncoded glyph takes over the number oc had */
-        if (px_code_is_uncoded(oc)) {
-            if (px_code_is_uncoded(a) && a > oc) a--;
-            if (px_code_is_uncoded(b) && b > oc) b--;
+        PxCode a = kept[i].first, b = kept[i].second;
+        bool ao = a == oc, bo = b == oc;   /* decided before the renumbering: a later symbol takes over the number oc had */
+        if (px_code_is_uncoded(oc) && px_code_variant(oc) == 0) {
+            const PxCode step = (PxCode)1 << PX_CODE_VARIANT_BITS;
+            if (px_code_is_uncoded(a) && a > oc) a -= step;
+            if (px_code_is_uncoded(b) && b > oc) b -= step;
         }
         px_font_set_kern(&font, ao ? cp : a, bo ? cp : b, kept[i].value);
     }
@@ -419,7 +411,7 @@ static int SetGlyphCode(int gi, int32_t cp)
     revealIdx = ni;
     if (inEditor && ed) Editor_SetGlyphIndex(ed, ni);   /* the same glyph, now at another place */
     needHash = true;
-    Th_Toast(TH_TOAST_OK, "The glyph is now U+%04X%s", (unsigned)cp, nk ? " (its kerning pairs came along)" : "");
+    Th_Toast(TH_TOAST_OK, "The glyph is now %s%s", cl, nk ? " (its kerning pairs came along)" : "");
     return ni;
 }
 
@@ -430,15 +422,16 @@ static void GlyphFacts(float px, float *y, int gi, bool character, bool editable
     float x = px + 16, w = PANEL_W - 32;
     const PxGlyph *g = &font.glyphs[gi];
     char cl[64], ch[16] = "";
-    CodeLabel(g->codepoint, cl, sizeof cl);
-    if (px_code_is_codepoint(g->codepoint)) {
+    CodeLabel(g->code, cl, sizeof cl);
+    int32_t gcp = px_code_codepoint(g->code);   /* a variant shows the character of its code point too */
+    if (gcp >= 0) {
         int len = 0;
-        const char *u = CodepointToUTF8(g->codepoint, &len);
-        bool shown = g->codepoint >= 0x21 && g->codepoint != 0x7F && g->codepoint != 0xAD && g->codepoint <= 0x17F && !(g->codepoint >= 0x80 && g->codepoint < 0xA1);
+        const char *u = CodepointToUTF8(gcp, &len);
+        bool shown = gcp >= 0x21 && gcp != 0x7F && gcp != 0xAD && gcp <= 0x17F && !(gcp >= 0x80 && gcp < 0xA1);
         if (shown) snprintf(ch, sizeof ch, "%.*s", len, u);
-        else if (g->codepoint == 0x20) snprintf(ch, sizeof ch, "space");
+        else if (gcp == 0x20) snprintf(ch, sizeof ch, "space");
     }
-    const char *codeLabel = px_code_is_uncoded(g->codepoint) ? "No code point" : g->codepoint == PX_CODE_DEFAULT ? "Glyph" : "Code point";
+    const char *codeLabel = px_code_is_uncoded(g->code) ? "No code point" : px_code_is_default(g->code) ? "Glyph" : "Code point";
     if (!editable) {
         Th_Row(x, y, w, codeLabel, cl, TH_ROW_UNI);
         if (character) Th_Row(x, y, w, "Character", ch[0] ? ch : "—", 0);
@@ -450,22 +443,22 @@ static void GlyphFacts(float px, float *y, int gi, bool character, bool editable
     bool en = !readOnly;
     int f;
     Rectangle r = Th_Row(x, y, w, codeLabel, NULL, 0);
-    f = Th_TextField(r, "g.code", cl, 40, TH_TF_COMMIT | TH_TF_SELECT | (en && g->codepoint != PX_CODE_DEFAULT ? 0 : TH_TF_DISABLED), NULL);
+    f = Th_TextField(r, "g.code", cl, 40, TH_TF_COMMIT | TH_TF_SELECT | (en && g->code != PX_CODE_DEFAULT ? 0 : TH_TF_DISABLED), NULL);
     if (f & (TH_TF_ENTER | TH_TF_BLUR)) {
-        int32_t cp;
+        PxCode cp;
         if (!strcmp(Th_TextValue(), cl)) { /* untouched */ }
-        else if (!ParseHexCode(Th_TextValue(), &cp)) Th_Toast(TH_TOAST_ERR, "Type a code point as hex digits, for example U+00E9");
+        else if (!px_code_parse_user(Th_TextValue(), &cp)) Th_Toast(TH_TOAST_ERR, "Type a code point as hex digits, for example U+00E9, or U+00E9-1 for a variant");
         else gi = SetGlyphCode(gi, cp);
     }
     g = &font.glyphs[gi];
     if (character) {
         r = Th_Row(x, y, w, "Character", NULL, 0);
-        f = Th_TextField(r, "g.char", ch, 16, TH_TF_COMMIT | TH_TF_SELECT | (en && g->codepoint != PX_CODE_DEFAULT ? 0 : TH_TF_DISABLED), "none");
+        f = Th_TextField(r, "g.char", ch, 16, TH_TF_COMMIT | TH_TF_SELECT | (en && g->code != PX_CODE_DEFAULT ? 0 : TH_TF_DISABLED), "none");
         if (f & (TH_TF_ENTER | TH_TF_BLUR)) {
             int32_t cp;
             if (!strcmp(Th_TextValue(), ch)) { /* untouched */ }
             else if (!ParseCharCode(Th_TextValue(), &cp)) Th_Toast(TH_TOAST_ERR, "Type one character");
-            else gi = SetGlyphCode(gi, cp);
+            else gi = SetGlyphCode(gi, px_code_with_variant(px_code_cp(cp), px_code_is_codepoint(g->code) ? px_code_variant(g->code) : 0));   /* a variant stays one */
         }
         g = &font.glyphs[gi];
     }
@@ -490,7 +483,7 @@ static void GlyphFacts(float px, float *y, int gi, bool character, bool editable
 
 /* The selection of the font view's Glyph tab: the facts of one glyph (with its character), the way into the glyph view, the glyph
  * commands and its hash; a count otherwise. */
-static void DrawSelectionSection(float px, float *yp, int32_t insCode)
+static void DrawSelectionSection(float px, float *yp, PxCode insCode)
 {
     float x = px + 16, w = PANEL_W - 32, y = *yp;
     int fi = FirstSelected();
@@ -623,7 +616,7 @@ static void DrawMetricsPanel(Rectangle p)
     enum { INS_MAX_SEL = 32 };
     static char insH[INS_MAX_SEL][33];
     int nIns = 0;
-    int32_t insCode = -1;
+    PxCode insCode = PX_NO_CODE;
     for (int i = 0; i < font.count && i < selN && selCount >= 1 && selCount <= INS_MAX_SEL && nIns < INS_MAX_SEL; i++) {
         if (!sel[i]) continue;
         char h[33];
@@ -631,7 +624,7 @@ static void DrawMetricsPanel(Rectangle p)
         bool dup = !h[0];
         for (int j = 0; j < nIns && !dup; j++) if (Same(insH[j], h)) dup = true;
         if (!dup) memcpy(insH[nIns++], h, 33);
-        if (selCount == 1 && px_code_is_codepoint(font.glyphs[i].codepoint)) insCode = font.glyphs[i].codepoint;
+        if (selCount == 1 && px_code_is_codepoint(font.glyphs[i].code)) insCode = font.glyphs[i].code;
     }
     if (insight) {
         Insight_SetGlyphs(insight, (const char (*)[33])insH, nIns);

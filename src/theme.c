@@ -257,36 +257,27 @@ float Th_MeasureUni(const char *text) { return th_uni(text, 0, 0, WHITE, 1, fals
 
 bool Th_CodeVisible(int32_t cp)
 {
-    const ThUfG *g = px_code_is_codepoint(cp) ? uf_get(cp) : NULL;
+    const ThUfG *g = cp >= 0 && cp <= PX_CODE_MAX_CODEPOINT ? uf_get(cp) : NULL;
     return g && g->show;
 }
 
-/* the U+XXXX / #n / - text of a code */
-static void th_code_text(int32_t cp, char *out, size_t n)
-{
-    if (px_code_is_uncoded(cp)) snprintf(out, n, "#%d", (int)(cp - PX_CODE_UNCODED_FIRST));
-    else if (cp == PX_CODE_DEFAULT) snprintf(out, n, "Default");
-    else if (cp >= 0) snprintf(out, n, "U+%04X", (unsigned)cp);
-    else snprintf(out, n, "-");
-}
+float Th_CodeW(PxCode code) { char t[24]; px_code_label(code, t, sizeof t); return th_uni(t, 0, 0, WHITE, 1, false); }
 
-float Th_CodeW(int32_t cp) { char t[16]; th_code_text(cp, t, sizeof t); return th_uni(t, 0, 0, WHITE, 1, false); }
-
-void Th_CodeDraw(int32_t cp, Rectangle area, Color c, bool hover, int scale)
+void Th_CodeDraw(PxCode code, Rectangle area, Color c, bool hover, int scale)
 {
-    char t[16];
-    ThUfG *g = px_code_is_codepoint(cp) ? (ThUfG *)uf_get(cp) : NULL;
+    char t[24];
+    /* the character's image only for the glyph of the code point itself; a variant is told by its label */
+    ThUfG *g = px_code_is_codepoint(code) && px_code_variant(code) == 0 ? (ThUfG *)uf_get(px_code_codepoint(code)) : NULL;
     bool img = g && g->show && !hover;
     if (g) g->form = img ? 1 : 2;
-    th_code_text(cp, t, sizeof t);
-    if (cp == PX_CODE_DEFAULT && hover) snprintf(t, sizeof t, "FFFFFF");
+    px_code_label(code, t, sizeof t);
     float w = img ? (float)(g->adv * scale) : th_uni(t, 0, 0, WHITE, scale, false), h = (float)(TH_UNI_H * scale);
     float x = floorf(area.x + (area.width - w) / 2), y = floorf(area.y + (area.height - h) / 2);
     if (img) uf_draw(g, x, y, scale, c);
     else th_uni(t, x, y, c, scale, true);
 }
 
-int Th_CodeForm(int32_t cp) { const ThUfG *g = px_code_is_codepoint(cp) ? uf_get(cp) : NULL; return g ? g->form : 0; }
+int Th_CodeForm(int32_t cp) { const ThUfG *g = cp >= 0 && cp <= PX_CODE_MAX_CODEPOINT ? uf_get(cp) : NULL; return g ? g->form : 0; }
 
 /* Text with "U+XXXX" tokens: the length of the token at p (0: none) */
 static int th_tok(const char *p)
@@ -318,7 +309,7 @@ static float th_rich(int face, const char *text, float x, float y, Color c, int 
             float slot = th_uni(tk, 0, 0, WHITE, 1, false);
             bool hv = hov < 0 ? th_hover((Rectangle){ x + w, y, slot, lh }) : hov > 0, shown = g && !hv;
             Rectangle a = { x + w, y, shown ? (float)g->adv : slot, lh };   /* the character sits at the left of its slot */
-            if (draw) Th_CodeDraw(cp, a, c, hv, 1);
+            if (draw) Th_CodeDraw(px_code_cp(cp), a, c, hv, 1);
             w += hov == 0 ? a.width : slot;   /* hov 0 (a label centred by its caller): the width as drawn; else the slot, so that hovering moves nothing */
             p += tl;
         }

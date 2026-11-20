@@ -5,6 +5,7 @@
 #include "raylib.h"
 #include <stddef.h>
 #include <stdint.h>
+#include "pxfont.h"
 
 /* Palette */
 #define TH_BG          (Color){0xF3, 0xF3, 0xF4, 0xFF}  /* window background */
@@ -87,14 +88,15 @@ Vector2 Th_MeasureSmall(const char *text);
  * atlas on whole pixels (an atlas that is full is flushed and refilled: a glyph evicted is rasterised again when needed).
  * Th_TextUni / Th_MeasureUni: a line of text (8 px per half-width, 16 px per full-width glyph; height TH_UNI_H); x, y are rounded.
  * Th_CodeVisible: the code point has a Unifont image that shows (not a control, space or blank; false for a code point Unifont lacks).
- * Th_CodeDraw: the glyph caption of cp centred in `area` at `scale` (1 or 2): the character itself, but "U+XXXX" while `hover` (or always when it
- * has no visible image); "#n" for an uncoded glyph, "-" for none.  Th_CodeW: the width of its U+XXXX form (the slot a caption takes). */
+ * Th_CodeDraw: the glyph caption of a glyph code (pxfont.h CODES) centred in `area` at `scale` (1 or 2): the character itself, but "U+XXXX" while
+ * `hover` (or always when it has no visible image); px_code_label for the others ("U+0041-001" for a variant, "#n" for a symbol, "Default"), "-" for
+ * none.  Th_CodeW: the width of its label (the slot a caption takes). */
 void    Th_TextUni(const char *text, float x, float y, Color c);
 float   Th_MeasureUni(const char *text);
 bool    Th_CodeVisible(int32_t cp);
-void    Th_CodeDraw(int32_t cp, Rectangle area, Color c, bool hover, int scale);
-float   Th_CodeW(int32_t cp);
-int     Th_CodeForm(int32_t cp);   /* how Th_CodeDraw last drew cp: 1 the character, 2 "U+XXXX", 0 not drawn (for scripts) */
+void    Th_CodeDraw(PxCode code, Rectangle area, Color c, bool hover, int scale);
+float   Th_CodeW(PxCode code);
+int     Th_CodeForm(int32_t cp);   /* how Th_CodeDraw last drew code point cp: 1 the character, 2 "U+XXXX", 0 not drawn (for scripts) */
 /* Text with codes: every "U+XXXX" of `text` is drawn as Th_CodeDraw in a slot of its width (hover: over the slot, or `hov` 0/1 for all of them),
  * the rest in the face (TH_F_*).  Th_FitText / Th_TextClip take TH_F_RICH for the same. */
 float   Th_MeasureRich(const char *text, int face);

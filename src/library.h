@@ -77,7 +77,7 @@ typedef struct Library {
 /* The index of a store.  false only when the lists cannot be read. */
 bool library_scan(Store *store, Library *lib, char err[PX_ERR_LEN]);
 /* Scan a drafts folder (*.pxfd) into lib->e (kind LIB_DRAFT; lib->root is the folder).  Missing folder: empty list.
- * A version 2 draft (before the pxtf / F-code change) is skipped with an error that says so. */
+ * A draft of an older version (before the codes of pxfm version 3) is skipped with an error that says so. */
 bool library_scan_drafts(const char *dir, Library *lib, char err[PX_ERR_LEN]);
 void library_free(Library *lib);
 
@@ -110,10 +110,10 @@ typedef struct LibLoader LibLoader;
 LibLoader *libloader_create(Store *store, int threads /* 0: 6 */, int maxFonts /* LRU cap, 0: 256 */);
 void libloader_destroy(LibLoader *L);        /* cancels everything, joins the threads */
 
-/* Ask for font `hash` with the bitmaps of the codes cps[0..n).  Returns true when the cache already holds it
+/* Ask for font `hash` with the bitmaps of the codes cps[0..n) (glyph codes: px_code_cp of a character, PX_CODE_DEFAULT).  Returns true when the cache already holds it
  * with all of them (then libloader_get gives it at once and no result will be posted); otherwise the request is
  * queued (merged with a pending one for the same font) and a result is posted when done. */
-bool libloader_request(LibLoader *L, const char *hash, const int32_t *cps, int n);
+bool libloader_request(LibLoader *L, const char *hash, const PxCode *cps, int n);
 /* The visible entries, most urgent first: pending requests for other fonts are cancelled, the rest are ordered
  * as given.  A load already running finishes (and is cached). */
 void libloader_set_wanted(LibLoader *L, const char (*hashes)[33], int n);

@@ -1,4 +1,4 @@
-# 126. The Ellipse tool (version 19), font 0820dc69 unlocked, glyph U+0020 (empty, advance 4; font box rows 0..7, @ecell:x,y).
+# 126. The Ellipse tool (version 19), font 3b52125b unlocked, glyph U+0020 (empty, advance 4; font box rows 0..7, @ecell:x,y).
 # Key O (E is the Eraser), the strip's Ellipse button; a drag is the bounding box, one undo step; Shift makes a circle, Ctrl draws from the centre;
 # the ring is one cell thick with no L corner; the Filled toggle fills it; Esc cancels; the right button draws '.'.
 wait 5

@@ -21,7 +21,7 @@
 static PxGlyph make_glyph(int cp, int adv, int x, int y, const char *rows) {
     PxGlyph g;
     memset(&g, 0, sizeof g);
-    g.codepoint = cp; g.advance = adv; g.x = x; g.y = y;
+    g.code = px_code_cp(cp); g.advance = adv; g.x = x; g.y = y;
     if (rows && rows[0]) {
         int w = 0, h = 0;
         const char *p = rows;
@@ -124,8 +124,8 @@ int main(void) {
     add(&f, 0x48, 6, 0, 0, ROWS_H);
     add(&f, 0x4D, 6, 0, 0, ROWS_M);
     add(&f, 0x78, 6, 0, 0, ROWS_X);
-    px_font_set_default_from(&f, px_font_find(&f, 0x20));
-    px_font_set_kern(&f, 0x41, 0x4D, -1);
+    px_font_set_default_from(&f, px_font_find_cp(&f, 0x20));
+    px_font_set_kern(&f, px_code_cp(0x41), px_code_cp(0x4D), -1);
     save_font(&f, hex[0]);
 
     /* 2. the grey font of the spec (a palette) */
@@ -155,9 +155,9 @@ int main(void) {
     add(&f, 0x48, 6, 0, 0, ROWS_H);
     add_unc(&f, 6, 0, 0, ROWS_X);
     add_unc(&f, 6, 0, 0, ROWS_M);
-    px_font_set_default_from(&f, px_font_find(&f, 0x48));
-    px_font_set_kern(&f, 0x41, 0xF00000, -1);
-    px_font_set_kern(&f, 0xF00001, 0xF00000, 1);
+    px_font_set_default_from(&f, px_font_find_cp(&f, 0x48));
+    px_font_set_kern(&f, px_code_cp(0x41), px_code_symbol(0), -1);
+    px_font_set_kern(&f, px_code_symbol(1), px_code_symbol(0), 1);
     save_font(&f, hex[3]);
     for (int i = 0; i < 4; i++) upper(hex[i], up[i]);
 
@@ -198,8 +198,8 @@ int main(void) {
     add(&f, 0x48, 6, 0, 0, ROWS_H);
     add(&f, 0x4D, 6, 0, 0, ROWS_M);
     add(&f, 0x78, 6, 0, 0, ROWS_X);
-    px_font_set_default_from(&f, px_font_find(&f, 0x20));
-    px_font_set_kern(&f, 0x41, 0x4D, -1);
+    px_font_set_default_from(&f, px_font_find_cp(&f, 0x20));
+    px_font_set_kern(&f, px_code_cp(0x41), px_code_cp(0x4D), -1);
     save_font(&f, hc[0]);
     px_font_init(&f);           /* 2 colours: the grey font, in no typeface */
     f.has[PXM_ASCENT] = true; f.m[PXM_ASCENT] = 6;
@@ -249,14 +249,14 @@ int main(void) {
     for (int i = 0; i < 20; i++) {
         add(&f, 0x41 + i, 6, 0, 0, "0000\n0..0\n1111\n1..1\n1..1");
         uint32_t pc[2] = {many_colour(2 * i), many_colour(2 * i + 1)};
-        px_glyph_set_palette(&f, &f.glyphs[px_font_find(&f, 0x41 + i)], pc, 2);
+        px_glyph_set_palette(&f, &f.glyphs[px_font_find_cp(&f, 0x41 + i)], pc, 2);
     }
     add(&f, 0x55, 6, 0, 0, "0..0\n0..0\n0..0\n0..0\n.11.");
     add(&f, 0x56, 6, 0, 0, "0...0\n0...0\n.0.0.\n.0.0.\n..0..");
     {
         uint32_t pa[2] = {many_colour(0), many_colour(1)};
-        px_glyph_set_palette(&f, &f.glyphs[px_font_find(&f, 0x55)], pa, 2);
-        px_glyph_set_palette(&f, &f.glyphs[px_font_find(&f, 0x56)], pa, 2);
+        px_glyph_set_palette(&f, &f.glyphs[px_font_find_cp(&f, 0x55)], pa, 2);
+        px_glyph_set_palette(&f, &f.glyphs[px_font_find_cp(&f, 0x56)], pa, 2);
     }
     {
         char rows[64];
@@ -265,7 +265,7 @@ int main(void) {
         add(&f, 0x57, 7, 0, 0, rows);
         uint32_t pw[36];
         for (int k = 0; k < 36; k++) pw[k] = many_colour(k);
-        px_glyph_set_palette(&f, &f.glyphs[px_font_find(&f, 0x57)], pw, 36);
+        px_glyph_set_palette(&f, &f.glyphs[px_font_find_cp(&f, 0x57)], pw, 36);
     }
     must(px_font_colors(&f) == 40, "the many-colour font", "has not 40 colours");
     save_font(&f, hm);

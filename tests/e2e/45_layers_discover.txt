@@ -1,4 +1,4 @@
-# 45. Discoverability of the glyph view and the layers (original 0820dc69, read-only): the font view's Glyph tab has "Open in Glyph View"
+# 45. Discoverability of the glyph view and the layers (original 3b52125b, read-only): the font view's Glyph tab has "Open in Glyph View"
 # (Enter), the glyph view's bar has a "Layers" toggle that selects the Layers tab, the empty Layers tab explains itself and has a big
 # "+ Add Layer" button, and the toggle shows the count of extra layers.
 wait 5

@@ -144,10 +144,10 @@ static bool read_fonts(sqlite3 *db, const uint8_t *only, SimFont **outf, int *ou
     }
     const char *sql = only
         ? "SELECT p.pxfm, p.code, p.x, p.y, p.advance, p.glyph, g.width, g.height,"
-          " CASE WHEN (p.code BETWEEN 33 AND 126) OR (p.code BETWEEN 192 AND 383) THEN g.pixels END"
+          " CASE WHEN (p.code BETWEEN 135168 AND 516096) OR (p.code BETWEEN 786432 AND 1568768) THEN g.pixels END"
           " FROM pxfm_glyph AS p LEFT JOIN glyph AS g ON g.hash = p.glyph WHERE p.pxfm = ?1 ORDER BY p.pxfm, p.code"
         : "SELECT p.pxfm, p.code, p.x, p.y, p.advance, p.glyph, g.width, g.height,"
-          " CASE WHEN (p.code BETWEEN 33 AND 126) OR (p.code BETWEEN 192 AND 383) THEN g.pixels END"
+          " CASE WHEN (p.code BETWEEN 135168 AND 516096) OR (p.code BETWEEN 786432 AND 1568768) THEN g.pixels END"
           " FROM pxfm_glyph AS p LEFT JOIN glyph AS g ON g.hash = p.glyph ORDER BY p.pxfm, p.code";
     bool ok = true;
     if (sqlite3_prepare_v2(db, sql, -1, &st, NULL) != SQLITE_OK) ok = fail(err, "sqlite: %s", sqlite3_errmsg(db));
@@ -159,7 +159,7 @@ static bool read_fonts(sqlite3 *db, const uint8_t *only, SimFont **outf, int *ou
             while (fi < nmeta && memcmp(fonts[fi].hash, ph, 16) < 0) fi++;
             if (fi >= nmeta || memcmp(fonts[fi].hash, ph, 16) != 0) continue;
             SimFont *f = &fonts[fi];
-            int32_t code = sqlite3_column_int(st, 1);
+            PxCode code = sqlite3_column_int64(st, 1);
             int x = sqlite3_column_int(st, 2), y = sqlite3_column_int(st, 3), adv = sqlite3_column_int(st, 4);
             bool ink = sqlite3_column_type(st, 5) != SQLITE_NULL;
             uint64_t id = 0;
@@ -172,10 +172,11 @@ static bool read_fonts(sqlite3 *db, const uint8_t *only, SimFont **outf, int *ou
                 if (-y > botv[fi]) botv[fi] = -y;
                 (void)w;
             }
-            if (code >= 1114112) continue;
+            if (code >= PX_CODE_UNICODE_END || px_code_variant(code)) continue;   /* code points of variant 0 only */
+            int32_t cp = px_code_codepoint(code);
             advsum[fi] += adv; advn[fi]++;
-            if (code == 0x20) f->spaceAdv = adv;
-            int sl = slot_of(code);
+            if (cp == 0x20) f->spaceAdv = adv;
+            int sl = slot_of(cp);
             if (sl < 0) continue;
             SimGlyph g;
             memset(&g, 0, sizeof g);

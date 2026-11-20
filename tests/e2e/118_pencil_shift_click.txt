@@ -1,4 +1,4 @@
-# 118. Shift+click with the Pencil (version 17), font 0820dc69 unlocked, glyph U+0020 (empty, advance 4; font box rows 0..7).
+# 118. Shift+click with the Pencil (version 17), font 3b52125b unlocked, glyph U+0020 (empty, advance 4; font box rows 0..7).
 # Shift+click draws a line from the last cell the pencil (or the line tool) ended on; the right button does it with '.'; one undo step each.
 wait 5
 click @Unlock

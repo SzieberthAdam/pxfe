@@ -17,7 +17,7 @@ delete tests/tmp/xout_backup.pxfdb
 click @Fonts
 wait 4
 click @Filter
-type 408c4d
+type 894ef8
 wait 4
 assert bvisible 1
 sleep 600
@@ -61,13 +61,13 @@ assert modal none
 assert file tests/tmp/xout_backup.pxfdb exists
 assert sqlfile tests/tmp/xout_backup.pxfdb "select count(*) from pxfm" 4
 assert sqlfile tests/tmp/xout_backup.pxfdb "select count(*) from pxtf" 2
-assert sqlfile tests/tmp/xout_backup.pxfdb "select count(*) from pxfm where lower(hex(hash)) = '408c4d7dd946543f8e9b4553dd1ba62e'" 1
+assert sqlfile tests/tmp/xout_backup.pxfdb "select count(*) from pxfm where lower(hex(hash)) = '894ef821e147533c34b39e2131016133'" 1
 # the folder equals memory; other files survive
-assert file tests/tmp/xout/pxfm/40/408c4d7dd946543f8e9b4553dd1ba62e.pxfm missing
+assert file tests/tmp/xout/pxfm/89/894ef821e147533c34b39e2131016133.pxfm missing
 assert file tests/tmp/xout/palette/eb/ebbba94934da6897d86c5e8ea2ac5409.hex missing
-assert file tests/tmp/xout/pxfm/08/0820dc69a21b1cdb3a44d2cff7d884d8.pxfm exists
-assert file tests/tmp/xout/pxfm/e6/e6109c134eda8d747bac9a3c2a62d204.pxfm exists
-assert file tests/tmp/xout/pxtf/b9/b925951bb94de1d15ec27404b3261476.pxtf exists
+assert file tests/tmp/xout/pxfm/3b/3b52125b2e5f6466823baa4fa3186fa0.pxfm exists
+assert file tests/tmp/xout/pxfm/4f/4fba4190f6ba7e10b296c7070234e1ce.pxfm exists
+assert file tests/tmp/xout/pxtf/8e/8e8c94921267d3c2c72ec93d3b0cf63d.pxtf exists
 assert file tests/tmp/xout/keep.txt contains keep me
 assert file tests/tmp/xout/other/keep2.txt contains keep me too
 # the database file is still as it was loaded; memory still differs from it

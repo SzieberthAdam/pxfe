@@ -225,7 +225,7 @@ static const char INDEXES[] =
 "CREATE INDEX glyph_size ON glyph (width, height);\n"
 "CREATE INDEX palette_by_colorset ON palette (colorset);\n"
 "CREATE INDEX pxfm_glyph_by_glyph ON pxfm_glyph (glyph, pxfm) WHERE glyph IS NOT NULL;\n"
-"CREATE INDEX pxfm_glyph_by_code ON pxfm_glyph (code, glyph, pxfm) WHERE code < 1114112;\n";
+"CREATE INDEX pxfm_glyph_by_code ON pxfm_glyph (code, glyph, pxfm) WHERE code < 68719476736;\n";
 
 /* pxfm columns in the order of PxMetric */
 static const char *const METRIC_COL[PXM_COUNT] = {
@@ -477,7 +477,7 @@ static bool ins_pxfm(sqlite3 *db, InsStmts *s, const uint8_t hash[16], const PxF
     for (int i = 0; i < f->count; i++) {
         const PxGlyph *g = &f->glyphs[i];
         sqlite3_bind_blob(s->pg, 1, hash, 16, SQLITE_STATIC);
-        sqlite3_bind_int(s->pg, 2, g->code);
+        sqlite3_bind_int64(s->pg, 2, g->code);
         sqlite3_bind_int(s->pg, 3, g->x);
         sqlite3_bind_int(s->pg, 4, g->y);
         sqlite3_bind_int(s->pg, 5, g->advance);
@@ -487,8 +487,8 @@ static bool ins_pxfm(sqlite3 *db, InsStmts *s, const uint8_t hash[16], const PxF
     }
     for (int i = 0; i < f->kernCount; i++) {
         sqlite3_bind_blob(s->kern, 1, hash, 16, SQLITE_STATIC);
-        sqlite3_bind_int(s->kern, 2, f->kern[i].first);
-        sqlite3_bind_int(s->kern, 3, f->kern[i].second);
+        sqlite3_bind_int64(s->kern, 2, f->kern[i].first);
+        sqlite3_bind_int64(s->kern, 3, f->kern[i].second);
         sqlite3_bind_int(s->kern, 4, f->kern[i].value);
         if (!step_done(s->kern, db, err, "pxfm_kerning")) return false;
     }
@@ -844,7 +844,7 @@ static void work_pxfm(void *vb, int i) {
         else if (!ext_glyph_used(b, hb, &used)) { set_err(b, 1, i, "%s: no glyph file %s", path, g->hash); break; }
         int ncol = mask_colors(used);
         if (!g->pal[0]) {
-            if (ncol > 1) set_err(b, 1, i, "%s: code %06X: the glyph %s has %d colours but no palette", path, (unsigned)g->code, g->hash, ncol);
+            if (ncol > 1) set_err(b, 1, i, "%s: code %s: the glyph %s has %d colours but no palette", path, PX_CODE_STR(g->code), g->hash, ncol);
             continue;
         }
         uint8_t pb[16];
@@ -857,7 +857,7 @@ static void work_pxfm(void *vb, int i) {
         if (pr) { pc = pr->c; pn = pr->n; }
         else if (ext_palette(b, pb, &ec, &en)) { pc = ec; pn = en; }
         else { set_err(b, 1, i, "%s: no palette file %s", path, g->pal); break; }
-        if (pn < ncol) set_err(b, 1, i, "%s: code %06X: the palette %s has %d colours, the glyph %d", path, (unsigned)g->code, g->pal, pn, ncol);
+        if (pn < ncol) set_err(b, 1, i, "%s: code %s: the palette %s has %d colours, the glyph %d", path, PX_CODE_STR(g->code), g->pal, pn, ncol);
         for (int q = 0; q < ncol && q < pn; q++) {
             int z = 0;
             while (z < nseen && seen[z] != pc[q]) z++;
@@ -1068,8 +1068,8 @@ static const char VARIANT_SQL[] =
 
 static const char FONT_SQL[] =
     "SELECT hash, ascent, descent, height, monospaced, ratio_x, ratio_y,"
-    " (SELECT COUNT(*) FROM pxfm_glyph g WHERE g.pxfm = m.hash AND g.code <> 16777215),"
-    " EXISTS (SELECT 1 FROM pxfm_glyph g WHERE g.pxfm = m.hash AND g.code = 16777215),"
+    " (SELECT COUNT(*) FROM pxfm_glyph g WHERE g.pxfm = m.hash AND g.code <> 1090646966272),"
+    " EXISTS (SELECT 1 FROM pxfm_glyph g WHERE g.pxfm = m.hash AND g.code = 1090646966272),"
     " (SELECT COUNT(*) FROM pxtf_variant v WHERE v.pxfm = m.hash),"
     " colors, symbolic"
     " FROM pxfm m ORDER BY hash";
@@ -1337,13 +1337,13 @@ static bool glyph_cropped(const char *pix, int w, int h) {
     return top && bottom && left && right;
 }
 
-static bool load_bitmaps_nolock(StoreConn *c, PxFont *f, const int32_t *codes, int n, char err[PX_ERR_LEN]) {
-    int32_t *want = NULL;
+static bool load_bitmaps_nolock(StoreConn *c, PxFont *f, const PxCode *codes, int n, char err[PX_ERR_LEN]) {
+    PxCode *want = NULL;
     if (codes) {
-        want = (int32_t *)malloc(sizeof(int32_t) * (size_t)(n > 0 ? n : 1));
-        memcpy(want, codes, sizeof(int32_t) * (size_t)n);
+        want = (PxCode *)malloc(sizeof(PxCode) * (size_t)(n > 0 ? n : 1));
+        memcpy(want, codes, sizeof(PxCode) * (size_t)n);
         /* sorted for bsearch */
-        for (int i = 1; i < n; i++) { int32_t v = want[i]; int j = i - 1; while (j >= 0 && want[j] > v) { want[j + 1] = want[j]; j--; } want[j + 1] = v; }
+        for (int i = 1; i < n; i++) { PxCode v = want[i]; int j = i - 1; while (j >= 0 && want[j] > v) { want[j + 1] = want[j]; j--; } want[j + 1] = v; }
     }
     bool ok = true;
     sqlite3_stmt *st = store_stmt(c, ST_GLYPH_PIX, "SELECT width, height, pixels FROM glyph WHERE hash = ?");
@@ -1360,7 +1360,7 @@ static bool load_bitmaps_nolock(StoreConn *c, PxFont *f, const int32_t *codes, i
         store_hex_to_blob(g->hash, hb);
         sqlite3_reset(st);
         sqlite3_bind_blob(st, 1, hb, 16, SQLITE_STATIC);
-        if (sqlite3_step(st) != SQLITE_ROW) { ok = fail(err, "code %06X: no glyph %s in the store", (unsigned)g->code, g->hash); break; }
+        if (sqlite3_step(st) != SQLITE_ROW) { ok = fail(err, "code %s: no glyph %s in the store", PX_CODE_STR(g->code), g->hash); break; }
         int w = sqlite3_column_int(st, 0), h = sqlite3_column_int(st, 1);
         const char *px = (const char *)sqlite3_column_blob(st, 2);
         if (!px || sqlite3_column_bytes(st, 2) != w * h) { ok = fail(err, "glyph %s is damaged", g->hash); break; }
@@ -1379,14 +1379,14 @@ static bool load_bitmaps_nolock(StoreConn *c, PxFont *f, const int32_t *codes, i
     return ok && px_font_finish_palette(f, err);
 }
 
-bool store_load_glyph_bitmaps(StoreConn *c, PxFont *f, const int32_t *codes, int n, char err[PX_ERR_LEN]) {
+bool store_load_glyph_bitmaps(StoreConn *c, PxFont *f, const PxCode *codes, int n, char err[PX_ERR_LEN]) {
     RLOCK(c);
     bool ok = load_bitmaps_nolock(c, f, codes, n, err);
     RUNLOCK(c);
     return ok;
 }
 
-static bool load_font_nolock(StoreConn *c, const uint8_t fh[16], const char *hex, const int32_t *codes, int ncodes, PxFont *out, char err[PX_ERR_LEN]) {
+static bool load_font_nolock(StoreConn *c, const uint8_t fh[16], const char *hex, const PxCode *codes, int ncodes, PxFont *out, char err[PX_ERR_LEN]) {
     char sql[700];
     int p = 0;
     p += snprintf(sql + p, sizeof sql - (size_t)p, "SELECT ");
@@ -1411,7 +1411,7 @@ static bool load_font_nolock(StoreConn *c, const uint8_t fh[16], const char *hex
     sqlite3_bind_blob(st, 1, fh, 16, SQLITE_STATIC);
     int cap = 0;
     while (sqlite3_step(st) == SQLITE_ROW) {
-        int32_t code = sqlite3_column_int(st, 0);
+        PxCode code = sqlite3_column_int64(st, 0);
         PxGlyph g;
         memset(&g, 0, sizeof g);
         g.x = sqlite3_column_int(st, 1);
@@ -1444,8 +1444,8 @@ static bool load_font_nolock(StoreConn *c, const uint8_t fh[16], const char *hex
             f.kern = nk;
             f.kernCap = nc;
         }
-        f.kern[f.kernCount].first = sqlite3_column_int(st, 0);
-        f.kern[f.kernCount].second = sqlite3_column_int(st, 1);
+        f.kern[f.kernCount].first = sqlite3_column_int64(st, 0);
+        f.kern[f.kernCount].second = sqlite3_column_int64(st, 1);
         f.kern[f.kernCount].value = sqlite3_column_int(st, 2);
         f.kernCount++;
     }
@@ -1464,7 +1464,7 @@ static bool load_font_nolock(StoreConn *c, const uint8_t fh[16], const char *hex
             int bl = b ? sqlite3_column_bytes(st, 0) : 0;
             if (!b || bl <= 0 || bl % 4 || bl > 4 * 4096) {
                 sqlite3_reset(st); px_font_free(&f);
-                return fail(err, "code %06X: no palette %s in the store", (unsigned)g->code, g->pal);
+                return fail(err, "code %s: no palette %s in the store", PX_CODE_STR(g->code), g->pal);
             }
             uint32_t cv[4096];
             for (int k = 0; k < bl / 4; k++) cv[k] = (uint32_t)b[4 * k] << 24 | (uint32_t)b[4 * k + 1] << 16 | (uint32_t)b[4 * k + 2] << 8 | b[4 * k + 3];
@@ -1479,7 +1479,7 @@ static bool load_font_nolock(StoreConn *c, const uint8_t fh[16], const char *hex
     return true;
 }
 
-bool store_load_font(StoreConn *c, const char *hex, const int32_t *codes, int ncodes, PxFont *out, char err[PX_ERR_LEN]) {
+bool store_load_font(StoreConn *c, const char *hex, const PxCode *codes, int ncodes, PxFont *out, char err[PX_ERR_LEN]) {
     uint8_t fh[16];
     if (!store_hex_to_blob(hex, fh)) return fail(err, "'%s' is not a hash", hex);
     char low[33];
@@ -1584,15 +1584,15 @@ char *store_pxfm_text(StoreConn *c, const char *hex, size_t *len, char hashOut[3
                 pu[0] = '\t';
                 for (int i = 0; i < 33; i++) pu[1 + i] = (char)toupper((unsigned char)ph[i]);
             }
-            ls_addf(&L, "GLYPH\t%06X\t%d,%d\t%d\t%s%s", (unsigned)sqlite3_column_int(st, 0), sqlite3_column_int(st, 1), sqlite3_column_int(st, 2), sqlite3_column_int(st, 3), up, pu);
+            ls_addf(&L, "GLYPH\t%s\t%d\t%d\t%d\t%s%s", PX_CODE_STR(sqlite3_column_int64(st, 0)), sqlite3_column_int(st, 3), sqlite3_column_int(st, 1), sqlite3_column_int(st, 2), up, pu);
         } else {
-            ls_addf(&L, "GLYPH\t%06X\t%d,%d\t%d", (unsigned)sqlite3_column_int(st, 0), sqlite3_column_int(st, 1), sqlite3_column_int(st, 2), sqlite3_column_int(st, 3));
+            ls_addf(&L, "GLYPH\t%s\t%d\t%d\t%d", PX_CODE_STR(sqlite3_column_int64(st, 0)), sqlite3_column_int(st, 3), sqlite3_column_int(st, 1), sqlite3_column_int(st, 2));
         }
     }
     sqlite3_reset(st);
     st = store_stmt(c, ST_FONT_KERN, "SELECT first, second, adjust FROM pxfm_kerning WHERE pxfm = ? ORDER BY first, second");
     sqlite3_bind_blob(st, 1, fh, 16, SQLITE_STATIC);
-    while (sqlite3_step(st) == SQLITE_ROW) ls_addf(&L, "KERNING\t%06X\t%06X\t%d", (unsigned)sqlite3_column_int(st, 0), (unsigned)sqlite3_column_int(st, 1), sqlite3_column_int(st, 2));
+    while (sqlite3_step(st) == SQLITE_ROW) ls_addf(&L, "KERNING\t%s\t%s\t%d", PX_CODE_STR(sqlite3_column_int64(st, 0)), PX_CODE_STR(sqlite3_column_int64(st, 1)), sqlite3_column_int(st, 2));
     sqlite3_reset(st);
     RUNLOCK(c);
     SBuf b = {0};
@@ -1760,8 +1760,9 @@ bool store_glyph_usage(StoreConn *c, const char *hex, StoreUsageList *out, int *
     if (!read_facts(c->db, &facts, &nf, err) || !list_variants(c->db, &vars, facts, nf, err)) goto done;
     qsort(vars.e, (size_t)vars.count, sizeof(StoreEntry), cmp_entry_pxfm);
     st = store_stmt(c, ST_USAGE,
-        "SELECT p.pxfm, p.code FROM pxfm_glyph AS p WHERE p.glyph = ?1 AND (p.code <> 16777215 OR NOT EXISTS"
-        " (SELECT 1 FROM pxfm_glyph AS o WHERE o.pxfm = p.pxfm AND o.glyph = ?1 AND o.code <> 16777215)) ORDER BY 1, 2");
+        "SELECT p.pxfm, p.code FROM pxfm_glyph AS p WHERE p.glyph = ?1 AND (p.code NOT BETWEEN 1090646966272 AND 1090646970367"
+        " OR NOT EXISTS (SELECT 1 FROM pxfm_glyph AS o WHERE o.pxfm = p.pxfm AND o.glyph = ?1"
+        " AND o.code NOT BETWEEN 1090646966272 AND 1090646970367)) ORDER BY 1, 2");
     if (!st) { fail(err, "sqlite: %s", sqlite3_errmsg(c->db)); goto done; }
     sqlite3_bind_blob(st, 1, gh, 16, SQLITE_STATIC);
     int cap = 256, cnt = 0;
@@ -1774,7 +1775,7 @@ bool store_glyph_usage(StoreConn *c, const char *hex, StoreUsageList *out, int *
     while (sqlite3_step(st) == SQLITE_ROW) {
         char pxfm[33];
         store_blob_to_hex((const uint8_t *)sqlite3_column_blob(st, 0), pxfm);
-        int32_t code = sqlite3_column_int(st, 1);
+        PxCode code = sqlite3_column_int64(st, 1);
         if (nfonts == 0 || strcmp(fonts[nfonts - 1], pxfm) != 0) {
             if (nfonts == fcap) { fcap *= 2; fonts = (char (*)[33])realloc(fonts, 33 * (size_t)fcap); }
             memcpy(fonts[nfonts++], pxfm, 33);
@@ -1869,15 +1870,16 @@ static int cmp_codeglyph(const void *a, const void *b) {
     return strcmp(x->glyph, y->glyph);
 }
 
-bool store_glyphs_for_code(StoreConn *c, int32_t code, StoreCodeGlyphList *out, char err[PX_ERR_LEN]) {
+bool store_glyphs_for_codepoint(StoreConn *c, int32_t cp, StoreCodeGlyphList *out, char err[PX_ERR_LEN]) {
     memset(out, 0, sizeof *out);
-    if (code < 0 || code >= 0x110000) return true;
+    if (cp < 0 || cp > PX_CODE_MAX_CODEPOINT) return true;
     RLOCK(c);
     sqlite3_stmt *st = store_stmt(c, ST_CODE_GLYPHS,
         "SELECT p.glyph, g.width, g.height, p.x, p.y, COUNT(*) FROM pxfm_glyph AS p JOIN glyph AS g ON g.hash = p.glyph"
-        " WHERE p.code = ?1 AND p.code < 1114112 GROUP BY p.glyph, p.x, p.y ORDER BY p.glyph");
+        " WHERE p.code BETWEEN ?1 AND ?2 AND p.code < 68719476736 GROUP BY p.glyph, p.x, p.y ORDER BY p.glyph");
     if (!st) { RUNLOCK(c); return fail(err, "sqlite: %s", sqlite3_errmsg(c->db)); }
-    sqlite3_bind_int(st, 1, code);
+    sqlite3_bind_int64(st, 1, px_code_cp(cp));
+    sqlite3_bind_int64(st, 2, px_code_cp(cp) | PX_CODE_VARIANT_MAX);
     int cap = 128, cnt = 0, bestN = 0, bestXY = 0;
     StoreCodeGlyph *g = (StoreCodeGlyph *)calloc((size_t)cap, sizeof(StoreCodeGlyph));
     uint8_t last[16];
@@ -1980,7 +1982,7 @@ bool store_save_to_memory(Store *s, const PxFont *font, const PxtfTypeface *tfIn
     int npals = 0;
 
     for (int i = 1; i < font->count; i++)
-        if (font->glyphs[i].code == font->glyphs[i - 1].code) return fail(err, "two glyphs have the code %06X", (unsigned)font->glyphs[i].code);
+        if (font->glyphs[i].code == font->glyphs[i - 1].code) return fail(err, "two glyphs have the code %s", PX_CODE_STR(font->glyphs[i].code));
     size_t tl;
     text = px_pxfm_text(font, &tl, r.pxfm);
     if (!text) return fail(err, "out of memory");
@@ -2034,12 +2036,12 @@ bool store_save_to_memory(Store *s, const PxFont *font, const PxtfTypeface *tfIn
         uint8_t hb[16];
         uint64_t used = 0;
         store_hex_to_blob(g->hash, hb);
-        if (!pixels_of_hash(db, hb, &used)) { fail(err, "the glyph %s of code %06X is not in the store", g->hash, (unsigned)g->code); goto done; }
+        if (!pixels_of_hash(db, hb, &used)) { fail(err, "the glyph %s of code %s is not in the store", g->hash, PX_CODE_STR(g->code)); goto done; }
         if (g->pal[0]) {
             uint32_t *pc;
             int pn;
             store_hex_to_blob(g->pal, hb);
-            if (!palette_of_hash(db, hb, &pc, &pn)) { fail(err, "the palette %s of code %06X is not in the store", g->pal, (unsigned)g->code); goto done; }
+            if (!palette_of_hash(db, hb, &pc, &pn)) { fail(err, "the palette %s of code %s is not in the store", g->pal, PX_CODE_STR(g->code)); goto done; }
             free(pc);
         }
     }
@@ -2122,14 +2124,19 @@ static void trim_slashes(char *r) {
     while (rl > 1 && (r[rl - 1] == '/' || r[rl - 1] == '\\')) r[--rl] = 0;
 }
 
-/* A pxfdb of format version 1 made before hex palettes (pxfm_color, no palette table, no pxfm.symbolic) cannot be read: it is
- * rebuilt from its files by a newer pixelglyphlib, never migrated. */
+/* A pxfdb of format version 1 made before hex palettes (pxfm_color, no palette table, no pxfm.symbolic), or with the codes of
+ * pxfm version 2, cannot be read: it is rebuilt from its files by a newer pixelglyphlib, never migrated. */
 static bool check_schema(sqlite3 *db, char err[PX_ERR_LEN], const char *path) {
     bool old = one_int(db, "SELECT COUNT(*) FROM sqlite_master WHERE type = 'table' AND name = 'pxfm_color'") > 0 ||
                one_int(db, "SELECT COUNT(*) FROM sqlite_master WHERE type = 'table' AND name = 'palette'") == 0 ||
                one_int(db, "SELECT COUNT(*) FROM pragma_table_info('pxfm') WHERE name = 'symbolic'") == 0 ||
                one_int(db, "SELECT COUNT(*) FROM pragma_table_info('pxfm_glyph') WHERE name = 'palette'") == 0;
     if (old) return fail(err, "%s: made by an older pixelglyphlib (before hex palettes: colour lines, no palette table): rebuild it from its files with the current pixelglyphlib", path);
+    /* The codes of pxfm version 2 (a code point as it is, F00000 up, FFFFFF) are numbers the codes of version 3 also are, so
+     * the schema cannot tell them apart: version 3 codes are almost all of variant 0 (low 12 bits 0), version 2 codes
+     * almost none, as a code point is a multiple of 4096 only once in 4096. */
+    if (one_int(db, "SELECT COUNT(*) FROM pxfm_glyph WHERE code & 4095 <> 0") > one_int(db, "SELECT COUNT(*) FROM pxfm_glyph WHERE code & 4095 = 0"))
+        return fail(err, "%s: made by an older pixelglyphlib (codes of pxfm version 2): rebuild it from its files with the current pixelglyphlib", path);
     return true;
 }
 

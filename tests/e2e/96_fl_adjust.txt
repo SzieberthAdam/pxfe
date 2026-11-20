@@ -1,5 +1,5 @@
 # 96. Font layers: the Add Layer popover with the File source, font level settings (colour, opacity, visibility, offset, size) and the
-# correction of single glyphs (offset, size, hide, reset), through the Layers tab.  Duplicate of 0820dc69 (glyphs 20 2C 41 48 4D 78).
+# correction of single glyphs (offset, size, hide, reset), through the Layers tab.  Duplicate of 3b52125b (glyphs 20 2C 41 48 4D 78).
 wait 5
 click @Unlock
 wait 4

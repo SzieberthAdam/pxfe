@@ -1,4 +1,4 @@
-# 140. Version 23: the keys of the palette bar and the colour picker, on a duplicate of font 0820dc69 (one colour, black), glyph U+0048.
+# 140. Version 23: the keys of the palette bar and the colour picker, on a duplicate of font 3b52125b (one colour, black), glyph U+0048.
 # Plain '.', 0-9 and A-Z pick a slot (typed: `type 3`); the tools are Shift+letter; typing into a text field leaves the ink alone.
 # '+' opens the picker; the colour chosen is added as an unused slot (dashed); drawing with it makes the glyph canonical again (it becomes
 # slot 0 when its pixel comes first in reading order); a double-click on a slot changes its colour; each change is one undo step.

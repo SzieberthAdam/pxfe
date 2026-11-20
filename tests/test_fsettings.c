@@ -23,9 +23,9 @@ static int g_pass = 0, g_fail = 0;
     else { g_fail++; printf("FAIL  %s   (%s:%d)\n", name, __FILE__, __LINE__); } } while (0)
 
 #define TMP "tests/tmp"
-#define HA "0820dc69a21b1cdb3a44d2cff7d884d8"
+#define HA "3b52125b2e5f6466823baa4fa3186fa0"
 #define HB "03696f658319e9dfddc2cb6ea2520592"
-#define HC "e6109c134eda8d747bac9a3c2a62d204"
+#define HC "4fba4190f6ba7e10b296c7070234e1ce"
 
 static bool exists(const char *p) { FILE *f = fopen(p, "rb"); if (f) fclose(f); return f != NULL; }
 
@@ -153,7 +153,7 @@ static void test_corrections(void) {
     CHECK(fs_set_correction(fs, a, 0x1F600, &h) && fs_set_correction(fs, a, 0, &h) && fs_set_correction(fs, a, 66, &k), "set more (hidden only, astral, zero)");
     k.dx = 9;
     CHECK(fs_set_correction(fs, a, 65, &k) && fs_get_correction(fs, a, 65, &o) && o.dx == 9, "set replaces");
-    int32_t codes[8];
+    PxCode codes[8];
     int n = fs_list_corrections(fs, a, codes, 8);
     CHECK(n == 4 && codes[0] == 0 && codes[1] == 65 && codes[2] == 66 && codes[3] == 0x1F600, "list codes ascending");
     CHECK(fs_list_corrections(fs, a, codes, 1) == 4, "list count with small array");
@@ -325,7 +325,8 @@ static void test_errors(void) {
         "CREATE TABLE correction (font TEXT NOT NULL, layer INTEGER NOT NULL REFERENCES layer, code INTEGER NOT NULL,"
         "  dx REAL NOT NULL, dy REAL NOT NULL, dsize REAL NOT NULL, hidden INTEGER NOT NULL, PRIMARY KEY (layer, code)) WITHOUT ROWID;"
         "INSERT INTO layer (font,pos,kind,source,face,file_size,file_mtime,scale,dx,dy,r,g,b,opacity,visible,label)"
-        "  VALUES ('" HA "',0,1,'old.ttf',0,10,20,1.25,0.5,-1,1,2,3,80,1,'Old');", NULL, NULL, NULL);
+        "  VALUES ('" HA "',0,1,'old.ttf',0,10,20,1.25,0.5,-1,1,2,3,80,1,'Old');"
+        "INSERT INTO correction VALUES ('" HA "',1,65,1,0,1,0), ('" HA "',1,15728641,2,0,1,0), ('" HA "',1,16777215,3,0,1,0);", NULL, NULL, NULL);
     sqlite3_close(db);
     fs = fs_open(C, err);
     CHECK(fs != NULL, "a version 1 file opens");
@@ -334,6 +335,9 @@ static void test_errors(void) {
         CHECK(fs_list_layers(fs, HA, v, 2) == 1 && v[0].scale == 1.25f && v[0].dx == 0.5f && strcmp(v[0].label, "Old") == 0, "version 1 layer is read");
         CHECK(v[0].em == 0 && v[0].aspect == 1 && v[0].follow == 0 && v[0].mode == 0 && v[0].threshold == 0.5f, "version 1 layer gets the defaults of version 2");
         CHECK(!fs_dirty(fs), "the upgrade alone does not make the settings unsaved");
+        PxCode cc[4];
+        CHECK(fs_list_corrections(fs, v[0].id, cc, 4) == 3 && cc[0] == px_code_cp(65) && cc[1] == px_code_symbol(1) && cc[2] == PX_CODE_DEFAULT,
+              "the codes of version 3 corrections become pxfm version 3 codes (65, F00001, FFFFFF)");
         v[0].em = 13.5f; v[0].aspect = 0.75f; v[0].follow = 1; v[0].mode = 1; v[0].threshold = 0.375f;
         CHECK(fs_update_layer(fs, &v[0]) && fs_save(fs), "the new fields are written");
         fs_close(fs);
@@ -348,7 +352,7 @@ static void test_errors(void) {
         sqlite3_open(C, &db);
         sqlite3_stmt *st = NULL;
         sqlite3_prepare_v2(db, "SELECT value FROM meta WHERE key='schema_version'", -1, &st, NULL);
-        CHECK(sqlite3_step(st) == SQLITE_ROW && atoi((const char *)sqlite3_column_text(st, 0)) == 3, "the saved file is version 3");
+        CHECK(sqlite3_step(st) == SQLITE_ROW && atoi((const char *)sqlite3_column_text(st, 0)) == 4, "the saved file is version 4");
         sqlite3_finalize(st);
         sqlite3_close(db);
     }
@@ -363,7 +367,7 @@ static void test_errors(void) {
 
     FSettings *z = fs_new_empty();
     CHECK(add(z, "short", 0, HB, "x", -1) < 0, "bad hash rejected");
-    CHECK(add(z, "0820DC69A21B1CDB3A44D2CFF7D884D8", 0, HB, "x", -1) < 0, "upper-case hash rejected");
+    CHECK(add(z, "3B52125B2E5F6466823BAA4FA3186FA0", 0, HB, "x", -1) < 0, "upper-case hash rejected");
     CHECK(add(z, HA, 5, HB, "x", -1) < 0, "bad kind rejected");
     CHECK(add(z, HA, 0, "", "x", -1) < 0, "empty source rejected");
     CHECK(!fs_has_any(z), "nothing was added by failed calls");
@@ -404,7 +408,7 @@ static void test_speed(void) {
     bool ok = true;
     for (int i = 0; i < 1000; i++) { k.dx = (float)(i % 7) + 0.5f; ok = fs_set_correction(fs, a, 0x4E00 + i, &k) && ok; }
     double ms = (double)(clock() - t0) * 1000.0 / CLOCKS_PER_SEC;
-    int32_t *codes = (int32_t *)malloc(1000 * sizeof *codes);
+    PxCode *codes = (PxCode *)malloc(1000 * sizeof *codes);
     int n = fs_list_corrections(fs, a, codes, 1000);
     int found = 0;
     t0 = clock();

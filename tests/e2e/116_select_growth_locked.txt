@@ -1,4 +1,4 @@
-# 116. Selection and moving, the limits (version 16), font 0820dc69, glyph U+0020 (empty, advance 4; font box rows 0..7).
+# 116. Selection and moving, the limits (version 16), font 3b52125b, glyph U+0020 (empty, advance 4; font box rows 0..7).
 # A locked font refuses every selection command; a move out of the box grows the bitmap (Shift+arrow is 8 cells); leaving the glyph drops the pixels.
 wait 5
 assert locked 1

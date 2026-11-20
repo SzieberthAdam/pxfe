@@ -1,6 +1,6 @@
 # 123 (not in run_all.bat): screenshots of version 17 in tests\tmp\shots: the bar of the Pencil, Line and Curve at 1400 x 900 and at the narrowest window.
 # Start it like the others with the first test font:
-#   copy testdata\lib.pxfdb tests\tmp\e2e.pxfdb ; tests\tmp\pxfe_e2e.exe tests\tmp\e2e.pxfdb --font 0820dc69a21b1cdb3a44d2cff7d884d8 --ini tests\tmp\e2e.ini --play tests\e2e\123_shots_v17.txt
+#   copy testdata\lib.pxfdb tests\tmp\e2e.pxfdb ; tests\tmp\pxfe_e2e.exe tests\tmp\e2e.pxfdb --font 3b52125b2e5f6466823baa4fa3186fa0 --ini tests\tmp\e2e.ini --play tests\e2e\123_shots_v17.txt
 wait 5
 click @Unlock
 wait 4

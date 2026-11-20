@@ -13,7 +13,7 @@ assert inbrowser 1
 click @Fonts
 wait 4
 click @Filter
-type 0820dc
+type 3b5212
 wait 4
 sleep 600
 click @card:0

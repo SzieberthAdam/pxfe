@@ -1,4 +1,4 @@
-# 108. The glyph view's Glyph tab edits the glyph: code point, character, advance, offset x and y (font fa96e358: space, A, H, a default, and two glyphs
+# 108. The glyph view's Glyph tab edits the glyph: code point, character, advance, offset x and y (font 54caf68f: space, A, H, a default, and two glyphs
 # without a code point; KERNING A #0 -1 and #1 #0 +1).  Locked, the fields are dim and inert.  A code another glyph has, the default glyph's code and a
 # number that is no code point are refused; a new code moves the glyph to its place in the order, keeps the editor on it, and its kerning pairs follow.
 wait 5
@@ -116,18 +116,24 @@ key enter
 wait 3
 assert toast U+0020 belongs to another glyph
 assert eglyph U+005A
-# the default glyph's code, a number that is no code point, and no number
+# the default glyph's code, a symbol code, a number above 10FFFF, and no number
 click @g.code
-type FFFFFF
+type default
 key enter
 wait 3
-assert toast FFFFFF is the code of the default glyph
+assert toast Default is a code of the default glyph
+assert eglyph U+005A
+click @g.code
+type #0
+key enter
+wait 3
+assert toast #0 is no code point
 assert eglyph U+005A
 click @g.code
 type 110000
 key enter
 wait 3
-assert toast is no code point
+assert toast Type a code point as hex digits
 assert eglyph U+005A
 click @g.code
 type zz
@@ -170,7 +176,7 @@ wait 3
 key enter
 wait 6
 assert editor 1
-assert eglyph 0xF00000
+assert eglyph #0
 assert uncoded 2
 shot tests/tmp/shots/108_uncoded.png
 click @g.code
@@ -194,11 +200,11 @@ click @cell:default
 wait 3
 key enter
 wait 6
-assert eglyph 0xFFFFFF
+assert eglyph default
 click @g.advance+
 wait 3
 assert glyph default advance 7
-assert eglyph 0xFFFFFF
+assert eglyph default
 # the font view's selection stays a plain list of facts
 click @Back
 wait 4
@@ -213,4 +219,4 @@ shot tests/tmp/shots/108_selection.png
 click @nav.0
 wait 16
 assert nav 1
-assert sql "select count(*) from pxfm_glyph where code = 90" 1
+assert sql "select count(*) from pxfm_glyph where code = 368640" 1

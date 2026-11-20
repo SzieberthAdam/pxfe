@@ -1,4 +1,4 @@
-# 120. The Curve tool (version 17), font 0820dc69 unlocked, glyph U+0020 (empty, advance 4; font box rows 0..7).
+# 120. The Curve tool (version 17), font 3b52125b unlocked, glyph U+0020 (empty, advance 4; font box rows 0..7).
 # Three drags: the end points, then the first and the second control point; the curve is drawn after the third release or on Enter, Esc cancels.
 # Nothing is written before that; the drawing is one undo step.  Probe: assert ecurve 0|1|2 (no curve, end points set, first control point set).
 wait 5

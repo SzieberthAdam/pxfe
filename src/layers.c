@@ -29,7 +29,7 @@ struct Layers {
     int n, sel;
     Store *store;
     const PxFont *doc;
-    int32_t editedCode;
+    PxCode editedCode;
 
     CacheFont cache[MAX_CACHE];
     int ncache;
@@ -118,7 +118,7 @@ void Layers_SetStore(Layers *l, Store *s)
     }
 }
 
-void Layers_SetContext(Layers *l, const PxFont *doc, int32_t editedCode)
+void Layers_SetContext(Layers *l, const PxFont *doc, PxCode editedCode)
 {
     if (!l) return;
     l->doc = doc;
@@ -244,7 +244,7 @@ static Layer *push_top(Layers *l)
     return a;
 }
 
-int Layers_Add(Layers *l, const char *pxfm, const char *fontName, bool sameCode, int32_t code)
+int Layers_Add(Layers *l, const char *pxfm, const char *fontName, bool sameCode, PxCode code)
 {
     if (!l) return -1;
     Layer *a = push_top(l);
@@ -343,10 +343,10 @@ bool Layers_PopoverOpen(const Layers *l) { return l && l->pop; }
 
 /* ------------------------------------------------------------------ glyph source */
 
-static int32_t layer_code(const Layers *l, const Layer *a)
+static PxCode layer_code(const Layers *l, const Layer *a)
 {
-    int32_t c = a->sameCode ? l->editedCode : a->code;
-    if ((a->pxfm[0] || (a->fl && a->fl->s.kind == 1)) && a->sameCode && !px_code_is_codepoint(c)) return -1;   /* an uncoded code names a glyph only inside its font */
+    PxCode c = a->sameCode ? l->editedCode : a->code;
+    if ((a->pxfm[0] || (a->fl && a->fl->s.kind == 1)) && a->sameCode && !px_code_is_codepoint(c)) return -1;   /* a symbol's code names a glyph only inside its font */
     return px_code_is_valid(c) ? c : -1;
 }
 
@@ -366,7 +366,7 @@ static CacheFont *cache_get(Layers *l, const char *pxfm)
     snprintf(c->pxfm, sizeof c->pxfm, "%s", pxfm);
     c->used = ++l->tick;
     char err[PX_ERR_LEN] = "";
-    int32_t none = 0;
+    PxCode none = 0;
     px_font_init(&c->f);
     c->ok = store_load_font(store_main_conn(l->store), pxfm, &none, 0, &c->f, err);   /* the glyph lines, no bitmap yet */
     if (!c->ok) px_font_free(&c->f);
@@ -374,11 +374,11 @@ static CacheFont *cache_get(Layers *l, const char *pxfm)
 }
 
 /* The glyph of a font of the library under a code, its bitmap loaded; NULL when the font has no such glyph. */
-static const PxGlyph *font_glyph(Layers *l, const char *pxfm, int32_t code, const PxFont **src)
+static const PxGlyph *font_glyph(Layers *l, const char *pxfm, PxCode code, const PxFont **src)
 {
     CacheFont *c = cache_get(l, pxfm);
     if (!c || !c->ok) return NULL;
-    int gi = px_font_find(&c->f, code);
+    int gi = px_font_find_code(&c->f, code);
     if (gi < 0) return NULL;
     PxGlyph *g = &c->f.glyphs[gi];
     if (g->lazy) {
@@ -394,11 +394,11 @@ const PxGlyph *Layers_Glyph(Layers *l, int i, const PxFont **srcFont)
     if (srcFont) *srcFont = NULL;
     if (!l || i < 0 || i >= l->n || l->v[i].isCurrent) return NULL;
     const Layer *a = &l->v[i];
-    int32_t code = layer_code(l, a);
+    PxCode code = layer_code(l, a);
     if (code < 0) return NULL;
     if (!a->pxfm[0]) {
         if (!l->doc) return NULL;
-        int gi = px_font_find(l->doc, code);
+        int gi = px_font_find_code(l->doc, code);
         if (gi < 0) return NULL;
         if (srcFont) *srcFont = l->doc;
         return &l->doc->glyphs[gi];
@@ -418,7 +418,7 @@ static bool layer_ready(Layers *l, Layer *a)
 static bool is_file(const Layer *a) { return a->fl && a->fl->s.kind == 1; }
 
 /* where and how big layer a draws the glyph of `code` */
-static void place(const Layer *a, int32_t code, FlPlace *p)
+static void place(const Layer *a, PxCode code, FlPlace *p)
 {
     if (a->fl && a->fontLevel) FlLayer_Place(a->fl, code, p);
     else {
@@ -432,7 +432,7 @@ static void place(const Layer *a, int32_t code, FlPlace *p)
 static int layer_has(Layers *l, int i)
 {
     Layer *a = &l->v[i];
-    int32_t code = layer_code(l, a);
+    PxCode code = layer_code(l, a);
     if (code < 0) return -1;
     if (is_file(a)) return layer_ready(l, a) ? FlLayer_Has(a->fl, code, font_px(l)) : -1;
     const PxGlyph *g = Layers_Glyph(l, i, NULL);
@@ -443,7 +443,7 @@ void Layers_DrawGlyph(Layers *l, int i, int ox, int oy, int z)
 {
     if (!l || i < 0 || i >= l->n || l->v[i].isCurrent) return;
     Layer *a = &l->v[i];
-    int32_t code = layer_code(l, a);
+    PxCode code = layer_code(l, a);
     if (code < 0) return;
     Color col = withA(a->color, a->opacity * 255 / 100);
     if (is_file(a) && !layer_ready(l, a)) return;
@@ -461,7 +461,7 @@ void Layers_DrawGlyph(Layers *l, int i, int ox, int oy, int z)
 int Layers_FoundCount(Layers *l, int i)
 {
     if (l && i >= 0 && i < l->n && is_file(&l->v[i])) {
-        int32_t code = layer_code(l, &l->v[i]);
+        PxCode code = layer_code(l, &l->v[i]);
         return code < 0 || !layer_ready(l, &l->v[i]) ? -1 : FlLayer_InkCount(l->v[i].fl, code, font_px(l));
     }
     const PxGlyph *g = Layers_Glyph(l, i, NULL);
@@ -482,11 +482,10 @@ static bool hov(Rectangle vis, Rectangle r)
     return CheckCollisionPointRec(m, r) && CheckCollisionPointRec(m, vis);
 }
 
-static void code_label(int32_t cp, char *out, size_t n)
+static void code_label(PxCode code, char *out, size_t n)
 {
-    if (px_code_is_uncoded(cp)) { snprintf(out, n, "#%d", cp - PX_CODE_UNCODED_FIRST); return; }
-    if (!px_code_is_codepoint(cp)) { snprintf(out, n, "no code"); return; }
-    snprintf(out, n, "U+%04X", (unsigned)cp);   /* drawn as a glyph caption by Th_TextRich */
+    if (!px_code_is_valid(code)) { snprintf(out, n, "no code"); return; }
+    px_code_label(code, out, (int)n);   /* a code point is drawn as a glyph caption by Th_TextRich */
 }
 
 static void draw_pix(const PxGlyph *g, int sx, int sy, int scale, Color col)
@@ -672,7 +671,7 @@ float Layers_DrawPanel(Layers *l, Rectangle area, Rectangle vis)
             snprintf(line2, sizeof line2, "%s", cl);
         } else {
             snprintf(line1, sizeof line1, "%s", a->fontName);
-            int32_t c = layer_code(l, a);
+            PxCode c = layer_code(l, a);
             char cl[40] = "";
             if (c >= 0) code_label(c, cl, sizeof cl);
             FlPlace pl;
@@ -758,7 +757,7 @@ float Layers_DrawPanel(Layers *l, Rectangle area, Rectangle vis)
                 }
             }
             if (a->fontLevel) {   /* the correction of the edited glyph */
-                int32_t code = l->editedCode;
+                PxCode code = l->editedCode;
                 if (!Th_Section("THIS GLYPH", bxo, &by, rw, NULL)) {
                 } else if (!px_code_is_codepoint(code)) {
                     Th_TextSmall("A glyph without a code point has no corrections.", bxo, by, TH_TEXT_DIM);
@@ -877,8 +876,9 @@ static void refresh_fonts(Layers *l)
     }
 }
 
-/* the code typed in the glyph field: a character, U+0041, 0x41, 41 (hex), #3 (the fourth glyph without a code point) */
-static bool parse_glyph(const char *in, int32_t *out)
+/* the code typed in the glyph field: a character, U+0041, 0x41, 41 (hex), #3 (the fourth glyph without a code point), each with
+ * -V for a variant (px_code_parse_user) */
+static bool parse_glyph(const char *in, PxCode *out)
 {
     char s[40];
     snprintf(s, sizeof s, "%s", in);
@@ -887,13 +887,6 @@ static bool parse_glyph(const char *in, int32_t *out)
     size_t n = strlen(p);
     while (n && p[n - 1] == ' ') p[--n] = 0;
     if (!n) return false;
-    if (p[0] == '#' && n > 1) {
-        char *end;
-        long v = strtol(p + 1, &end, 10);
-        if (*end || v < 0 || v > 0xFFFF) return false;
-        *out = PX_CODE_UNCODED_FIRST + (int32_t)v;
-        return true;
-    }
     int cnt = 0, first = 0;
     for (const char *q = p; *q;) {
         int b = 0;
@@ -903,16 +896,11 @@ static bool parse_glyph(const char *in, int32_t *out)
         cnt++;
         q += b;
     }
-    if (cnt == 1) { *out = first; return px_code_is_codepoint(first); }
-    const char *h = p;
-    if ((h[0] == 'U' || h[0] == 'u') && h[1] == '+') h += 2;
-    else if (h[0] == '0' && (h[1] == 'x' || h[1] == 'X')) h += 2;
-    if (!*h || strlen(h) > 6) return false;
-    for (const char *q = h; *q; q++) if (!((*q >= '0' && *q <= '9') || (*q >= 'a' && *q <= 'f') || (*q >= 'A' && *q <= 'F'))) return false;
-    long v = strtol(h, NULL, 16);
-    if (v < 0 || v > PX_CODE_MAX_CODEPOINT) return false;
-    *out = (int32_t)v;
-    return true;
+    if (cnt == 1) {   /* one character is that character, a hex digit too */
+        *out = px_code_cp(first);
+        return first >= 0 && first <= PX_CODE_MAX_CODEPOINT;
+    }
+    return px_code_parse_user(p, out);
 }
 
 /* a two-letter sample of a library font, in the list */
@@ -927,9 +915,9 @@ static void draw_sample(Layers *l, const char *pxfm, Rectangle r)
     int scale = clampi((int)(r.height - 6) / H, 1, 3);
     int baseY = (int)(r.y + (r.height - H * scale) / 2) + above * scale;
     float x = r.x + 2;
-    static const int32_t codes[2] = {'A', 'g'};
+    const PxCode codes[2] = {px_code_cp('A'), px_code_cp('g')};
     for (int k = 0; k < 2; k++) {
-        int gi = px_font_find(&c->f, codes[k]);
+        int gi = px_font_find_code(&c->f, codes[k]);
         if (gi < 0) continue;
         PxGlyph *g = &c->f.glyphs[gi];
         if (g->lazy) { char err[PX_ERR_LEN] = ""; store_load_glyph_bitmaps(store_main_conn(l->store), &c->f, &codes[k], 1, err); }
@@ -1101,7 +1089,7 @@ void Layers_DrawPopover(Layers *l, Rectangle panel)
 
     /* glyph */
     bool gOpen = Th_Section("GLYPH", x, &y, w, NULL);
-    int32_t code = -1;
+    PxCode code = -1;
     bool codeOk = l->same || fontScope;
     if (!gOpen) {
         if (!codeOk) codeOk = parse_glyph(l->glyphText, &code);

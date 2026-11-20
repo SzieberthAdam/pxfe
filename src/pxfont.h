@@ -1,4 +1,4 @@
-/* pxfont.h - in-memory pixel font model and pxfm (version 2, F-codes) / pxgl / draft (version 3) I/O for pxfe.
+/* pxfont.h - in-memory pixel font model and pxfm (version 3, codes G+CCCCCC-VVV) / pxgl / draft (version 4) I/O for pxfe.
  *
  * Formats: C:/Users/jnsGEzD3/Documents/GitHub/pixelglyphlib/spec/pxfm.md (version 2) and pxgl.md.
  * This module has NO raylib dependency (pure C99 + stdio; Win32 threads for the parallel glyph loader).
@@ -26,23 +26,53 @@
 #define PX_NUM_PIXELS 37
 #define PX_ERR_LEN 512
 
-/* CODES (pxfm.md "Code points").  A glyph's `code` is an int32:
- *   0 .. 0x10FFFF    a code point;
- *   0xF00000 ..      a glyph with no code point: the first such glyph F00000, the next F00001, ... with NO gap
- *                    (up to FFFFFE); the code names the glyph only inside its font;
- *   0xFFFFFF         the default glyph: a glyph of its own (bitmap, offsets, advance), always the last one; it may
- *                    repeat a coded glyph or appear nowhere else in the font (pxfm.md calls such a line "ignored",
- *                    pxfe keeps and shows it).
- * Codes 0x110000 .. 0xEFFFFF do not exist.
- * PX_NO_CODEPOINT (-1) is only the sentinel "none" (no default glyph, glyph not found); it is no glyph's code any more.
- * The UI shows a code point as U+XXXX and an uncoded glyph as #n, n = code - PX_CODE_UNCODED_FIRST. */
-#define PX_NO_CODEPOINT (-1)
+/* CODES (pxfm.md version 3 "Codes").  A glyph's `code` is the 40-bit number of its code `G+CCCCCC-VVV` (pxfm.md "The code
+ * as a number"): the hex digits GCCCCCCVVV, the group 0 for U, A for X and F for I.  So
+ *   U+CCCCCC-VVV   cp << 12 | v          a code point (0 .. 10FFFF) and its variant v (0 the glyph itself, 1 .. FFF the others);
+ *   X+NNNNNN-VVV   0xA000000000 | n << 12 | v
+ *                                        a glyph with no code point (a symbol): the first X+000000-000, the next X+000001-000,
+ *                                        ... with NO gap; a variant only of an index that has variant 0; the code names the
+ *                                        glyph only inside its font;
+ *   I+DEFA00-VVV   0xFDEFA00000 | v      the default glyph (v 0): a glyph of its own (bitmap, offsets, advance), the last one;
+ *                                        it may repeat a coded glyph or appear nowhere else in the font.
+ * The numbers sort as the glyphs are kept in memory: code points, symbols, the default glyph (the file sorts I first).
+ * PX_NO_CODE (-1) is only the sentinel "none" (no default glyph, glyph not found); it is no glyph's code.
+ * The UI shows px_code_label: U+0041, #n for the symbol n, Default; a variant adds "-VVV" (U+0041-001). */
+typedef int64_t PxCode;
+#define PX_NO_CODE ((PxCode)-1)
 #define PX_CODE_MAX_CODEPOINT 0x10FFFF
-#define PX_CODE_UNCODED_FIRST 0xF00000
-#define PX_CODE_DEFAULT 0xFFFFFF
-static inline bool px_code_is_codepoint(int32_t c) { return c >= 0 && c <= PX_CODE_MAX_CODEPOINT; }
-static inline bool px_code_is_uncoded(int32_t c)   { return c >= PX_CODE_UNCODED_FIRST && c < PX_CODE_DEFAULT; }
-static inline bool px_code_is_valid(int32_t c)     { return px_code_is_codepoint(c) || px_code_is_uncoded(c); }
+#define PX_CODE_VARIANT_BITS 12
+#define PX_CODE_VARIANT_MAX 0xFFF
+#define PX_CODE_UNICODE_END ((PxCode)0x1000000000)    /* the codes below are those of the group U */
+#define PX_CODE_UNCODED_FIRST ((PxCode)0xA000000000)  /* X+000000-000 */
+#define PX_CODE_UNCODED_END ((PxCode)0xB000000000)
+#define PX_CODE_DEFAULT ((PxCode)0xFDEFA00000)        /* I+DEFA00-000 */
+#define PX_CODE_TEXT_LEN 13                           /* "G+CCCCCC-VVV" and its NUL */
+static inline PxCode px_code_cp(int32_t cp)           { return (PxCode)cp << PX_CODE_VARIANT_BITS; }    /* U+cp-000 */
+static inline PxCode px_code_symbol(int n)            { return PX_CODE_UNCODED_FIRST | (PxCode)n << PX_CODE_VARIANT_BITS; }
+static inline int    px_code_variant(PxCode c)        { return (int)(c & PX_CODE_VARIANT_MAX); }
+static inline PxCode px_code_base(PxCode c)           { return c & ~(PxCode)PX_CODE_VARIANT_MAX; }     /* variant 0 */
+static inline PxCode px_code_with_variant(PxCode c, int v) { return px_code_base(c) | (PxCode)(v & PX_CODE_VARIANT_MAX); }
+static inline bool px_code_is_codepoint(PxCode c)     { return c >= 0 && c < PX_CODE_UNICODE_END && (c >> PX_CODE_VARIANT_BITS) <= PX_CODE_MAX_CODEPOINT; }
+static inline bool px_code_is_uncoded(PxCode c)       { return c >= PX_CODE_UNCODED_FIRST && c < PX_CODE_UNCODED_END; }
+static inline bool px_code_is_default(PxCode c)       { return px_code_base(c) == PX_CODE_DEFAULT; }   /* the default glyph or a variant of it */
+static inline bool px_code_is_valid(PxCode c)         { return px_code_is_codepoint(c) || px_code_is_uncoded(c) || px_code_is_default(c); }
+/* The code point of a code of the group U (whatever its variant), -1 for any other code. */
+static inline int32_t px_code_codepoint(PxCode c)     { return px_code_is_codepoint(c) ? (int32_t)(c >> PX_CODE_VARIANT_BITS) : -1; }
+/* The index n of a symbol X+n-VVV, -1 for any other code. */
+static inline int    px_code_symbol_index(PxCode c)   { return px_code_is_uncoded(c) ? (int)((c - PX_CODE_UNCODED_FIRST) >> PX_CODE_VARIANT_BITS) : -1; }
+/* "U+000041-000": the code as a pxfm file writes it (out has PX_CODE_TEXT_LEN bytes); false for no valid code. */
+bool px_code_text(PxCode c, char out[PX_CODE_TEXT_LEN]);
+/* Reads "G+CCCCCC-VVV" exactly (upper case, a code point up to 10FFFF, the group I only DEFA00); false if it is not one. */
+bool px_code_parse(const char *s, PxCode *out);
+/* The text of a code in a temporary of the calling expression, for messages: printf("%s", PX_CODE_STR(c)). */
+static inline const char *px_code_str(PxCode c, char *buf) { if (!px_code_text(c, buf)) buf[0] = '?', buf[1] = 0; return buf; }
+#define PX_CODE_STR(c) px_code_str((c), (char[PX_CODE_TEXT_LEN]){0})
+/* The label the UI shows:"U+0041", "#3" (a symbol), "Default", and "-VVV" after it for a variant ("U+0041-001"). */
+void px_code_label(PxCode c, char *out, int n);
+/* What a user types for a code: a label ("U+0041", "u+41", "0x41", "41", "#3", "Default", each with "-VVV" for a variant, such
+ * as "U+0041-1") or the form of the file in either case ("u+000041-001"); spaces around it are ignored.  False if it is none. */
+bool px_code_parse_user(const char *s, PxCode *out);
 
 /* ------------------------------------------------------------------ model */
 
@@ -75,7 +105,7 @@ static inline bool px_code_is_valid(int32_t c)     { return px_code_is_codepoint
  * partly lazy by the loaders: its bitmaps are all loaded at once (colour fonts are small), so the COLORS count and the font's
  * colour list are always exact. */
 typedef struct PxGlyph {
-    union { int32_t code; int32_t codepoint; };  /* the glyph's code (see CODES above); `codepoint` is the old name */
+    PxCode code;          /* the glyph's code (see CODES above) */
     int x, y;              /* bitmap bottom-left corner from the pen position on the baseline, y up */
     int advance;           /* whole pixels */
     int w, h;              /* bitmap size */
@@ -93,7 +123,7 @@ typedef struct PxGlyph {
                               in the font that holds the glyph (a glyph copied into ANOTHER font must be given its palette) */
 } PxGlyph;
 
-typedef struct PxKern { int32_t first, second; int value; } PxKern;
+typedef struct PxKern { PxCode first, second; int value; } PxKern;
 
 /* A palette: its colours in order, 0xRRGGBBAA each (the alpha FF when a hex line has six digits), and the hash of its hex file
  * (spec/hex.md; 32 lower-case hex digits, "" when the colours are no hex palette: a colour twice).  `draw` is the palette
@@ -130,10 +160,10 @@ typedef struct PxFont {
     unsigned palGen;               /* new whenever an index of the table may name another palette (a compaction, a copy) */
     /* cache of px_font_color_list (mutable, rebuilt when the glyphs' palettes changed) */
     uint32_t *clist; int nclist, clistCap; unsigned clistKey; bool clistOk;
-    PxGlyph *glyphs;               /* kept sorted by code (stable): code points, then the uncoded glyphs F00000.., then the default glyph FFFFFF */
+    PxGlyph *glyphs;               /* kept sorted by code (stable): code points, then the symbols X+.., then the default glyph I+DEFA00 */
     int count, capacity;
-    PxKern *kern; int kernCount, kernCap;  /* kerning pairs (codes; an F-code names an uncoded glyph, FFFFFF the default glyph);
-                                              the writer sorts them, drops value 0 and pairs that name an F-code no glyph has */
+    PxKern *kern; int kernCount, kernCap;  /* kerning pairs (codes; an X code names a symbol, I+DEFA00 the default glyph);
+                                              the writer sorts them, drops value 0 and pairs that name an X or I code no glyph has */
     char fileHash[33];             /* hash of the pxfm this font was read from ("" if built in memory) */
 } PxFont;
 
@@ -159,23 +189,28 @@ bool px_font_copy(PxFont *dst, const PxFont *src);      /* deep copy (lazy glyph
 void px_glyph_free(PxGlyph *g);
 bool px_glyph_copy(PxGlyph *dst, const PxGlyph *src);   /* deep copy */
 /* Index of the first glyph with this code (binary search), or -1. */
-int  px_font_find(const PxFont *f, int32_t codepoint);
+int  px_font_find_code(const PxFont *f, PxCode code);
+/* The glyph drawn for a character: that of the code U+cp-000 (not a variant), or -1. */
+static inline int px_font_find_cp(const PxFont *f, int32_t cp) { return cp < 0 ? -1 : px_font_find_code(f, px_code_cp(cp)); }
 int  px_font_add_glyph(PxFont *f, const PxGlyph *g);    /* deep copies g (keeping g->code), inserts in order, returns new index */
-/* Deep copies g and gives it the next code without a code point (F00000 + number of uncoded glyphs); returns its index. */
+/* Deep copies g and gives it the next symbol code X+n-000 (n the number of symbols); returns its index. */
 int  px_font_add_uncoded(PxFont *f, const PxGlyph *g);
-int  px_font_uncoded_count(const PxFont *f);            /* number of glyphs without a code point */
-/* Removes the glyph (the default glyph too).  Its kerning pairs go.  Removing an
- * UNCODED glyph also renumbers the later F-codes (code - 1): the glyphs and their kerning pairs. */
+int  px_font_uncoded_count(const PxFont *f);            /* number of symbols (codes X+n-000, variants not counted) */
+/* The first variant number v > 0 no glyph of base's code has (base | v free), or -1 when all 4095 are taken. */
+int  px_font_free_variant(const PxFont *f, PxCode base);
+/* Removes the glyph (the default glyph too).  Its kerning pairs go.  Removing a SYMBOL X+n-000 also removes its
+ * variants X+n-VVV (a variant of a symbol needs its glyph 0) and renumbers the later symbols (n - 1): the glyphs and
+ * their kerning pairs. */
 void px_font_remove_glyph(PxFont *f, int index);
 void px_font_sort(PxFont *f);                           /* restore order (stable) */
-int  px_font_default_index(const PxFont *f);            /* index of the default glyph (code FFFFFF), or -1 */
-/* Makes glyph `src` the default: its bitmap, offsets and advance are copied into the FFFFFF glyph (made when missing).
+int  px_font_default_index(const PxFont *f);            /* index of the default glyph (code I+DEFA00-000), or -1 */
+/* Makes glyph `src` the default: its bitmap, offsets and advance are copied into the I+DEFA00-000 glyph (made when missing).
  * The copy is independent from then on. */
 bool px_font_set_default_from(PxFont *f, int src);
 /* Set (or, value 0, remove) a kerning pair; keeps pairs unique. */
-void px_font_set_kern(PxFont *f, int32_t first, int32_t second, int value);
-int  px_font_kern(const PxFont *f, int32_t first, int32_t second);   /* 0 if none */
-void px_font_remove_kern_of(PxFont *f, int32_t codepoint);           /* every pair that names it */
+void px_font_set_kern(PxFont *f, PxCode first, PxCode second, int value);
+int  px_font_kern(const PxFont *f, PxCode first, PxCode second);   /* 0 if none */
+void px_font_remove_kern_of(PxFont *f, PxCode code);               /* every pair that names it */
 
 /* The font box: stated ASCENT / DESCENT, else derived from the glyphs: as many rows above the baseline as the
  * highest bitmap reaches (y + h) and below as the lowest reaches (-y), at least 0 (spec "Reading").  The derived
@@ -316,20 +351,21 @@ void px_palettes_free(PxPalette *p, int n);
  * NULL (hash "") when it has no ink or is lazy. */
 char *px_font_glyph_pxgl(const PxFont *f, const PxGlyph *g, size_t *len, char hash[33]);
 
-/* Strict pxfm v2 parsing of a text (the rules of "Errors" in pxfm.md: codes, F-codes without gaps, kerning of F-codes
- * that exist, 110000..EFFFFF rejected, no `-` or `_DEF`, no two glyph lines of one code, COLORS and the palette fields).
- * `where` is only for messages.  Glyphs are lazy, with their palette hashes (the palettes are not read).  A version 1 file
- * gives the error "pxfm version 1 file", a COLOR line (colours before hex palettes) its own error.  Line ORDER is not checked
+/* Strict pxfm v3 parsing of a text (the rules of "Errors" in pxfm.md: codes G+CCCCCC-VVV, symbols X+n-000 without gaps and
+ * their variants only of a symbol that exists, kerning of X and I codes that exist, offsets in two fields, no two glyph lines
+ * of one code, COLORS and the palette fields).  `where` is only for messages.  Glyphs are lazy, with their palette hashes (the
+ * palettes are not read).  A version 1 file gives the error "pxfm version 1 file", a version 2 file (codes of six digits,
+ * offsets "x,y") "pxfm version 2 file", a COLOR line (colours before hex palettes) its own error.  Line ORDER is not checked
  * here (the store builder compares with the writer's text). */
 bool px_parse_pxfm(const char *data, size_t len, const char *where, PxFont *out, char err[PX_ERR_LEN]);
 /* Read a pxfm without loading any bitmap: glyphs keep their hash (lazy).  Sets out->fileHash. */
 bool px_read_pxfm_lines(const char *path, PxFont *out, char err[PX_ERR_LEN]);
-/* Load the bitmaps of the lazy glyphs whose code point is in cps[0..n) from <libRoot>/pxgl (cps NULL: all of
- * them, in parallel when many; a glyph without code point loads only in that case).  Each distinct pxgl file is
+/* Load the bitmaps of the lazy glyphs whose code is in codes[0..n) from <libRoot>/pxgl (codes NULL: all of
+ * them, in parallel when many).  Each distinct pxgl file is
  * read once and checked (ASCII, pixels, equal widths, ink, colours in reading order, hash == file name).  The first call
  * reads the hex palettes the glyph lines name from <libRoot>/palette; a colour font loads every bitmap whatever cps says.
  * When no glyph is lazy any more the colours are checked as the spec says.  Thread-safe with respect to DIFFERENT fonts. */
-bool px_load_glyphs(PxFont *f, const char *libRoot, const int32_t *cps, int n, char err[PX_ERR_LEN]);
+bool px_load_glyphs(PxFont *f, const char *libRoot, const PxCode *codes, int n, char err[PX_ERR_LEN]);
 /* Full read = px_read_pxfm_lines + px_load_glyphs(all).  libRoot NULL: found from the path. */
 bool px_read_pxfm(const char *path, const char *libRoot, PxFont *out, char err[PX_ERR_LEN]);
 
@@ -343,18 +379,18 @@ bool px_save_final(const PxFont *f, const char *libRoot, char hashOut[33], char 
 
 /* ------------------------------------------------------------------ drafts (.pxfd, version 3)
  * Self-contained text file, bitmaps uncropped exactly as edited, no library needed:
- *   PXFEDRAFT	3                     (version 2 drafts, made before the pxtf / F-code change, are refused)
+ *   PXFEDRAFT	4                     (older drafts, of six-digit codes, are refused)
  *   NAME	<display name, pxtf text escapes>
  *   ORIGINALHASH	<original pxfm hash, upper case>          (absent: none)
  *   ORIGINALPXTF	<original pxtf hash>	<variant number>    (absent: a font without typeface)
  *   PXTF	<one line of the duplicated typeface's canonical text, escaped>   (one per line; absent: none)
- *   <metric lines as in pxfm: ASCENT .. XHEIGHT, RATIO, MONOSPACED, SYMBOLIC, KERNING (codes, F-codes allowed)>
+ *   <metric lines as in pxfm: ASCENT .. XHEIGHT, RATIO, MONOSPACED, SYMBOLIC, KERNING (codes G+CCCCCC-VVV)>
  *   COLOR	<pixel>	<RRGGBBAA>       (only in drafts of pxfe 21, its font-wide palette: the glyphs of such a draft are
  *                                    given palettes of their own when it is loaded; the line for '.' is ignored)
  *   PALETTE	<HASH>	<RRGGBBAA,...>  (a palette the glyphs were read with, its colours in order)
  *   DEFAULT	<code>                  (default glyph, absent: none)
  *   DANGLINGDEF	<x,y>	<advance>[	<hash>]
- *   GLYPH	<code, 6 hex digits>	<x>,<y>	<advance>	<w>x<h>	<0|1 asDrawn>[	<HASH of the palette it was read with, or ->[	<RRGGBBAA,...>]]
+ *   GLYPH	<code G+CCCCCC-VVV>	<x>,<y>	<advance>	<w>x<h>	<0|1 asDrawn>[	<HASH of the palette it was read with, or ->[	<RRGGBBAA,...>]]
  *                                   (the last field: the glyph's palette in memory; absent: the default palette)
  *   	<row>  (h rows, tab-indented; none when w==h==0)
  * Glyph blocks keep the glyph array order.  The hashes in a draft are upper case. */

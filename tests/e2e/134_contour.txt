@@ -1,4 +1,4 @@
-# 134. The Contour tool (version 20), font 0820dc69 unlocked, glyph U+0020 (empty, advance 4; font box rows 0..7).
+# 134. The Contour tool (version 20), font 3b52125b unlocked, glyph U+0020 (empty, advance 4; font box rows 0..7).
 # Key C and the strip's Contour: a freehand drag; on the release the path is closed and drawn with the pixel-perfect rule (the corner cells of its Ls go);
 # with Filled the inside too (even-odd).  The drag (0,1) (3,1) (3,6) (0,6) (0,2) has 13 outline cells and 21 filled ones.
 wait 5

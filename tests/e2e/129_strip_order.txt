@@ -1,4 +1,4 @@
-# 129. The order of the tool strip (version 19, extended in version 20), font 0820dc69 unlocked, glyph U+0020.
+# 129. The order of the tool strip (version 19, extended in version 20), font 3b52125b unlocked, glyph U+0020.
 # The shape group reads Line, Curve, Rectangle, Ellipse, Polygon, Contour and the fill group Fill, Eyedropper; the Tool numbers (and so the script names) stay as they were:
 # Pencil 0, Eraser 1, Line 2, Rectangle 3, Fill 4, Marquee 5, Lasso 6, Wand 7, Move 8, Curve 9, Ellipse 10, Eyedropper 11, Polygon 12, Contour 13.  assert etoolslot<N> is the Tool number of the N-th button.
 wait 5

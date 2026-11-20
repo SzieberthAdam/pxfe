@@ -26,7 +26,7 @@ typedef struct Layer {
     int opacity;                 /* 0 .. 100 (percent) */
     int dx, dy;                  /* offset in pixels, y up */
     bool sameCode;               /* follows the code of the edited glyph */
-    int32_t code;                /* the fixed code when !sameCode */
+    PxCode code;                /* the fixed code when !sameCode */
     char pxfm[33];               /* the font of the library, "" = this font */
     char fontName[96];           /* "Family Style" of that font (for the row) */
     FlLayer *fl;                 /* a layer of a file or a font layer of the database (flayers.h); NULL for a plain session layer */
@@ -41,7 +41,7 @@ void    Layers_Destroy(Layers *l);
 /* Per frame (cheap): the store the other fonts come from (NULL: none) and what the editor shows.  `doc` is the font being
  * edited (this font), `editedCode` the code of the edited glyph. */
 void    Layers_SetStore(Layers *l, Store *s);
-void    Layers_SetContext(Layers *l, const PxFont *doc, int32_t editedCode);
+void    Layers_SetContext(Layers *l, const PxFont *doc, PxCode editedCode);
 
 int          Layers_Count(const Layers *l);
 const Layer *Layers_Get(const Layers *l, int i);
@@ -55,7 +55,7 @@ int     Layers_Selected(const Layers *l);
 void    Layers_Nudge(Layers *l, int i, int dx, int dy);
 
 /* Adds a layer on top.  pxfm "" = this font.  sameCode: follow the edited glyph, else `code`.  Returns its index. */
-int     Layers_Add(Layers *l, const char *pxfm, const char *fontName, bool sameCode, int32_t code);
+int     Layers_Add(Layers *l, const char *pxfm, const char *fontName, bool sameCode, PxCode code);
 void    Layers_Remove(Layers *l, int i);          /* not the current glyph */
 void    Layers_Move(Layers *l, int i, int dir);   /* -1 up (towards the top), +1 down */
 

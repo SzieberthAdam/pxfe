@@ -141,13 +141,18 @@ static int KeyByName(const char *n)
 }
 
 /* ---- helpers for commands ---- */
+/* a code of a script: what the clone dialog takes (a character, U+0041, U+0041-1), #n for the n-th glyph without a code point,
+ * default for the default glyph (px_code_parse_user) */
+static bool PlayCode(const char *tok, PxCode *cp)
+{
+    return ParseCodepoint(tok, cp) || px_code_parse_user(tok, cp);
+}
+
 static int GlyphByTok(const char *t)
 {
-    int32_t cp;
-    if (!strcmp(t, "default")) return px_font_default_index(&font);
-    if (t[0] == '#') return px_font_find(&font, PX_CODE_UNCODED_FIRST + atoi(t + 1));   /* #n: the n-th glyph without a code point */
-    if (!ParseCodepoint(t, &cp)) return -2;
-    return px_font_find(&font, cp);
+    PxCode cp;
+    if (!PlayCode(t, &cp)) return -2;
+    return px_font_find_code(&font, cp);
 }
 
 static bool CellCenter(const char *tok, float *x, float *y)
@@ -305,7 +310,6 @@ static bool LayerStat(const char *k, long *v)
         else if (n == 5 && !strncmp(k, "color", 5)) *v = ((long)a->color.r << 16) | ((long)a->color.g << 8) | a->color.b;
         else if (n == 4 && !strncmp(k, "same", 4)) *v = a->sameCode;
         else if (n == 4 && !strncmp(k, "this", 4)) *v = a->pxfm[0] == 0;
-        else if (n == 4 && !strncmp(k, "code", 4)) *v = a->isCurrent ? (long)font.glyphs[Editor_GlyphIndex(ed)].codepoint : (a->sameCode ? (long)font.glyphs[Editor_GlyphIndex(ed)].codepoint : (long)a->code);
         else if (n == 3 && !strncmp(k, "ink", 3)) *v = a->isCurrent ? -2 : Layers_FoundCount(L, i);
         else return false;
     }
@@ -393,7 +397,6 @@ static bool GetInt(const char *name, long *v)
     else if (!strcmp(name, "undo")) *v = undoN;
     else if (!strcmp(name, "redo")) *v = redoN;
     else if (!strcmp(name, "editor")) *v = inEditor;
-    else if (!strcmp(name, "eglyph")) *v = (inEditor && ed && Editor_GlyphIndex(ed) >= 0 && Editor_GlyphIndex(ed) < font.count) ? font.glyphs[Editor_GlyphIndex(ed)].codepoint : -1;   /* the code of the glyph the glyph view shows */
     else if (!strcmp(name, "baseshift")) *v = baseShift;          /* how many rows the baseline was moved up in all (down: negative) */
     else if (!strcmp(name, "inbrowser")) *v = inBrowser && !inFinder;
     else if (!strcmp(name, "nav")) *v = navView;                  /* 0 Typefaces, 1 Typeface, 2 Fonts, 3 Font, 4 Glyph, 5 Glyphs */
@@ -449,8 +452,7 @@ static bool GetInt(const char *name, long *v)
     else if (!strcmp(name, "striph")) *v = SampleStrip_Setting();
     else if (!strcmp(name, "stripcollapsed")) *v = SampleStrip_Collapsed();
     else if (!strcmp(name, "bpending")) *v = browser ? Browser_Pending(browser) : -1;
-    else if (!strcmp(name, "editor_default")) *v = inEditor && ed && Editor_GlyphIndex(ed) < font.count && font.glyphs[Editor_GlyphIndex(ed)].codepoint == PX_CODE_DEFAULT;
-    else if (!strcmp(name, "editor_glyph")) *v = (inEditor && ed && Editor_GlyphIndex(ed) < font.count) ? font.glyphs[Editor_GlyphIndex(ed)].codepoint : -1;
+    else if (!strcmp(name, "editor_default")) *v = inEditor && ed && Editor_GlyphIndex(ed) < font.count && font.glyphs[Editor_GlyphIndex(ed)].code == PX_CODE_DEFAULT;
     else if (!strncmp(name, "l.", 2)) return LayerStat(name + 2, v);
     else if (!strncmp(name, "w.", 2)) { Rectangle wr; *v = Th_RegFind(name + 2, &wr); }          /* assert w.<widget> 0|1: a widget of that name was drawn in the last frame */
     else if (!strcmp(name, "gtab")) *v = glyphTab;                                                   /* tab of the glyph view's right panel: 0 Glyph, 2 Layers, 3 View */
@@ -510,11 +512,23 @@ static bool GetInt(const char *name, long *v)
     return true;
 }
 
-/* a code of a script: what the clone dialog takes, or #n for the n-th glyph without a code point */
-static bool PlayCode(const char *tok, int32_t *cp)
+/* The stats whose value is a glyph code (compared with = or != against a code of PlayCode, 'c for a character, none):
+ * eglyph and editor_glyph, the code of the glyph the glyph view shows; l.code.N, the code layer N draws. */
+static bool CodeStat(const char *name, PxCode *c)
 {
-    if (tok[0] == '#') { *cp = PX_CODE_UNCODED_FIRST + atoi(tok + 1); return true; }
-    return ParseCodepoint(tok, cp);
+    *c = PX_NO_CODE;
+    if (!strcmp(name, "eglyph") || !strcmp(name, "editor_glyph")) {
+        if (inEditor && ed && Editor_GlyphIndex(ed) >= 0 && Editor_GlyphIndex(ed) < font.count) *c = font.glyphs[Editor_GlyphIndex(ed)].code;
+        return true;
+    }
+    if (!strncmp(name, "l.code.", 7)) {
+        Layers *L = ed ? Editor_Layers(ed) : NULL;
+        const Layer *a = L ? Layers_Get(L, atoi(name + 7)) : NULL;
+        if (a && ed && Editor_GlyphIndex(ed) >= 0 && Editor_GlyphIndex(ed) < font.count)
+            *c = a->isCurrent || a->sameCode ? font.glyphs[Editor_GlyphIndex(ed)].code : a->code;
+        return true;
+    }
+    return false;
 }
 
 static bool Compare(long a, const char *op, long b)
@@ -658,6 +672,7 @@ static void DoAssert(char **t, int n)
     const char *k = t[1];
     bool ok = false;
     long v;
+    PxCode cv;
     if (!strcmp(k, "pixel")) {
         /* assert pixel <target|x y> [dx dy] RRGGBB: checked on the screen after the next frame is drawn */
         float x, y;
@@ -693,7 +708,7 @@ static void DoAssert(char **t, int n)
             else if (!strcmp(p, "left") && n >= 5) { ok = g->x == atoi(t[4]); if (!ok) PlayLog("  actual left %d", g->x); }
             else if (!strcmp(p, "top") && n >= 5) { ok = px_glyph_box_row(g, ab) == atoi(t[4]); if (!ok) PlayLog("  actual top (box row) %d", px_glyph_box_row(g, ab)); }
             else if (!strcmp(p, "hash") && n >= 5) { char h[33]; px_glyph_hash(g, h); ok = !strcmp(h, t[4]) || (!strcmp(t[4], "none") && !h[0]); if (!ok) PlayLog("  actual glyph hash %s", h); }
-            else if (!strcmp(p, "origchanged") && n >= 5) { const char *oh = OrigGlyphHash(g->codepoint); char h[33]; px_glyph_hash(g, h); ok = (oh && strcmp(oh, h) != 0) == (atoi(t[4]) != 0); }
+            else if (!strcmp(p, "origchanged") && n >= 5) { const char *oh = OrigGlyphHash(g->code); char h[33]; px_glyph_hash(g, h); ok = (oh && strcmp(oh, h) != 0) == (atoi(t[4]) != 0); }
             else if (!strcmp(p, "size") && n >= 5) { int w = 0, h = 0; sscanf(t[4], "%dx%d", &w, &h); ok = g->w == w && g->h == h; if (!ok) PlayLog("  actual size %dx%d", g->w, g->h); }
             else if (!strcmp(p, "empty")) ok = g->w == 0;
             else if (!strcmp(p, "color") && n >= 7) {   /* assert glyph U+0041 color x y RRGGBB|RRGGBBAA|none: the colour of the pixel (none: '.') */
@@ -738,7 +753,7 @@ static void DoAssert(char **t, int n)
         ok = sg >= 0 && sg < 3 && !strcmp(navText[sg], want);
         if (!ok) PlayLog("  actual segment '%s'", sg >= 0 && sg < 3 ? navText[sg] : "(none)");
     } else if (!strcmp(k, "kern")) {
-        int32_t a, b;
+        PxCode a, b;
         ok = n >= 5 && PlayCode(t[2], &a) && PlayCode(t[3], &b) && px_font_kern(&font, a, b) == atoi(t[4]);
     } else if (!strcmp(k, "title")) {
         char want[200] = "";
@@ -820,7 +835,7 @@ static void DoAssert(char **t, int n)
         /* assert caption <glyph> <text>: the code label the grid draws for the glyph ("U+0041", "#0") */
         int gi = GlyphByTok(t[2]);
         char cl[24] = "";
-        if (gi >= 0) CodeLabel(font.glyphs[gi].codepoint, cl, sizeof cl);
+        if (gi >= 0) CodeLabel(font.glyphs[gi].code, cl, sizeof cl);
         ok = gi >= 0 && n > 3 && !strcmp(cl, t[3]);
         if (!ok) PlayLog("  caption '%s'", cl);
     } else if (!strcmp(k, "codeimg") || !strcmp(k, "codeform") || !strcmp(k, "codeflush")) {
@@ -849,13 +864,14 @@ static void DoAssert(char **t, int n)
     } else if (!strcmp(k, "flayer") || !strcmp(k, "fcorr")) {
         /* assert flayer <i> <field> <value>   a font layer (0 = top of the font layers): kind face visible opacity dx dy scale color size mtime
          *                                     ncorr nfaces outline bitmap ok (numbers), source label err (text; contained)
-         * assert fcorr <i> <code> <field> <value>   its correction for a code (U+0041 or a number): exists dx dy dsize hidden */
+         * assert fcorr <i> <code> <field> <value>   its correction for a code (as PlayCode reads it, U+0041): exists dx dy dsize hidden */
         bool corr = k[1] == 'c';
         int i = n > 2 ? atoi(t[2]) : -1, fa = corr ? 4 : 3;
         FlLayer *fl = flDoc && i >= 0 && i < flDoc->n ? flDoc->v[i] : NULL;
         if (!fl || n <= fa || (n <= fa + 1 && strcmp(t[fa], "exists"))) { PlayLog("  no font layer %d", i); ok = false; }
         else if (corr) {
-            int32_t code = (int32_t)strtol(t[3] + (t[3][0] == 'U' || t[3][0] == 'u' ? 2 : 0), NULL, t[3][0] == 'U' || t[3][0] == 'u' ? 16 : 0);
+            PxCode code = PX_NO_CODE;
+            if (!PlayCode(t[3], &code)) { PLAY_FAIL("bad code '%s'", t[3]); return; }
             const FlCorr *c = FlLayer_Corr(fl, code);
             double have = 0;
             if (!strcmp(t[fa], "exists")) { have = c != NULL; ok = have == (n < fa + 2 || atof(t[fa + 1]) != 0); }
@@ -950,6 +966,12 @@ static void DoAssert(char **t, int n)
         char *a = ReadWhole(t[2], &la), *b = n > 3 ? ReadWhole(t[3], &lb) : NULL;
         ok = a && b && la == lb && memcmp(a, b, (size_t)la) == 0;
         free(a); free(b);
+    } else if (CodeStat(k, &cv)) {
+        const char *op = n >= 4 ? t[2] : "=", *val = n >= 4 ? t[3] : t[2];
+        PxCode want = PX_NO_CODE;
+        bool parsed = !strcmp(val, "none") || (val[0] == '\'' && val[1] && (want = px_code_cp((unsigned char)val[1]), true)) || PlayCode(val, &want);
+        ok = parsed && (!strcmp(op, "!=") ? cv != want : cv == want);
+        if (!ok) { char cl[40]; CodeLabel(cv, cl, sizeof cl); PlayLog("  actual %s = %s", k, cl); }
     } else if (GetInt(k, &v)) {
         const char *op = "=";
         const char *val = t[2];

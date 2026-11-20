@@ -14,7 +14,7 @@ typedef enum {
     INSIGHT_NONE = 0,
     INSIGHT_OPEN_FONT,      /* open target.pxfm read-only, select target.code if it is >= 0 */
     INSIGHT_OPEN_TYPEFACE,  /* open target.pxtf variant target.variant (or its first) read-only */
-    INSIGHT_FIND_CODE       /* open the glyph finder on target.code */
+    INSIGHT_FIND_CODE       /* open the glyph finder on the code point of target.code */
 } InsightAction;
 
 typedef struct InsightTarget {
@@ -22,7 +22,7 @@ typedef struct InsightTarget {
     char pxfm[33];
     char pxtf[33];
     int variant;
-    int32_t code;
+    PxCode code;                /* a glyph code (pxfont.h CODES), -1 none */
 } InsightTarget;
 
 Insight *Insight_Create(Store *store);
@@ -47,8 +47,8 @@ float    Insight_Draw(Insight *in, Rectangle area, int sections, bool *clicked, 
  *   of exactly this single glyph has been delivered; target gets INSIGHT_OPEN_FONT with that font and code. */
 void     Insight_SetVisible(Insight *in, Rectangle visible);
 /* Insight_SetPreferredCode: for a single glyph, clicking a usage row (and BestUsage) selects this code when the font has the
- *   glyph under it (the finder passes its code point), else the first code the font uses the glyph for.  -1 (default): none. */
-void     Insight_SetPreferredCode(Insight *in, int32_t code);
+ *   glyph under it (the finder passes the code of its code point, U+XXXX-000), else the first code the font uses the glyph for.  -1 (default): none. */
+void     Insight_SetPreferredCode(Insight *in, PxCode code);
 /* Insight_SetPalette: the usage thumbnail of a single glyph is drawn in the colours of glyph gi of f (NULL: in the text colour). */
 void     Insight_SetPalette(Insight *in, const PxFont *f, int gi);
 bool     Insight_BestUsage(Insight *in, const char *glyphHash, InsightTarget *target);

@@ -38,7 +38,7 @@ typedef struct Box { int v0, n; } Box;     /* a typeface box: the variants vis[v
 
 typedef struct Card {
     int reqGen, okGen;             /* sample generation requested / known complete in the loader */
-    int32_t wantDefault, defReq;   /* default glyph code point to load as well / already requested, PX_NO_CODEPOINT none */
+    PxCode wantDefault, defReq;    /* default glyph code to load as well / already requested, PX_NO_CODE none */
     bool infoReq;                  /* info-only load requested (filter/sort needs it) */
     unsigned stamp;                /* frame in which the card was last visible */
     const LibFont *layLf;          /* layout validity */
@@ -117,7 +117,7 @@ struct Browser {
 
     /* sample */
     int32_t *sCps; int nS;         /* the sample, in order */
-    int32_t *uCps; int nU;         /* unique, for requests */
+    PxCode *uCps; int nU;          /* their glyph codes, unique, for requests */
     int gen; bool recheck;
     unsigned frame;
 
@@ -262,9 +262,9 @@ static void entry_names(const LibEntry *e, char *fam, size_t fn, char *sty, size
 
 /* ------------------------------------------------------------------------------------------------ sample */
 
-static int cmp_i32(const void *a, const void *b)
+static int cmp_code(const void *a, const void *b)
 {
-    int32_t x = *(const int32_t *)a, y = *(const int32_t *)b;
+    PxCode x = *(const PxCode *)a, y = *(const PxCode *)b;
     return x < y ? -1 : x > y;
 }
 
@@ -276,7 +276,7 @@ static void sample_changed(Browser *b)
     b->nLines = nl > MAX_LINES_B ? MAX_LINES_B : nl;
     int cap = (int)strlen(Sample_Get()) + 1;
     b->sCps = (int32_t *)malloc(sizeof(int32_t) * (size_t)cap);
-    b->uCps = (int32_t *)malloc(sizeof(int32_t) * (size_t)cap);
+    b->uCps = (PxCode *)malloc(sizeof(PxCode) * (size_t)cap);
     b->nS = 0;
     const char *p = Sample_Get();
     while (*p) {
@@ -285,8 +285,8 @@ static void sample_changed(Browser *b)
         p += sz > 0 ? sz : 1;
         if (cp >= 32 && cp != 127) b->sCps[b->nS++] = cp;
     }
-    memcpy(b->uCps, b->sCps, sizeof(int32_t) * (size_t)b->nS);
-    qsort(b->uCps, (size_t)b->nS, sizeof(int32_t), cmp_i32);
+    for (int i = 0; i < b->nS; i++) b->uCps[i] = px_code_cp(b->sCps[i]);
+    qsort(b->uCps, (size_t)b->nS, sizeof(PxCode), cmp_code);
     int o = 0;
     for (int i = 0; i < b->nS; i++) if (o == 0 || b->uCps[o - 1] != b->uCps[i]) b->uCps[o++] = b->uCps[i];
     b->nU = o;
@@ -581,7 +581,7 @@ static void init_cards(Browser *b)
     free_cards(b->cl, b->lib.count);
     b->texCount = 0;
     b->cl = (Card *)calloc((size_t)(b->lib.count + 1), sizeof(Card));
-    for (int i = 0; i < b->lib.count; i++) { b->cl[i].reqGen = b->cl[i].okGen = -1; b->cl[i].wantDefault = b->cl[i].defReq = PX_NO_CODEPOINT; }
+    for (int i = 0; i < b->lib.count; i++) { b->cl[i].reqGen = b->cl[i].okGen = -1; b->cl[i].wantDefault = b->cl[i].defReq = PX_NO_CODE; }
 }
 
 static void scan_all(Browser *b)
@@ -975,11 +975,11 @@ static int card_font(Browser *b, int abs, const PxFont **pf, LibFont **plf)
     *pf = NULL; *plf = NULL;
     if (e->info.failed) return ST_FAILED;
     if (c->okGen != b->gen && (c->reqGen != b->gen || b->recheck)) {
-        int32_t tmp[MAX_SAMPLE + 2];
+        PxCode tmp[MAX_SAMPLE + 2];
         int n = b->nU;
         if (n > MAX_SAMPLE) n = MAX_SAMPLE;
-        memcpy(tmp, b->uCps, sizeof(int32_t) * (size_t)n);
-        if (c->wantDefault != PX_NO_CODEPOINT) tmp[n++] = c->wantDefault;
+        memcpy(tmp, b->uCps, sizeof(PxCode) * (size_t)n);
+        if (c->wantDefault != PX_NO_CODE) tmp[n++] = c->wantDefault;
         bool have = libloader_request(b->loader, e->pxfm, tmp, n);
         c->reqGen = b->gen;
         if (have) c->okGen = b->gen;
@@ -1099,10 +1099,10 @@ static void entry_sample(Browser *b, int abs, Rectangle sbox, Rectangle clip, in
     if (st == ST_READY) {
         if (cd->layLf != lf || cd->layGen != b->gen || cd->layCount != pf->count || (lf && strcmp(cd->layHash, lf->hash) != 0) || (!lf && cd->layLf) || !cd->hasLay)
             layout_build(b, cd, pf, &e->info, lf);
-        if (cd->wantDefault != PX_NO_CODEPOINT && cd->defReq != cd->wantDefault && lf) {
-            int32_t tmp[MAX_SAMPLE + 2];
+        if (cd->wantDefault != PX_NO_CODE && cd->defReq != cd->wantDefault && lf) {
+            PxCode tmp[MAX_SAMPLE + 2];
             int nn = b->nU > MAX_SAMPLE ? MAX_SAMPLE : b->nU;
-            memcpy(tmp, b->uCps, sizeof(int32_t) * (size_t)nn);
+            memcpy(tmp, b->uCps, sizeof(PxCode) * (size_t)nn);
             tmp[nn++] = cd->wantDefault;
             cd->defReq = cd->wantDefault;
             libloader_request(b->loader, e->pxfm, tmp, nn);

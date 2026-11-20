@@ -26,12 +26,12 @@ static int g_pass = 0, g_fail = 0, g_skip = 0;
 #define SKIP(name) do { g_skip++; printf("SKIP  %s\n", name); } while (0)
 
 #define TMP "tests/tmp/pkg"
-#define H_EXAMPLE "0820dc69a21b1cdb3a44d2cff7d884d8"   /* test-sans-regular */
-#define H_NOASC "e6109c134eda8d747bac9a3c2a62d204"     /* test-sans-italic */
-#define H_GREY "408c4d7dd946543f8e9b4553dd1ba62e"      /* a colour font of no typeface */
-#define H_UNC "fa96e3583da8e003fc25404ac00f764e"
-#define T_SANS "b925951bb94de1d15ec27404b3261476"      /* test sans: H_EXAMPLE and H_NOASC */
-#define T_UNC "b5fbcdd0dd5009013337c15e57fa7672"
+#define H_EXAMPLE "3b52125b2e5f6466823baa4fa3186fa0"   /* test-sans-regular */
+#define H_NOASC "4fba4190f6ba7e10b296c7070234e1ce"     /* test-sans-italic */
+#define H_GREY "894ef821e147533c34b39e2131016133"      /* a colour font of no typeface */
+#define H_UNC "54caf68fe9ec18634701a55bfc87b5c0"
+#define T_SANS "8e8c94921267d3c2c72ec93d3b0cf63d"      /* test sans: H_EXAMPLE and H_NOASC */
+#define T_UNC "b7ed69ab357b00edcb64d1160fbf71b4"
 
 static const char *const TABLES[] = {"glyph", "pxfm", "palette", "pxfm_glyph", "pxfm_kerning", "pxtf", "pxtf_variant", "pxtf_field"};
 
@@ -619,7 +619,7 @@ static void test_import(void) {
     {
         sqlite3 *db = store_sqlite(store_main_conn(b));
         char sql[300];
-        snprintf(sql, sizeof sql, "UPDATE glyph SET pixels = replace(replace(replace(pixels, '0', 'x'), '.', '0'), 'x', '.') WHERE hash = (SELECT glyph FROM pxfm_glyph WHERE pxfm = X'%s' AND glyph IS NOT NULL AND code = 65)", H_EXAMPLE);
+        snprintf(sql, sizeof sql, "UPDATE glyph SET pixels = replace(replace(replace(pixels, '0', 'x'), '.', '0'), 'x', '.') WHERE hash = (SELECT glyph FROM pxfm_glyph WHERE pxfm = X'%s' AND glyph IS NOT NULL AND code = 266240)", H_EXAMPLE);
         CHECK(sqlite3_exec(db, sql, NULL, NULL, NULL) == SQLITE_OK && sqlite3_changes(db) == 1, "a glyph row changed under its hash");
     }
     CHECK(!pkg_import(b, TMP "/sans.pxfp", &r, err) && strstr(err, "another content") != NULL, "a package with a file the store has with another content is refused");

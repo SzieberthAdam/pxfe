@@ -101,8 +101,8 @@ typedef struct StoreEntry {
     bool symbolic;                           /* SYMBOLIC: the codes are not the characters' code points */
     int  colors;                             /* pxfm.colors, 1 when NULL (a font of one colour) */
     bool hasRatio; int ratioA, ratioB;
-    int  glyphCount;                         /* glyph lines of the font without the FFFFFF line */
-    bool hasDefault;                         /* has a FFFFFF line */
+    int  glyphCount;                         /* glyph lines of the font without the I+DEFA00-000 line */
+    bool hasDefault;                         /* has an I+DEFA00-000 line */
     int  nVariants;                          /* typefaces' variants naming this font (fonts list) */
 } StoreEntry;
 
@@ -125,9 +125,9 @@ bool store_has_pxtf(StoreConn *c, const char *pxtfHash);
 /* The font of a pxfm hash.  codes NULL: every bitmap is loaded.  Else only the glyphs whose code is in codes[0..n)
  * have bitmaps; the others stay lazy (hash only), exactly as px_read_pxfm_lines + px_load_glyphs(cps) leave them.
  * out->fileHash is set.  false + err when the font is not in the store. */
-bool store_load_font(StoreConn *c, const char *pxfmHash, const int32_t *codes, int ncodes, PxFont *out, char err[PX_ERR_LEN]);
+bool store_load_font(StoreConn *c, const char *pxfmHash, const PxCode *codes, int ncodes, PxFont *out, char err[PX_ERR_LEN]);
 /* Loads the bitmaps of the lazy glyphs of f whose code is in codes (NULL: all lazy ones). */
-bool store_load_glyph_bitmaps(StoreConn *c, PxFont *f, const int32_t *codes, int ncodes, char err[PX_ERR_LEN]);
+bool store_load_glyph_bitmaps(StoreConn *c, PxFont *f, const PxCode *codes, int ncodes, char err[PX_ERR_LEN]);
 /* The text of the file made from the ROWS, as pxfdb.md "Converting the database into the files" says (an
  * implementation independent of PxFont: the test compares it with the files).  malloc'd; len; hash lower-case. */
 char *store_pxfm_text(StoreConn *c, const char *pxfmHash, size_t *len, char hashOut[33]);
@@ -199,7 +199,7 @@ typedef struct StoreDeletePlan {
     PxtfTypeface *newTf;                    /* the rewritten typefaces (parallel to rw) */
     char (*glyphs)[33]; int nGlyphs;        /* pxgl rows the deletion leaves named by no pxfm */
     char (*palettes)[33]; int nPalettes;    /* palette rows the deletion leaves named by no pxfm_glyph */
-    char summary[900];                       /* "1 font, 1 typeface, 14 glyphs; Typeface b925951b loses variant 0002 and is rewritten" */
+    char summary[900];                       /* "1 font, 1 typeface, 14 glyphs; Typeface 8e8c9492 loses variant 0002 and is rewritten" */
 } StoreDeletePlan;
 
 /* The plan of deleting a font / a whole typeface: nothing changes.  The font / typeface must be in memory. */
@@ -215,7 +215,7 @@ void store_counts_text(const StoreCounts *c, char *out, size_t n);
 
 typedef struct StoreUsage {
     char pxfm[33];
-    int32_t code;               /* the code of the glyph line (a code point, or an F-code) */
+    PxCode code;                /* the code of the glyph line (pxfont.h CODES) */
     char pxtf[33];              /* a typeface variant naming the font, "" when none */
     int  variant;
     const char *family, *style; /* of that variant, "" when none */
@@ -223,8 +223,8 @@ typedef struct StoreUsage {
 typedef struct StoreUsageList { StoreUsage *u; int count; void *arena; } StoreUsageList;
 
 /* The fonts and the codes a glyph (pxgl hash) is used for, one row per (font code, typeface variant naming the font;
- * one row with an empty pxtf when none does).  The FFFFFF line of the default glyph is left out when the font has
- * another line with the glyph.  `nFonts`, `nTypefaces` (may be NULL) get the number of distinct fonts and typefaces. */
+ * one row with an empty pxtf when none does).  The lines of the default glyph and its variants (I+DEFA00-VVV) are left out
+ * when the font has another line with the glyph.  `nFonts`, `nTypefaces` (may be NULL) get the number of distinct fonts and typefaces. */
 bool store_glyph_usage(StoreConn *c, const char *glyphHash, StoreUsageList *out, int *nFonts, int *nTypefaces, char err[PX_ERR_LEN]);
 /* The fonts that hold ALL the glyphs hashes[0..n): the browser's entry rows (font list form). */
 bool store_fonts_with_glyphs(StoreConn *c, const char (*hashes)[33], int n, StoreEntryList *out, char err[PX_ERR_LEN]);
@@ -238,8 +238,8 @@ typedef struct StoreCodeGlyph {
     int nFonts;                 /* fonts that use the bitmap for the code point */
 } StoreCodeGlyph;
 typedef struct StoreCodeGlyphList { StoreCodeGlyph *g; int count; } StoreCodeGlyphList;
-/* The distinct bitmaps drawn for a code point (code >= 0x110000 gives none), most fonts first, then by hash. */
-bool store_glyphs_for_code(StoreConn *c, int32_t code, StoreCodeGlyphList *out, char err[PX_ERR_LEN]);
+/* The distinct bitmaps drawn for a code point, its variants too (cp above 10FFFF gives none), most fonts first, then by hash. */
+bool store_glyphs_for_codepoint(StoreConn *c, int32_t cp, StoreCodeGlyphList *out, char err[PX_ERR_LEN]);
 void store_code_glyph_list_free(StoreCodeGlyphList *l);
 
 /* ------------------------------------------------------------------ similarity (src/store_sim.c) */

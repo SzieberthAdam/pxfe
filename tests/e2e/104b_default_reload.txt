@@ -1,4 +1,4 @@
-# 104b. Second process: the database that 104 saved. Its font 897787da has a default glyph (a copy of the x with a bar added) that is last and its own.
+# 104b. Second process: the database that 104 saved. Its font cf58b248 has a default glyph (a copy of the x with a bar added) that is last and its own.
 wait 5
 assert default 1
 assert glyphs 6

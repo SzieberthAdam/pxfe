@@ -1,4 +1,4 @@
-# 6c. A font with no ASCENT/DESCENT (testdata e6109c13): the font box is taken from the glyphs and is never written.
+# 6c. A font with no ASCENT/DESCENT (testdata 4fba4190): the font box is taken from the glyphs and is never written.
 wait 5
 click @Unlock
 wait 4
@@ -77,5 +77,5 @@ assert modal none
 assert saved pxfm
 assert file $SAVEDPXFM contains ASCENT\t6
 assert file $SAVEDPXFM contains DESCENT\t2
-assert file $SAVEDPXFM contains GLYPH\t000041\t-1,0
+assert file $SAVEDPXFM contains GLYPH\tU+000041-000\t6\t-1\t0
 verifylib $SAVEDPXFM tests/tmp/xout 3

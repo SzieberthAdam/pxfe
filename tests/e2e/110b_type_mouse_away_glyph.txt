@@ -1,4 +1,4 @@
-# 110b. The glyph view's fields take typing while the mouse is away from them (font fa96e358, unlocked): the code point and the advance.
+# 110b. The glyph view's fields take typing while the mouse is away from them (font 54caf68f, unlocked): the code point and the advance.
 wait 5
 click @Unlock
 wait 6

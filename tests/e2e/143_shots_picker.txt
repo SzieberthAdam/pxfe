@@ -1,5 +1,5 @@
 # 143. Version 23, screenshots only: the palette bar of a one-colour font ('.', black '0' and '+') and the colour picker in each of its
-# models, on a duplicate of font 0820dc69, glyph U+0048, at 1110x600.
+# models, on a duplicate of font 3b52125b, glyph U+0048, at 1110x600.
 resize 1110 600
 wait 5
 click @Unlock

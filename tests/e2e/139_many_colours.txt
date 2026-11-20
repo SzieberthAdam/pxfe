@@ -1,4 +1,4 @@
-# 139. Version 22: per-glyph palettes (version 23: the palette bar, canonical slots).  Database testdata/lib_many.pxfdb (made by tests\make_testdata.exe), font cd17ae6d of COLORS 40, unlocked.
+# 139. Version 22: per-glyph palettes (version 23: the palette bar, canonical slots).  Database testdata/lib_many.pxfdb (made by tests\make_testdata.exe), font b6a511be of COLORS 40, unlocked.
 # The font has 40 colours, more than one glyph may have (36): A..T have two colours each (A: 20F040 25EB70, B: 2AE6A0 2FE1D0, ...), U and V share
 # A's palette, W (6x6) has 36 colours, one per pixel in reading order (c0 = 20F040 .. c35).
 # Pixel rows are rows of the font box: A, B and U have their top row at row 1, W at row 0.
@@ -133,6 +133,6 @@ wait 3
 assert editor 0
 key s ctrl
 waitfor unsaved == 0 20000
-assert sql "SELECT COUNT(*) FROM pxfm WHERE colors = 40 AND hash <> 'cd17ae6df4a73ab2581ed3fcf3ebf554'" 1
+assert sql "SELECT COUNT(*) FROM pxfm WHERE colors = 40 AND hash <> 'b6a511befd442427c26d8d6dc6033a90'" 1
 assert sql "SELECT COUNT(*) FROM pxfm_glyph WHERE glyph NOTNULL AND palette ISNULL" 0
 assert sql "SELECT COUNT(*) FROM pxfm_glyph WHERE palette NOT IN(SELECT hash FROM palette)" 0

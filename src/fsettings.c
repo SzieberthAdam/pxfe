@@ -17,7 +17,7 @@ struct FSettings {
 
 static const char SCHEMA[] =
 "CREATE TABLE meta (key TEXT PRIMARY KEY, value TEXT NOT NULL) WITHOUT ROWID;\n"
-"INSERT INTO meta VALUES ('format', 'pxfe-settings'), ('schema_version', '3');\n"
+"INSERT INTO meta VALUES ('format', 'pxfe-settings'), ('schema_version', '4');\n"
 "CREATE TABLE layer (id INTEGER PRIMARY KEY AUTOINCREMENT, font TEXT NOT NULL, pos INTEGER NOT NULL, kind INTEGER NOT NULL,\n"
 "  source TEXT NOT NULL, face INTEGER NOT NULL, file_size INTEGER NOT NULL, file_mtime INTEGER NOT NULL, scale REAL NOT NULL,\n"
 "  dx REAL NOT NULL, dy REAL NOT NULL, r INTEGER NOT NULL, g INTEGER NOT NULL, b INTEGER NOT NULL, opacity INTEGER NOT NULL,\n"
@@ -226,6 +226,21 @@ FSettings *fs_open(const char *path, char err[FS_ERR_LEN]) {
         /* version 2 -> 3: the lock of fonts and typefaces (DESIGN.md "Locks") */
         if (!exec(fs, "CREATE TABLE IF NOT EXISTS unlocked (kind INTEGER NOT NULL, hash TEXT NOT NULL, PRIMARY KEY (kind, hash)) WITHOUT ROWID;"
                       "UPDATE meta SET value='3' WHERE key='schema_version';")) {
+            if (err) snprintf(err, FS_ERR_LEN, "%.100s: cannot upgrade the settings: %.100s", path, fs->err);
+            fs_close(fs);
+            return NULL;
+        }
+    }
+    if (pr == PROBE_OK && query_int(fs, prep(fs, "SELECT value FROM meta WHERE key='schema_version'"), 0) < 4) {
+        /* version 3 -> 4: the codes of the corrections become those of pxfm version 3 (pxfont.h CODES): a code point cp is cp << 12,
+         * the glyph F00000 + n without one the symbol X+n-000, FFFFFF the default glyph I+DEFA00-000 */
+        if (!exec(fs, "CREATE TEMP TABLE c4 AS SELECT font, layer, CASE WHEN code = 16777215 THEN 1090646966272"
+                      " WHEN code >= 15728640 THEN 687194767360 + ((code - 15728640) << 12) ELSE code << 12 END AS code,"
+                      " dx, dy, dsize, hidden FROM correction;"
+                      "DELETE FROM correction;"
+                      "INSERT INTO correction SELECT * FROM c4;"
+                      "DROP TABLE c4;"
+                      "UPDATE meta SET value='4' WHERE key='schema_version';")) {
             if (err) snprintf(err, FS_ERR_LEN, "%.100s: cannot upgrade the settings: %.100s", path, fs->err);
             fs_close(fs);
             return NULL;
@@ -603,11 +618,11 @@ bool fs_rename_typeface(FSettings *fs, const char *from, const char *to) {
 
 /* ------------------------------------------------------------------ corrections */
 
-bool fs_get_correction(FSettings *fs, int layerId, int32_t code, FsCorrection *out) {
+bool fs_get_correction(FSettings *fs, int layerId, PxCode code, FsCorrection *out) {
     sqlite3_stmt *st = prep(fs, "SELECT dx,dy,dsize,hidden FROM correction WHERE layer=? AND code=?");
     if (!st) return false;
     sqlite3_bind_int(st, 1, layerId);
-    sqlite3_bind_int(st, 2, code);
+    sqlite3_bind_int64(st, 2, code);
     bool found = sqlite3_step(st) == SQLITE_ROW;
     if (found && out) {
         out->dx = (float)sqlite3_column_double(st, 0);
@@ -619,13 +634,13 @@ bool fs_get_correction(FSettings *fs, int layerId, int32_t code, FsCorrection *o
     return found;
 }
 
-bool fs_set_correction(FSettings *fs, int layerId, int32_t code, const FsCorrection *c) {
+bool fs_set_correction(FSettings *fs, int layerId, PxCode code, const FsCorrection *c) {
     sqlite3_stmt *st;
     if (is_default(c)) {
         st = prep(fs, "DELETE FROM correction WHERE layer=? AND code=?");
         if (!st) return false;
         sqlite3_bind_int(st, 1, layerId);
-        sqlite3_bind_int(st, 2, code);
+        sqlite3_bind_int64(st, 2, code);
         if (!finish(fs, st)) return false;
         if (sqlite3_changes(fs->db) > 0) fs->gen++;
         return true;
@@ -633,7 +648,7 @@ bool fs_set_correction(FSettings *fs, int layerId, int32_t code, const FsCorrect
     if (!(c->dsize > 0.0f)) return seterr(fs, "dsize must be > 0");
     st = prep(fs, "INSERT OR REPLACE INTO correction SELECT font,id,?,?,?,?,? FROM layer WHERE id=?");
     if (!st) return false;
-    sqlite3_bind_int(st, 1, code);
+    sqlite3_bind_int64(st, 1, code);
     sqlite3_bind_double(st, 2, c->dx);
     sqlite3_bind_double(st, 3, c->dy);
     sqlite3_bind_double(st, 4, c->dsize);
@@ -645,13 +660,13 @@ bool fs_set_correction(FSettings *fs, int layerId, int32_t code, const FsCorrect
     return true;
 }
 
-int fs_list_corrections(FSettings *fs, int layerId, int32_t *codes, int max) {
+int fs_list_corrections(FSettings *fs, int layerId, PxCode *codes, int max) {
     sqlite3_stmt *st = prep(fs, "SELECT code FROM correction WHERE layer=? ORDER BY code");
     if (!st) return -1;
     sqlite3_bind_int(st, 1, layerId);
     int n = 0;
     while (sqlite3_step(st) == SQLITE_ROW) {
-        if (codes && n < max) codes[n] = (int32_t)sqlite3_column_int(st, 0);
+        if (codes && n < max) codes[n] = (PxCode)sqlite3_column_int64(st, 0);
         n++;
     }
     sqlite3_finalize(st);

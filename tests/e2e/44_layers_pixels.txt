@@ -1,5 +1,5 @@
 # 44. What the layers draw on the canvas, pixel exact: colour, opacity, offset, order against the current glyph, and the hidden
-# current glyph (editing blocked).  Duplicate of 0820dc69, glyph U+0020 (empty, advance 4); the layer is x (its row above the
+# current glyph (editing blocked).  Duplicate of 3b52125b, glyph U+0020 (empty, advance 4); the layer is x (its row above the
 # baseline is "0...0": cells (0,5) and (4,5)); the box rows 0..7, the pen at column 0.
 wait 5
 click @Unlock

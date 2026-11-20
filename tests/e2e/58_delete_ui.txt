@@ -1,6 +1,6 @@
 # 58. The delete buttons of the browser's side panel (red, under Open and Duplicate to Edit), end to end: confirmation, Cancel,
 # deleting a variant's font (the typeface is rewritten), a whole typeface, and a font of the Fonts tab (testdata/lib: typeface
-# b925951b with two variants, b5fbcdd0 with one; four fonts).
+# 8e8c9492 with two variants, b7ed69ab with one; four fonts).
 wait 8
 assert inbrowser 1
 assert w.Delete_Font 0

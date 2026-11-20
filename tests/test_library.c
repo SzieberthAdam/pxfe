@@ -317,7 +317,8 @@ int main(int argc, char **argv) {
         printf("E. store_list_typefaces: %d variants in %.3f s; store_list_fonts: %d fonts in %.3f s\n", tl.count, a, fl.count, now() - t0);
 
         /* a selected-codes load of every font (what the browser does) */
-        int32_t sample[] = {0x48, 0x61, 0x6D, 0x62, 0x75, 0x72, 0x67, 0x65, 0x66, 0x6F, 0x6E, 0x74, 0x73, 0x69, 0x76};
+        PxCode sample[15];
+        for (int i = 0; i < 15; i++) sample[i] = px_code_cp((unsigned char)"Hamburgefontsiv"[i]);
         t0 = now();
         for (int i = 0; i < fl.count; i++) {
             PxFont f;
@@ -327,8 +328,8 @@ int main(int argc, char **argv) {
 
         t0 = now();
         StoreCodeGlyphList cg;
-        store_glyphs_for_code(c, 0x65, &cg, err);
-        printf("E. store_glyphs_for_code(U+0065): %d distinct bitmaps in %.4f s, the first used by %d fonts\n", cg.count, now() - t0, cg.count ? cg.g[0].nFonts : 0);
+        store_glyphs_for_codepoint(c, 0x65, &cg, err);
+        printf("E. store_glyphs_for_codepoint(U+0065): %d distinct bitmaps in %.4f s, the first used by %d fonts\n", cg.count, now() - t0, cg.count ? cg.g[0].nFonts : 0);
         if (cg.count) {
             StoreUsageList ul;
             int nf, nt;

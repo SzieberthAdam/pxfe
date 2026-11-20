@@ -15,7 +15,7 @@ static int nextSerial = 1;
 
 typedef struct CacheEnt {
     int serial, key;
-    int32_t code;
+    PxCode code;
     Texture2D tex;        /* id 0: a blank glyph (nothing to draw), kept so that it is not rasterised again */
     int left, top, w, h;
     unsigned long used;
@@ -45,7 +45,7 @@ void FlCache_Clear(void) { for (int i = 0; i < FL_CACHE_N; i++) ent_free(&cache[
 
 static void cache_drop(int serial) { for (int i = 0; i < FL_CACHE_N; i++) if (cache[i].live && cache[i].serial == serial) ent_free(&cache[i]); }
 
-static CacheEnt *cache_find(int serial, int32_t code, int key)
+static CacheEnt *cache_find(int serial, PxCode code, int key)
 {
     for (int i = 0; i < FL_CACHE_N; i++) {
         CacheEnt *c = &cache[i];
@@ -153,7 +153,7 @@ bool FlDoc_Load(FlDoc *d, FSettings *fs, const char *hash)
         FlLayer *l = FlLayer_New(&all[i]);
         if (!l) return false;
         int nc = fs_list_corrections(fs, all[i].id, NULL, 0);
-        int32_t *codes = nc > 0 ? (int32_t *)malloc(sizeof(int32_t) * (size_t)nc) : NULL;
+        PxCode *codes = nc > 0 ? (PxCode *)malloc(sizeof(PxCode) * (size_t)nc) : NULL;
         if (nc > 0 && !codes) { FlLayer_Free(l); return false; }
         if (nc > 0) { int got = fs_list_corrections(fs, all[i].id, codes, nc); if (got < nc) nc = got; }
         for (int k = 0; k < nc; k++) {
@@ -190,7 +190,7 @@ bool FlDoc_Store(const FlDoc *d, FSettings *fs, const char *hash)
 
 /* ------------------------------------------------------------------ corrections and placement */
 
-const FlCorr *FlLayer_Corr(const FlLayer *l, int32_t code)
+const FlCorr *FlLayer_Corr(const FlLayer *l, PxCode code)
 {
     int lo = 0, hi = l->ncorr;
     while (lo < hi) {
@@ -200,7 +200,7 @@ const FlCorr *FlLayer_Corr(const FlLayer *l, int32_t code)
     return (lo < l->ncorr && l->corr[lo].code == code) ? &l->corr[lo] : NULL;
 }
 
-void FlLayer_SetCorr(FlLayer *l, int32_t code, const FlCorr *c)
+void FlLayer_SetCorr(FlLayer *l, PxCode code, const FlCorr *c)
 {
     bool def = c->dx == 0 && c->dy == 0 && c->dsize == 1.0f && !c->hidden;
     int lo = 0, hi = l->ncorr;
@@ -234,7 +234,7 @@ int fl_bitmap_k(float scale)
     return k < 1 ? 1 : (k > FL_MAX_K ? FL_MAX_K : k);
 }
 
-void FlLayer_Place(const FlLayer *l, int32_t code, FlPlace *out)
+void FlLayer_Place(const FlLayer *l, PxCode code, FlPlace *out)
 {
     const FlCorr *c = FlLayer_Corr(l, code);
     out->dx = l->s.dx + (c ? c->dx : 0);
@@ -262,7 +262,7 @@ void FlLayer_FitParams(const FlLayer *l, int fontPx, FitParams *out)
     out->mode = l->s.mode ? FIT_PIXEL : FIT_SMOOTH;
 }
 
-bool FlLayer_FitCorr(const FlLayer *l, int32_t code, FitCorr *out)
+bool FlLayer_FitCorr(const FlLayer *l, PxCode code, FitCorr *out)
 {
     const FlCorr *c = FlLayer_Corr(l, code);
     out->dx = c ? c->dx : 0;
@@ -271,7 +271,7 @@ bool FlLayer_FitCorr(const FlLayer *l, int32_t code, FitCorr *out)
     return c != NULL;
 }
 
-float FlLayer_Shift(FlLayer *l, int32_t code, int fontPx)
+float FlLayer_Shift(FlLayer *l, PxCode code, int fontPx)
 {
     if (!l->s.follow || l->s.mode || l->s.kind != 1 || l->state != FL_OK || !l->outline || !(l->s.em > 0)) return 0;
     FitParams p;
@@ -281,7 +281,7 @@ float FlLayer_Shift(FlLayer *l, int32_t code, int fontPx)
     if (l->snap.valid && l->snap.code == code && !memcmp(&l->snap.p, &p, sizeof p) && !memcmp(&l->snap.c, &c, sizeof c)) return l->snap.shift;
     FitBitmap b;
     float shift = 0;
-    int gi = outline_glyph_index(l->ol, code);
+    int gi = outline_glyph_index(l->ol, px_code_codepoint(code));
     if (gi > 0 && fit_render_shift(l->ol, gi, &p, &c, &b, &shift) == 0) fit_bitmap_free(&b);
     else shift = 0;
     l->snap.valid = true;
@@ -444,36 +444,36 @@ void FlLayer_Label(FlLayer *l, char *out, int n)
 
 static bool gate(FlLayer *l) { return l->s.kind == 1 && FlLayer_Ready(l); }
 
-int FlLayer_Has(FlLayer *l, int32_t code, int fontPx)
+int FlLayer_Has(FlLayer *l, PxCode code, int fontPx)
 {
     (void)fontPx;
     if (!gate(l)) return -1;
     if (l->outline) {
-        int gi = outline_glyph_index(l->ol, code);
+        int gi = outline_glyph_index(l->ol, px_code_codepoint(code));
         if (gi <= 0) return -1;
         int left, top, w, h;
         float adv;
         if (outline_glyph_bbox(l->ol, gi, 16.0f, 0, 0, &left, &top, &w, &h, &adv, NULL, 0) != 0) return 0;
         return w * h > 0;
     }
-    const BmGlyph *g = bm_find(l->bm, l->strike, code);
+    const BmGlyph *g = bm_find(l->bm, l->strike, px_code_codepoint(code));
     if (!g) return -1;
     return g->w * g->h > 0;
 }
 
-int FlLayer_InkCount(FlLayer *l, int32_t code, int fontPx)
+int FlLayer_InkCount(FlLayer *l, PxCode code, int fontPx)
 {
     if (!gate(l)) return -1;
     int n = 0;
     if (l->outline) {
-        if (outline_glyph_index(l->ol, code) <= 0) return -1;
+        if (outline_glyph_index(l->ol, px_code_codepoint(code)) <= 0) return -1;
         OutlineBitmap b;
-        if (outline_rasterize(l->ol, code, (float)(fontPx < 1 ? 16 : fontPx), 0, 0, &b, NULL, 0) != OUTLINE_OK) return -1;
+        if (outline_rasterize(l->ol, px_code_codepoint(code), (float)(fontPx < 1 ? 16 : fontPx), 0, 0, &b, NULL, 0) != OUTLINE_OK) return -1;
         for (int i = 0; b.pix && i < b.w * b.h; i++) n += b.pix[i] >= 128;
         outline_bitmap_free(&b);
         return n;
     }
-    const BmGlyph *g = bm_find(l->bm, l->strike, code);
+    const BmGlyph *g = bm_find(l->bm, l->strike, px_code_codepoint(code));
     if (!g) return -1;
     for (int i = 0; g->pix && i < g->w * g->h; i++) n += g->pix[i] != 0;
     return n;
@@ -493,7 +493,7 @@ static Texture2D make_texture(const OutlineBitmap *b)
     return t;
 }
 
-static void draw_outline(FlLayer *l, int32_t code, int ox, int oy, int z, int fontPx, const FlPlace *p, Color tint)
+static void draw_outline(FlLayer *l, PxCode code, int ox, int oy, int z, int fontPx, const FlPlace *p, Color tint)
 {
     float em = FlLayer_Em(l, fontPx, p) * (float)z, aspect = l->s.aspect > 0 ? l->s.aspect : 1.0f;
     if (em < 1.0f || em > FL_MAX_EM || em * aspect < 1.0f || em * aspect > FL_MAX_EM) return;
@@ -503,7 +503,7 @@ static void draw_outline(FlLayer *l, int32_t code, int ox, int oy, int z, int fo
     if (!c) {
         OutlineBitmap b;
         memset(&b, 0, sizeof b);
-        int gi = outline_glyph_index(l->ol, code);
+        int gi = outline_glyph_index(l->ol, px_code_codepoint(code));
         int rc = gi > 0 ? outline_rasterize_glyph_xy(l->ol, gi, (float)emKey / 8.0f * aspect, (float)emKey / 8.0f, 0, 0, &b, NULL, 0) : OUTLINE_MISSING;
         long pix = rc == OUTLINE_OK ? (long)b.w * b.h : 0;
         c = cache_slot(pix);
@@ -526,9 +526,9 @@ static void draw_outline(FlLayer *l, int32_t code, int ox, int oy, int z, int fo
     DrawTexture(c->tex, ox + (int)lroundf((p->dx + shift) * (float)z) + c->left, oy - (int)lroundf(p->dy * (float)z) - c->top, tint);
 }
 
-static void draw_bitmap(FlLayer *l, int32_t code, int ox, int oy, int z, const FlPlace *p, Color tint)
+static void draw_bitmap(FlLayer *l, PxCode code, int ox, int oy, int z, const FlPlace *p, Color tint)
 {
-    const BmGlyph *g = bm_find(l->bm, l->strike, code);
+    const BmGlyph *g = bm_find(l->bm, l->strike, px_code_codepoint(code));
     if (!g || !g->pix || g->w <= 0 || g->h <= 0) return;
     int k = (int)p->scale, cell = k * z;
     int x0 = ox + (int)lroundf(p->dx) * z + g->x * cell;
@@ -546,9 +546,9 @@ static void draw_bitmap(FlLayer *l, int32_t code, int ox, int oy, int z, const F
         }
 }
 
-void FlLayer_Draw(FlLayer *l, int32_t code, int ox, int oy, int z, int fontPx, const FlPlace *p, Color tint)
+void FlLayer_Draw(FlLayer *l, PxCode code, int ox, int oy, int z, int fontPx, const FlPlace *p, Color tint)
 {
-    if (!gate(l) || p->hidden || code < 0 || code > 0x10FFFF) return;
+    if (!gate(l) || p->hidden || px_code_codepoint(code) < 0) return;   /* a variant is drawn from the glyph of its code point */
     if (l->outline) draw_outline(l, code, ox, oy, z, fontPx, p, tint);
     else draw_bitmap(l, code, ox, oy, z, p, tint);
 }

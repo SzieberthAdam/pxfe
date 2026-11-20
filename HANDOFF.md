@@ -23,11 +23,11 @@ The files of `handoff/` are old agent reports, kept for history.
 - The agents work only on copies under `tests/tmp/` and on `testdata/`.
 - Every text file is LF; only the `.bat` files are CRLF on disk, because cmd needs it (`.gitattributes` enforces this; a `.bat` saved as LF breaks `call :label`).
 - The scripts run fast: two clicks on one spot within 0.4 s are a double click, and a click right after a layout change needs `wait 6`.
-- A single script is run like this, after copying `testdata\lib.pxfdb` to `tests\tmp\e2e.pxfdb`: `tests\tmp\pxfe_e2e.exe tests\tmp\e2e.pxfdb --font 0820dc69a21b1cdb3a44d2cff7d884d8 --ini tests\tmp\e2e.ini --play tests\e2e\98_fl_locked.txt`.
+- A single script is run like this, after copying `testdata\lib.pxfdb` to `tests\tmp\e2e.pxfdb`: `tests\tmp\pxfe_e2e.exe tests\tmp\e2e.pxfdb --font 3b52125b2e5f6466823baa4fa3186fa0 --ini tests\tmp\e2e.ini --play tests\e2e\98_fl_locked.txt`.
   The script commands are in [tests/e2e/README.md](tests/e2e/README.md).
 - Every script that edits starts with `click @Unlock`; tools are pressed as `key b shift`, palette slots as `type 3` (slot keys come from `GetCharPressed`, in the e2e build `Play_GetChar`).
 - Shot scripts (60, 62, 64 to 69, 100, 123, 142, 143) are not in `run_all.bat`; they write under `tests\tmp` and run a copy of the executable so a build is never blocked by an open window.
-- `testdata` is made by `tests/make_testdata.exe`; `lib_colors.pxfdb` has real colour fonts, `lib_many.pxfdb` a font of 40 colours (`cd17ae6d…`).
+- `testdata` is made by `tests/make_testdata.exe`; `lib_colors.pxfdb` has real colour fonts, `lib_many.pxfdb` a font of 40 colours (`b6a511be…`).
 - Script 28 has failed once in a full run and passed alone (a timing flake).
 
 ## Design system
@@ -42,8 +42,10 @@ The files of `handoff/` are old agent reports, kept for history.
 
 ## The font model
 
-- `src/pxfont.c` and `.h`: the font, glyphs, the reader and writer of the pixelglyphlib formats (spec commit 5dd97ca2c4), drafts (`px_save_draft`, `px_load_draft`: unused by the application, still tested by `test_pxtf.c`).
-- The default glyph is a glyph of its own with code `FFFFFF`: `px_font_default_index`, `px_font_set_default_from`.
+- `src/pxfont.c` and `.h`: the font, glyphs, the reader and writer of the pixelglyphlib formats (pxfm version 3: the spec working tree after commit 5dd97ca2c4), drafts (`px_save_draft`, `px_load_draft`: unused by the application, still tested by `test_pxtf.c`).
+- Codes are `PxCode` (`int64_t`, the number `GCCCCCCVVV` of the spec): `px_code_cp`, `px_code_symbol`, `px_code_variant`, `px_code_text`, `px_code_parse`, `px_code_label`, `px_code_parse_user`, `px_font_find_code`, `px_font_find_cp`, `px_font_free_variant`.
+  Version 2 texts, version 2 and 3 drafts and a pxfdb with version 2 codes are refused with a message.
+- The default glyph is a glyph of its own with code `I+DEFA00-000` (`PX_CODE_DEFAULT`): `px_font_default_index`, `px_font_set_default_from`.
 - `SYMBOLIC`: the Symbolic switch in `src/panel.inc`, the tag in `src/browser.c`, `outline_symbolic` and `BmStrikeInfo.symbolic` set it on import.
 - Tests: `test_pxfont.c`, `104_default_glyph`, `104b_default_reload`, `138_symbolic`.
 
@@ -62,7 +64,7 @@ The files of `handoff/` are old agent reports, kept for history.
 - A pxfdb made before hex palettes is refused on open ("made by an older pixelglyphlib … rebuild it"); in `pixelglyphlib`, `pxfdb.pxfdb` opens and the two `pxfdb-with*-symbols.pxfdb` are refused.
 - New Database (`store_create`, `NewDatabase` in main.c): an empty store with no file (path ""), titled "Untitled"; `SaveDb` turns into Save As for it; script 07f.
 - `src/main.c`: the menu items, the Save button, the title and status bar markers, the Save / Discard / Cancel prompts, the export dialog (Append, Overwrite, backup).
-- `src/fsettings.c`: the sidecar `<db>-settings` (SQLite, schema 3: `layer`, `correction`, `unlocked`; schema 1 and 2 are upgraded on open).
+- `src/fsettings.c`: the sidecar `<db>-settings` (SQLite, schema 4: `layer`, `correction` by `PxCode`, `unlocked`; schema 1 to 3 are upgraded on open).
   Save writes it (alone when only settings changed); Save As writes a new one; Import starts empty; Export does not touch it; with nothing to keep it is not written and an old one is deleted.
 - Save runs on the UI thread; on the real library it freezes the window for the length of `TRACE saveas`.
 - SQLite gets Windows ANSI paths; a path with characters outside the code page is not supported.

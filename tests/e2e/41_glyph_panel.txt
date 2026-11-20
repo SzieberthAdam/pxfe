@@ -1,5 +1,5 @@
 # 41. The glyph view's right panel: tabs View | Glyph | Layers (no Font, Typeface, Similar), the full glyph hashes
-# (click copies), the usage of the glyph (with its code), Find in Library.  Font 0820dc69, glyph A.
+# (click copies), the usage of the glyph (with its code), Find in Library.  Font 3b52125b, glyph A.
 wait 5
 click @cell:U+0041
 key enter

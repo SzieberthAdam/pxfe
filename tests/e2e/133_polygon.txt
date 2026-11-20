@@ -1,4 +1,4 @@
-# 133. The Polygon tool (version 20), font 0820dc69 unlocked, glyph U+0020 (empty, advance 4; font box rows 0..7).
+# 133. The Polygon tool (version 20), font 3b52125b unlocked, glyph U+0020 (empty, advance 4; font box rows 0..7).
 # Key D and the strip's Polygon; a click adds a vertex; Enter, a click on the last vertex again (a double click) or a click on the first vertex closes it;
 # Esc cancels, Backspace takes the last vertex back; Shift makes each edge a clean angle; Filled adds the inside (even-odd); the right button draws '.'.
 # The triangle (0,0) (3,0) (3,3) has 9 outline cells (the top row, the right column, the diagonal) and 10 cells when filled.

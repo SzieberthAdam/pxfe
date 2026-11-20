@@ -1,4 +1,4 @@
-# 104. The default glyph (FFFFFF) is a glyph of its own, always the last in the grid (testdata font 0820dc69: A, H, M, x, comma, space and a default that copies the space).
+# 104. The default glyph (FFFFFF) is a glyph of its own, always the last in the grid (testdata font 3b52125b: A, H, M, x, comma, space and a default that copies the space).
 wait 5
 click @Unlock
 wait 4
@@ -114,5 +114,5 @@ key s ctrl
 wait 12
 assert unsaved 0
 assert toast Saved e2e.pxfdb
-assert sqlfile tests/tmp/e2e.pxfdb "select count(*) from pxfm_glyph where code = 16777215" 2
-assert sqlfile tests/tmp/e2e.pxfdb "select count(*) from pxfm_glyph where code=16777215 and glyph not in (select glyph from pxfm_glyph where code<>16777215 and glyph>0)" 1
+assert sqlfile tests/tmp/e2e.pxfdb "select count(*) from pxfm_glyph where code = 1090646966272" 2
+assert sqlfile tests/tmp/e2e.pxfdb "select count(*) from pxfm_glyph where code=1090646966272 and glyph not in (select glyph from pxfm_glyph where code<>1090646966272 and glyph>0)" 1

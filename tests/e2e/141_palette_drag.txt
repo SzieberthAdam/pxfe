@@ -1,4 +1,4 @@
-# 141. Version 23: the font's other colours in the palette bar, on testdata/lib_many.pxfdb, font cd17ae6d of COLORS 40, unlocked
+# 141. Version 23: the font's other colours in the palette bar, on testdata/lib_many.pxfdb, font b6a511be of COLORS 40, unlocked
 # (A: 20F040 25EB70; W: 36 colours, one per pixel in reading order, so its slot i is the colour of pixel i, row 0 holds slots 0-5).
 # A colour of the font dragged onto a slot replaces that slot's colour, also in a glyph of 36 colours; dropped onto '+' it is added as
 # an unused slot; each is one undo step.  A locked font lets the ink be picked and changes nothing.

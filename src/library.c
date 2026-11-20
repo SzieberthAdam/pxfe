@@ -251,10 +251,12 @@ static bool draft_quick(const char *path, Library *lib, LibEntry *e, char err[PX
         if (ll && line[ll - 1] == '\r') line[--ll] = 0;
         if (!ll || line[0] == '\t') continue;           /* bitmap rows */
         if (!header) {
-            if (strcmp(line, "PXFEDRAFT\t3") != 0) {
-                bool v2 = strcmp(line, "PXFEDRAFT\t2") == 0;
+            if (strcmp(line, "PXFEDRAFT\t4") != 0) {
+                bool old = strcmp(line, "PXFEDRAFT\t2") == 0 || strcmp(line, "PXFEDRAFT\t3") == 0;
+                char ver = old ? line[10] : '?';
                 free(raw); free(ctext);
-                return fail(err, v2 ? "%s: a version 2 draft (made before the pxtf / F-code change); version 3 drafts only" : "%s: not a version 3 draft", path);
+                return old ? fail(err, "%s: a version %c draft of an older pxfe (before the codes of pxfm version 3); version 4 drafts only", path, ver)
+                           : fail(err, "%s: not a version 4 draft", path);
             }
             header = true;
             continue;
@@ -293,7 +295,7 @@ static bool draft_quick(const char *path, Library *lib, LibEntry *e, char err[PX
         else if (strcmp(line, "SYMBOLIC") == 0) in->symbolic = true;
         else if (strncmp(line, "GLYPH\t", 6) == 0) {
             int x, y, w, h;
-            if (strncmp(line + 6, "FFFFFF", 6) != 0) in->glyphCount++;
+            if (strncmp(line + 6, "I+DEFA00-000", 12) != 0) in->glyphCount++;
             const char *q = strchr(line + 6, '\t');    /* after the code */
             if (q && sscanf(q + 1, "%d,%d\t%*d\t%dx%d", &x, &y, &w, &h) == 4 && w > 0 && h > 0) {
                 if (y + h > ga) ga = y + h;
@@ -362,8 +364,8 @@ bool library_scan_drafts(const char *dir, Library *lib, char err[PX_ERR_LEN]) {
 
 /* ------------------------------------------------------------------ loader */
 
-typedef struct Req { char hash[33]; int32_t *cps; int ncps; } Req;
-typedef struct CacheEnt { char hash[33]; LibFont *font; int32_t *cps; int ncps; unsigned long used; } CacheEnt;
+typedef struct Req { char hash[33]; PxCode *cps; int ncps; } Req;
+typedef struct CacheEnt { char hash[33]; LibFont *font; PxCode *cps; int ncps; unsigned long used; } CacheEnt;
 
 struct LibLoader {
     Store *store;
@@ -378,28 +380,28 @@ struct LibLoader {
     unsigned long tick;
 };
 
-static int cmp_i32(const void *a, const void *b) {
-    int32_t x = *(const int32_t *)a, y = *(const int32_t *)b;
+static int cmp_code(const void *a, const void *b) {
+    PxCode x = *(const PxCode *)a, y = *(const PxCode *)b;
     return x < y ? -1 : x > y;
 }
 
 /* sorted unique union; returns malloc'd array (never NULL) */
-static int32_t *cps_union(const int32_t *a, int na, const int32_t *b, int nb, int *nout) {
-    int32_t *r = (int32_t *)malloc(sizeof(int32_t) * (size_t)(na + nb + 1));
+static PxCode *cps_union(const PxCode *a, int na, const PxCode *b, int nb, int *nout) {
+    PxCode *r = (PxCode *)malloc(sizeof(PxCode) * (size_t)(na + nb + 1));
     int n = 0;
-    if (na) memcpy(r, a, sizeof(int32_t) * (size_t)na);
-    if (nb) memcpy(r + na, b, sizeof(int32_t) * (size_t)nb);
+    if (na) memcpy(r, a, sizeof(PxCode) * (size_t)na);
+    if (nb) memcpy(r + na, b, sizeof(PxCode) * (size_t)nb);
     n = na + nb;
-    qsort(r, (size_t)n, sizeof(int32_t), cmp_i32);
+    qsort(r, (size_t)n, sizeof(PxCode), cmp_code);
     int o = 0;
     for (int i = 0; i < n; i++) if (o == 0 || r[o - 1] != r[i]) r[o++] = r[i];
     *nout = o;
     return r;
 }
 
-static bool cps_has_all(const int32_t *have, int nh, const int32_t *want, int nw) {
+static bool cps_has_all(const PxCode *have, int nh, const PxCode *want, int nw) {
     for (int i = 0; i < nw; i++)
-        if (!bsearch(&want[i], have, (size_t)nh, sizeof(int32_t), cmp_i32)) return false;
+        if (!bsearch(&want[i], have, (size_t)nh, sizeof(PxCode), cmp_code)) return false;
     return true;
 }
 
@@ -423,7 +425,7 @@ static void fill_info(const PxFont *f, LibInfo *in) {
     in->ratioB = f->ratioB;
 }
 
-static const int32_t PROBES[] = {0x48, 0x67, 0x70, 0x79, 0x6A, 0x7C, 0x5B, 0x5D, 0xC5, 0xC9, 0xC7};
+static const int32_t PROBES[]   /* code points */ = {0x48, 0x67, 0x70, 0x79, 0x6A, 0x7C, 0x5B, 0x5D, 0xC5, 0xC9, 0xC7};
 
 static void do_load(LibLoader *L, StoreConn *conn, const Req *r, LibLoadResult *res) {
     memset(res, 0, sizeof *res);
@@ -434,9 +436,9 @@ static void do_load(LibLoader *L, StoreConn *conn, const Req *r, LibLoadResult *
     /* the probe glyphs (eleven small rows) are always asked for: cheaper than a second query to find out
        whether the box is stated */
     int nall = r->ncps;
-    int32_t *all = (int32_t *)malloc(sizeof(int32_t) * (size_t)(r->ncps + (int)(sizeof PROBES / sizeof *PROBES) + 1));
-    memcpy(all, r->cps, sizeof(int32_t) * (size_t)r->ncps);
-    memcpy(all + nall, PROBES, sizeof PROBES);
+    PxCode *all = (PxCode *)malloc(sizeof(PxCode) * (size_t)(r->ncps + (int)(sizeof PROBES / sizeof *PROBES) + 1));
+    memcpy(all, r->cps, sizeof(PxCode) * (size_t)r->ncps);
+    for (int i = 0; i < (int)(sizeof PROBES / sizeof *PROBES); i++) all[nall + i] = px_code_cp(PROBES[i]);
     nall += (int)(sizeof PROBES / sizeof *PROBES);
     bool ok = store_load_font(conn, r->hash, all, nall, &f, err);
     free(all);
@@ -471,7 +473,7 @@ static void install(LibLoader *L, const Req *r, LibLoadResult *res) {
         CacheEnt *ce = cache_find(L, r->hash);
         int nun;
         if (ce) {
-            int32_t *un = cps_union(ce->cps, ce->ncps, r->cps, r->ncps, &nun);
+            PxCode *un = cps_union(ce->cps, ce->ncps, r->cps, r->ncps, &nun);
             free(ce->cps);
             ce->cps = un;
             ce->ncps = nun;
@@ -579,7 +581,7 @@ void libloader_destroy(LibLoader *L) {
     free(L);
 }
 
-bool libloader_request(LibLoader *L, const char *hash, const int32_t *cps, int n) {
+bool libloader_request(LibLoader *L, const char *hash, const PxCode *cps, int n) {
     EnterCriticalSection(&L->cs);
     CacheEnt *ce = cache_find(L, hash);
     if (ce && cps_has_all(ce->cps, ce->ncps, cps, n)) {
@@ -591,7 +593,7 @@ bool libloader_request(LibLoader *L, const char *hash, const int32_t *cps, int n
     for (int i = 0; i < L->npending; i++) if (strcmp(L->pending[i].hash, hash) == 0) { found = i; break; }
     if (found >= 0) {
         int nun;
-        int32_t *un = cps_union(L->pending[found].cps, L->pending[found].ncps, cps, n, &nun);
+        PxCode *un = cps_union(L->pending[found].cps, L->pending[found].ncps, cps, n, &nun);
         free(L->pending[found].cps);
         L->pending[found].cps = un;
         L->pending[found].ncps = nun;

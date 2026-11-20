@@ -1,4 +1,4 @@
-# 130. The paint bucket (version 20), font 0820dc69 unlocked, glyph U+0020 (empty, advance 4; font box rows 0..7, so the glyph box is 4 x 8 = 32 cells).
+# 130. The paint bucket (version 20), font 3b52125b unlocked, glyph U+0020 (empty, advance 4; font box rows 0..7, so the glyph box is 4 x 8 = 32 cells).
 # Key F and the strip's Fill; the options Contiguous and 8-way; the region is the glyph box, so empty space is filled and the bitmap grows;
 # global fill takes every cell of the clicked pixel character; the right button fills with '.'; one undo step.
 wait 5

@@ -160,7 +160,7 @@ struct Editor {
     uint32_t pickCol;    /* the colour of the slot it edits */
     uint32_t *p0;        /* the glyph's palette when the view opened it (the unused-slot rule, see leave_glyph) */
     int p0n;             /* 0: the default palette */
-    int p0gi; const PxFont *p0font; int32_t p0code;
+    int p0gi; const PxFont *p0font; PxCode p0code;
     struct { uint32_t c; float from, to; double t0; bool flash; } anim[PX_GLYPH_MAX_COLORS];   /* the slots sliding to new places */
     int nanim;
     struct { uint32_t c; float x; } shown[PX_GLYPH_MAX_COLORS];   /* where each slot was drawn last frame */
@@ -1057,10 +1057,9 @@ static void sep(float x, float y, float h) { Th_VLine(x, y + 9, y + h - 9, TH_LI
 
 static void glyph_label(const PxGlyph *g, char *buf, size_t n)
 {
-    if (g->codepoint == PX_CODE_DEFAULT) { snprintf(buf, n, "Default"); return; }
-    if (px_code_is_uncoded(g->codepoint)) { snprintf(buf, n, "#%d  (no code point)", g->codepoint - PX_CODE_UNCODED_FIRST); return; }
-    if (!px_code_is_codepoint(g->codepoint)) { snprintf(buf, n, "(no code point)"); return; }
-    snprintf(buf, n, "U+%04X", (unsigned)g->codepoint);   /* drawn as a glyph caption (Th_TextRich) */
+    if (!px_code_is_valid(g->code)) { snprintf(buf, n, "(no code point)"); return; }
+    px_code_label(g->code, buf, (int)n);   /* a code point is drawn as a glyph caption (Th_TextRich) */
+    if (px_code_is_uncoded(g->code)) snprintf(buf + strlen(buf), n - strlen(buf), "  (no code point)");
 }
 
 /* ------------------------------------------------------------------ the palette bar (see DESIGN.md, "The palette bar and the colour picker")
@@ -1462,7 +1461,7 @@ static void remember_p0(Editor *e)
 {
     PxGlyph *g = G(e);
     e->p0n = 0;
-    e->p0gi = e->gi; e->p0font = e->font; e->p0code = g ? g->code : -1;
+    e->p0gi = e->gi; e->p0font = e->font; e->p0code = g ? g->code : PX_NO_CODE;
     if (!g || !(g->pi > 0 && g->pi < e->font->npals)) return;
     const PxPalette *p = px_glyph_palette(e->font, g);
     uint32_t *n = (uint32_t *)realloc(e->p0, sizeof(uint32_t) * (size_t)p->n);
@@ -2153,7 +2152,7 @@ static EditorResult editor_frame(Editor *e, Rectangle area)
     PxGlyph *g = G(e);
     if (!g) return EDITOR_CLOSE;
     box_update(e);
-    Layers_SetContext(e->layers, e->font, g->codepoint);
+    Layers_SetContext(e->layers, e->font, g->code);
     e->curHidden = !Layers_CurrentVisible(e->layers);
     e->result = EDITOR_RUNNING;
     e->tip = NULL;

@@ -1,4 +1,4 @@
-# 7a. Duplicate of a typeface font (testdata typeface b925951b, variant 1 = font 0820dc69): edit it, Save writes the database file.
+# 7a. Duplicate of a typeface font (testdata typeface 8e8c9492, variant 1 = font 3b52125b): edit it, Save writes the database file.
 # The file must stay byte for byte as it was until Save; the rows that existed before stay.
 wait 5
 click @Unlock
@@ -82,10 +82,10 @@ assert statusdb saved
 assert ohash $NEWPXFM
 assert sqlfile tests/tmp/e2e.pxfdb "select count(*) from pxfm" 4
 assert sqlfile tests/tmp/e2e.pxfdb "select count(*) from pxtf" 2
-assert sqlfile tests/tmp/e2e.pxfdb "select count(*) from pxfm where lower(hex(hash)) = '0820dc69a21b1cdb3a44d2cff7d884d8'" 0
+assert sqlfile tests/tmp/e2e.pxfdb "select count(*) from pxfm where lower(hex(hash)) = '3b52125b2e5f6466823baa4fa3186fa0'" 0
 assert sqlfile tests/tmp/e2e.pxfdb "select ascent from pxfm where lower(hex(hash)) = '$NEWPXFM'" 7
-assert sqlfile tests/tmp/e2e.pxfdb "select count(*) from pxfm_glyph where pxfm = (select hash from pxfm where lower(hex(hash)) = '$NEWPXFM') and code = 233" 1
-assert sqlfile tests/tmp/e2e.pxfdb "select count(*) from pxfm_glyph where pxfm = (select hash from pxfm where lower(hex(hash)) = '$NEWPXFM') and code = 77" 0
+assert sqlfile tests/tmp/e2e.pxfdb "select count(*) from pxfm_glyph where pxfm = (select hash from pxfm where lower(hex(hash)) = '$NEWPXFM') and code = 954368" 1
+assert sqlfile tests/tmp/e2e.pxfdb "select count(*) from pxfm_glyph where pxfm = (select hash from pxfm where lower(hex(hash)) = '$NEWPXFM') and code = 315392" 0
 assert sqlfile tests/tmp/e2e.pxfdb "select count(*) from pxtf_field where key = 'FAMILY' and value = 'Test Sans Edited'" 2
 shot tests/tmp/shots/07_after_save.png
 # saving again without a change writes nothing

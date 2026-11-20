@@ -1,4 +1,4 @@
-# 111. A release-fired control acts only when the press began on it (version 15), font 0820dc69 unlocked.
+# 111. A release-fired control acts only when the press began on it (version 15), font 3b52125b unlocked.
 # Th_Button, Th_Toggle, switches, segmented controls and dropdowns used to fire on any release over them.
 wait 5
 click @Unlock

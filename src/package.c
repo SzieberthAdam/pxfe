@@ -103,7 +103,7 @@ static bool is_lower_hash(const char *s, size_t n) {
     return true;
 }
 
-/* The pxgl hashes (field 4) and the palette hashes (field 5) of the GLYPH lines of a pxfm text, lower case, as the reference
+/* The pxgl hashes (field 5) and the palette hashes (field 6) of the GLYPH lines of a pxfm text, lower case, as the reference
  * reads them (pkgbase.glyph_hashes, palette_hashes).  The text is canonical (LF lines). */
 static bool pxfm_names(const char *t, size_t len, HSet *glyphs, HSet *palettes) {
     size_t i = 0;
@@ -118,14 +118,14 @@ static bool pxfm_names(const char *t, size_t len, HSet *glyphs, HSet *palettes) 
             for (size_t k = s; k <= e && nf < 8; k++) {
                 if (k == e || t[k] == '\t') { f[nf] = t + s; fl[nf] = k - s; nf++; s = k + 1; }
             }
-            for (int q = 3; q <= 4 && q < nf; q++) {
-                if (q == 4 && nf != 5) break;
+            for (int q = 4; q <= 5 && q < nf; q++) {   /* code, advance, x, y, glyph file, palette */
+                if (q == 5 && nf != 6) break;
                 char h[33];
                 if (fl[q] == 32) {
                     for (size_t k = 0; k < 32; k++) h[k] = (char)(f[q][k] >= 'A' && f[q][k] <= 'Z' ? f[q][k] + 32 : f[q][k]);
                     h[32] = 0;
                 } else snprintf(h, sizeof h, "?%.*s", (int)(fl[q] < 31 ? fl[q] : 31), f[q]);   /* no hash: it matches no file */
-                if (!hset_add(q == 3 ? glyphs : palettes, h)) return false;
+                if (!hset_add(q == 4 ? glyphs : palettes, h)) return false;
             }
         }
         i = e + 1;

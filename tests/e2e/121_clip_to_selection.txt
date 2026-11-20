@@ -1,4 +1,4 @@
-# 121. The drawing tools paint only inside the selection (version 17), font 0820dc69 unlocked, glyph U+0020 (empty, advance 4; font box rows 0..7).
+# 121. The drawing tools paint only inside the selection (version 17), font 3b52125b unlocked, glyph U+0020 (empty, advance 4; font box rows 0..7).
 # Pencil, Eraser, Line, Rectangle and Curve are clipped to the selection when there is one; the Fill is clipped too since version 20 (a click outside the selection fills nothing; the fill itself is tested in 130 to 132).  One undo step per stroke as before.
 # An undo drops the selection (as since version 16), so every block selects again: columns 1..3 and rows 2..5 (12 cells).
 wait 5

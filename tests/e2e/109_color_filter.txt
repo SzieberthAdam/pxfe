@@ -1,6 +1,6 @@
 # 109. The Colours filter of the library views (version 15; version 21: pxfm.colors, NULL counting as 1).
-# Database testdata/lib_colors.pxfdb (made by tests\make_testdata.exe): typeface 1ef166a0 holds font 211adf3f (3 colours); typeface 064be7ec
-# holds 0820dc69 (1 colour) and, italic, a11d96cd (2 colours, no ASCENT); font 408c4d7d (2 colours) belongs to no typeface.
+# Database testdata/lib_colors.pxfdb (made by tests\make_testdata.exe): typeface 84fafa1d holds font 3cfdd2b1 (3 colours); typeface 866c4acc
+# holds 3b52125b (1 colour) and, italic, c735a3cf (2 colours, no ASCENT); font 894ef821 (2 colours) belongs to no typeface.
 wait 10
 assert nav 0
 assert btab 0
@@ -8,7 +8,7 @@ assert bvisible 3
 assert bboxes 2
 assert bcolors 0
 
-# the dropdown lists "Any" and the counts that occur, in numeric order; e6109c13 states no ascent, so its info is loaded when the list opens
+# the dropdown lists "Any" and the counts that occur, in numeric order; 4fba4190 states no ascent, so its info is loaded when the list opens
 click @Colours_Dropdown
 waitfor bcolorvals = 3 5000
 assert bcolorvals 3
@@ -24,7 +24,7 @@ assert bboxes 1
 assert bboxvars0 1
 shot tests/tmp/shots/109_colours_2.png
 
-# a typeface matches when any of its fonts matches: the box of b925951b shows for 1 and for 2, with only the variants that match
+# a typeface matches when any of its fonts matches: the box of 8e8c9492 shows for 1 and for 2, with only the variants that match
 click @Colours_Dropdown
 wait 6
 click @1

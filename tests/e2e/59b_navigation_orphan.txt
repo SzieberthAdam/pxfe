@@ -1,4 +1,4 @@
-# 59b. The navigation bar for a font that belongs to no typeface (testdata font 408c4d7d, a duplicate): the first segment reads
+# 59b. The navigation bar for a font that belongs to no typeface (testdata font 894ef821, a duplicate): the first segment reads
 # "Orphaned" and leads to the Typefaces list; the style segment shows the modified marker.
 waitfor loading = 0 20000
 wait 20

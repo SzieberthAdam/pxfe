@@ -79,7 +79,7 @@ static char exportSummary[PATH_MAX_LEN + 900];              /* the text of the l
 static char lastPxfm[33], lastPxtf[33], lastPxfmPath[PATH_MAX_LEN], lastPxtfPath[PATH_MAX_LEN];
 
 /* the pxgl hash of every glyph when the font was opened (sorted by code point) for the glyph view */
-static int32_t *ghCp = NULL;
+static PxCode *ghCp = NULL;
 static char (*ghHash)[33] = NULL;
 static int ghN = 0;
 
@@ -265,7 +265,7 @@ static FlLayer *undoFit[UNDO_MAX + 1], *redoFit[UNDO_MAX + 1];   /* beside each 
 static int undoN = 0, redoN = 0;
 /* beside each snapshot: how far the baseline had been moved up in all (the font layers sit on it), and the code of the glyph the glyph view showed (-1: none) */
 static int undoBase[UNDO_MAX + 1], redoBase[UNDO_MAX + 1];
-static int32_t undoCode[UNDO_MAX + 1], redoCode[UNDO_MAX + 1];
+static PxCode undoCode[UNDO_MAX + 1], redoCode[UNDO_MAX + 1];
 static int baseShift = 0;
 static int lastUndoKey = 0;
 static double lastUndoTime = 0;
@@ -320,12 +320,12 @@ static void PushUndo(int key)
         memmove(&undoStack[0], &undoStack[1], sizeof(PxFont *) * (UNDO_MAX - 1));
         memmove(&undoFit[0], &undoFit[1], sizeof(FlLayer *) * (UNDO_MAX - 1));
         memmove(&undoBase[0], &undoBase[1], sizeof(int) * (UNDO_MAX - 1));
-        memmove(&undoCode[0], &undoCode[1], sizeof(int32_t) * (UNDO_MAX - 1));
+        memmove(&undoCode[0], &undoCode[1], sizeof(PxCode) * (UNDO_MAX - 1));
         undoN--;
     }
     undoFit[undoN] = FollowCopy();
     undoBase[undoN] = baseShift;
-    undoCode[undoN] = (inEditor && ed && Editor_GlyphIndex(ed) >= 0 && Editor_GlyphIndex(ed) < font.count) ? font.glyphs[Editor_GlyphIndex(ed)].codepoint : -1;
+    undoCode[undoN] = (inEditor && ed && Editor_GlyphIndex(ed) >= 0 && Editor_GlyphIndex(ed) < font.count) ? font.glyphs[Editor_GlyphIndex(ed)].code : PX_NO_CODE;
     undoStack[undoN++] = s;
 }
 
@@ -347,15 +347,15 @@ static void SnapGlyphHashes(void)
     free(ghCp); free(ghHash);
     ghCp = NULL; ghHash = NULL; ghN = 0;
     if (!hasFont || font.count == 0) return;
-    ghCp = (int32_t *)malloc(sizeof(int32_t) * (size_t)font.count);
+    ghCp = (PxCode *)malloc(sizeof(PxCode) * (size_t)font.count);
     ghHash = (char (*)[33])malloc(33 * (size_t)font.count);
-    for (int i = 0; i < font.count; i++) { ghCp[i] = font.glyphs[i].codepoint; px_glyph_hash(&font.glyphs[i], ghHash[i]); }
+    for (int i = 0; i < font.count; i++) { ghCp[i] = font.glyphs[i].code; px_glyph_hash(&font.glyphs[i], ghHash[i]); }
     ghN = font.count;
 }
 
-static const char *OrigGlyphHash(int32_t cp)
+static const char *OrigGlyphHash(PxCode cp)
 {
-    if (!px_code_is_codepoint(cp) && cp != PX_CODE_DEFAULT) return NULL;   /* an uncoded glyph's code is renumbered by deletes: its origin is unknown */
+    if (!px_code_is_codepoint(cp) && !px_code_is_default(cp)) return NULL;   /* a symbol's code is renumbered by deletes: its origin is unknown */
     int lo = 0, hi = ghN;
     while (lo < hi) {
         int mid = (lo + hi) / 2;
@@ -372,7 +372,7 @@ static void OpenEditor(int idx)
     if (!ed) { ed = Editor_Create(); Editor_SetPixelPerfect(ed, pixelPerfect); Editor_SetFilled(ed, filledShapes); }
     Editor_Open(ed, &font, idx, EditorBefore, NULL);
     Editor_SetReadOnly(ed, readOnly);
-    Editor_SetOriginalHash(ed, OrigGlyphHash(font.glyphs[idx].codepoint));
+    Editor_SetOriginalHash(ed, OrigGlyphHash(font.glyphs[idx].code));
     if (!inEditor) { glyphTab = 0; panelScroll = 0; }   /* the glyph view opens on its Glyph tab */
     inEditor = true;
     inBrowser = false;
@@ -388,7 +388,7 @@ static void DoUndoRedo(bool redo)
     PxFont **to = redo ? undoStack : redoStack;
     FlLayer **fromFit = redo ? redoFit : undoFit, **toFit = redo ? undoFit : redoFit;
     int *fromBase = redo ? redoBase : undoBase, *toBase = redo ? undoBase : redoBase;
-    int32_t *fromCode = redo ? redoCode : undoCode, *toCode = redo ? undoCode : redoCode;
+    PxCode *fromCode = redo ? redoCode : undoCode, *toCode = redo ? undoCode : redoCode;
     int *tn = redo ? &undoN : &redoN;
     if (*fn == 0) return;
     PxFont *cur = (PxFont *)malloc(sizeof(PxFont));
@@ -402,10 +402,10 @@ static void DoUndoRedo(bool redo)
     free(s);
     toFit[*tn] = curFit;
     toBase[*tn] = baseShift;
-    int32_t hadCode = (inEditor && ed && Editor_GlyphIndex(ed) >= 0 && Editor_GlyphIndex(ed) < cur->count) ? cur->glyphs[Editor_GlyphIndex(ed)].codepoint : -1;
+    PxCode hadCode = (inEditor && ed && Editor_GlyphIndex(ed) >= 0 && Editor_GlyphIndex(ed) < cur->count) ? cur->glyphs[Editor_GlyphIndex(ed)].code : PX_NO_CODE;
     toCode[*tn] = hadCode;
     to[(*tn)++] = cur;
-    int32_t wantCode = fromCode[*fn];
+    PxCode wantCode = fromCode[*fn];
     if (fromBase[*fn] != baseShift) { LayersShiftY((float)(baseShift - fromBase[*fn])); baseShift = fromBase[*fn]; }   /* the layers follow the baseline back */
     FollowRestore(sFit);   /* the layer the glyphs are drawn from gets the settings this font was drawn with */
     needHash = true;
@@ -414,8 +414,8 @@ static void DoUndoRedo(bool redo)
     SelClear(); /* indices may no longer match */
     if (inEditor) {
         int gi = Editor_GlyphIndex(ed);
-        if (wantCode >= 0 && (gi >= font.count || font.glyphs[gi].codepoint != hadCode) && px_font_find(&font, wantCode) >= 0)
-            gi = px_font_find(&font, wantCode);   /* the glyph is not where it was (its code changed): follow it by the code it had */
+        if (wantCode >= 0 && (gi >= font.count || font.glyphs[gi].code != hadCode) && px_font_find_code(&font, wantCode) >= 0)
+            gi = px_font_find_code(&font, wantCode);   /* the glyph is not where it was (its code changed): follow it by the code it had */
         if (gi >= font.count) gi = font.count - 1;
         if (gi >= 0) OpenEditor(gi); else inEditor = false;
     }
@@ -435,7 +435,7 @@ static struct {
     int nbtn, primary, cancel, danger;
     char input[80];
     int frame;
-    int32_t pendingCp;
+    PxCode pendingCp;
 } modal;
 static int frameNo = 0;
 
@@ -799,7 +799,7 @@ static void TypefaceOfPxfm(const char *pxfm, char pxtfOut[33], int *variant)
 
 /* Open a font of the open library (locked or not, as the settings say).  pxtfHash / variant: its typeface, if known (else the first typeface
  * variant that names the font).  selCode >= 0 selects that glyph and scrolls it into view. */
-static bool OpenStoreFont(const char *pxfm, const char *pxtfHash, int variant, int32_t selCode)
+static bool OpenStoreFont(const char *pxfm, const char *pxtfHash, int variant, PxCode selCode)
 {
     char err[PX_ERR_LEN] = "";
     if (!store) { ShowError("Cannot open font", "No database is loaded."); return false; }
@@ -834,7 +834,7 @@ static bool OpenStoreFont(const char *pxfm, const char *pxtfHash, int variant, i
     snprintf(dp, sizeof dp, "%s.pxfm", nf.fileHash);
     AdoptDocument(&nf, haveC ? &nc : NULL, haveC ? var : 0, true, name, name, nf.fileHash, haveC ? tfh : "", dp, dp);
     if (selCode >= 0) {
-        int gi = px_font_find(&font, selCode);
+        int gi = px_font_find_code(&font, selCode);
         if (gi >= 0) { SelOnly(gi); revealIdx = gi; }
     }
     return true;
@@ -945,7 +945,7 @@ static bool LockedOf(bool typeface, const char *hash)
 
 /* The padlock of a Typeface or Font tab.  The open font (or its typeface) locks and unlocks in place.  Another one is unlocked by opening its
  * font quietly (its fields are edited in the open document), staying in the view the user is in. */
-static bool OpenStoreFont(const char *pxfm, const char *pxtfHash, int variant, int32_t selCode);
+static bool OpenStoreFont(const char *pxfm, const char *pxtfHash, int variant, PxCode selCode);
 static void ToggleLockOf(bool typeface, const char *pxtf, const char *pxfm, int variant)
 {
     const char *hash = typeface ? pxtf : pxfm;
@@ -1493,7 +1493,7 @@ static void HandleInsightTarget(const InsightTarget *t)
         char gh[33] = "";
         if (toGlyph && finder) Finder_SelectedGlyph(finder, gh);
         if (OpenStoreFont(t->pxfm, t->pxtf, t->variant, t->code) && toGlyph) {
-            int gi = t->code >= 0 ? px_font_find(&font, t->code) : -1;
+            int gi = t->code >= 0 ? px_font_find_code(&font, t->code) : -1;
             for (int i = 0; gi < 0 && gh[0] && i < font.count; i++) {
                 char h[33];
                 px_glyph_hash(&font.glyphs[i], h);
@@ -1504,7 +1504,7 @@ static void HandleInsightTarget(const InsightTarget *t)
         break; }
     case INSIGHT_OPEN_TYPEFACE: OpenStoreTypeface(t->pxtf, t->variant); break;
     case INSIGHT_FIND_CODE:
-        if (finder && t->code >= 0) { Finder_SetCode(finder, t->code); ShowGlyphs(); }
+        if (finder && px_code_codepoint(t->code) >= 0) { Finder_SetCode(finder, px_code_codepoint(t->code)); ShowGlyphs(); }
         break;
     default: break;
     }
@@ -1598,7 +1598,9 @@ static void CmdDelete(void)
     Th_Toast(0, "Deleted");
 }
 
-static bool ParseCodepoint(const char *in, int32_t *cp)
+/* The code of a code point, or of a variant of one, as the user types it: one character that is no hex digit, or px_code_parse_user's
+ * U+0041, 0x41, 41 (hex), each with -V for a variant (U+0041-1).  Symbols and the default glyph are not taken. */
+static bool ParseCodepoint(const char *in, PxCode *cp)
 {
     char s[80];
     snprintf(s, sizeof s, "%s", in);
@@ -1607,35 +1609,15 @@ static bool ParseCodepoint(const char *in, int32_t *cp)
     size_t n = strlen(p);
     while (n > 0 && p[n - 1] == ' ') p[--n] = 0;
     if (n == 0) return false;
-    const char *hex = NULL;
-    if ((p[0] == 'U' || p[0] == 'u') && p[1] == '+') hex = p + 2;
-    else if (p[0] == '0' && (p[1] == 'x' || p[1] == 'X')) hex = p + 2;
-    if (!hex) {
-        int sz = 0;
-        int c = GetCodepointNext(p, &sz);
-        if ((size_t)sz == n && !(c == 0x3F && p[0] != '?')) { *cp = c; return c >= 0 && c <= 0x10FFFF; }
-        hex = p;
-    }
-    size_t hn = strlen(hex);
-    if (hn == 0 || hn > 6) return false;
-    long v = 0;
-    for (size_t i = 0; i < hn; i++) {
-        char c = hex[i];
-        int d;
-        if (c >= '0' && c <= '9') d = c - '0';
-        else if (c >= 'a' && c <= 'f') d = c - 'a' + 10;
-        else if (c >= 'A' && c <= 'F') d = c - 'A' + 10;
-        else return false;
-        v = v * 16 + d;
-    }
-    if (v > 0x10FFFF) return false;
-    *cp = (int32_t)v;
-    return true;
+    int sz = 0;
+    int c = GetCodepointNext(p, &sz);
+    if ((size_t)sz == n && !(c == 0x3F && p[0] != '?')) { *cp = px_code_cp(c); return c >= 0 && c <= 0x10FFFF; }   /* one character is that character */
+    return px_code_parse_user(p, cp) && px_code_is_codepoint(*cp);
 }
 
-/* Clone the selected glyph to code point cp.  Kerning is not copied; replacing an existing glyph keeps its place
- * (and its kerning pairs and default status). */
-static void DoClone(int32_t cp)
+/* Clone the selected glyph to the code cp (a code point or a variant of one).  Kerning is not copied; replacing an existing glyph
+ * keeps its place (and its kerning pairs and default status). */
+static void DoClone(PxCode cp)
 {
     if (readOnly) return;
     int src = FirstSelected();
@@ -1644,8 +1626,8 @@ static void DoClone(int32_t cp)
     PxGlyph g;
     memset(&g, 0, sizeof g);
     px_glyph_copy(&g, &font.glyphs[src]);
-    g.codepoint = cp;
-    int ex = px_font_find(&font, cp);
+    g.code = cp;
+    int ex = px_font_find_code(&font, cp);
     int ni;
     if (ex >= 0) {
         px_glyph_free(&font.glyphs[ex]);
@@ -1657,7 +1639,9 @@ static void DoClone(int32_t cp)
     selN = 0;
     SelOnly(ni);
     revealIdx = ni;
-    Th_Toast(1, "Cloned to U+%04X", (unsigned)cp);
+    char cl[40];
+    px_code_label(cp, cl, sizeof cl);
+    Th_Toast(1, "Cloned to %s", cl);
 }
 
 /* Clone the selected glyph as a new glyph without a code point (the next #n). */
@@ -1675,7 +1659,7 @@ static void DoCloneUncoded(void)
     selN = 0;
     SelOnly(ni);
     revealIdx = ni;
-    Th_Toast(1, "Cloned to #%d (no code point)", font.glyphs[ni].codepoint - PX_CODE_UNCODED_FIRST);
+    Th_Toast(1, "Cloned to #%d (no code point)", px_code_symbol_index(font.glyphs[ni].code));
 }
 
 static void CmdClone(void)
@@ -1705,13 +1689,13 @@ static void CmdDeleteAsk(void)
     ModalOpen(M_CONFIRM, A_DELETE, selCount == 1 ? "Delete glyph" : "Delete glyphs", msg, 2, "Cancel", "Delete", NULL, 1, 0, true);
 }
 
-static void CodeLabel(int32_t c, char *out, size_t n);
+static void CodeLabel(PxCode c, char *out, size_t n);
 
 static bool CanSetDefault(void)
 {
     if (!hasFont || readOnly || selCount != 1) return false;
     int i = FirstSelected();
-    return i >= 0 && font.glyphs[i].codepoint != PX_CODE_DEFAULT;
+    return i >= 0 && font.glyphs[i].code != PX_CODE_DEFAULT;
 }
 
 static void CmdSetDefault(void)
@@ -1720,10 +1704,10 @@ static void CmdSetDefault(void)
     RecountSel();
     int i = FirstSelected();
     if (selCount != 1 || i < 0) { Th_Toast(2, "Select one glyph"); return; }
-    if (font.glyphs[i].codepoint == PX_CODE_DEFAULT) return;
+    if (font.glyphs[i].code == PX_CODE_DEFAULT) return;
     PushUndo(0);
     char cl[32];
-    CodeLabel(font.glyphs[i].codepoint, cl, sizeof cl);
+    CodeLabel(font.glyphs[i].code, cl, sizeof cl);
     px_font_set_default_from(&font, i);
     needHash = true;
     SelResize();
@@ -1798,13 +1782,10 @@ static void LayoutGrid(Rectangle area)
     contentH = (font.count ? y + rowH : 0) + GRID_MARGIN;
 }
 
-/* "U+0041" for a code point, "#n" for a glyph without one (n = its code minus F00000) */
-static void CodeLabel(int32_t c, char *out, size_t n)
+/* "U+0041" for a code point, "#n" for a glyph without one, "Default", "-VVV" after a variant (px_code_label); "-" for none */
+static void CodeLabel(PxCode c, char *out, size_t n)
 {
-    if (px_code_is_uncoded(c)) snprintf(out, n, "#%d", c - PX_CODE_UNCODED_FIRST);
-    else if (c == PX_CODE_DEFAULT) snprintf(out, n, "Default");
-    else if (c >= 0) snprintf(out, n, "U+%04X", (unsigned)c);
-    else snprintf(out, n, "-");
+    px_code_label(c, out, (int)n);
 }
 
 static Rectangle Intersect(Rectangle a, Rectangle b)
@@ -1875,7 +1856,7 @@ static void DrawCell(int i, float cx, float cy, float cw, Rectangle area, bool s
         Rectangle cap = {cx + 1, cy + boxPx + 2 * CELL_PADY, cw - 2, CAPTION_H - 1};
         DrawRectangleRec(cap, TH_PANEL_ALT);
         Th_HLine(cap.x, cap.x + cap.width, cap.y, TH_LINE_SOFT);
-        Th_CodeDraw(g->codepoint, cap, TH_TEXT, hovered, 1);   /* the character in Unifont, "U+XXXX" while the mouse is over the cell; "Default" for FFFFFF */
+        Th_CodeDraw(g->code, cap, TH_TEXT, hovered, 1);   /* the character in Unifont, "U+XXXX" while the mouse is over the cell; the label of the others */
     }
 }
 
@@ -2006,8 +1987,8 @@ static void CmdFindInLibrary(void)
     RecountSel();
     int i = FirstSelected();
     if (!finder) { Th_Toast(2, "No library is open"); return; }
-    if (selCount != 1 || i < 0 || !px_code_is_codepoint(font.glyphs[i].codepoint)) { Th_Toast(2, "Select one glyph that has a code point"); return; }
-    Finder_SetCode(finder, font.glyphs[i].codepoint);
+    if (selCount != 1 || i < 0 || !px_code_is_codepoint(font.glyphs[i].code)) { Th_Toast(2, "Select one glyph that has a code point"); return; }
+    Finder_SetCode(finder, px_code_codepoint(font.glyphs[i].code));
     ShowGlyphs();
 }
 
@@ -2090,7 +2071,7 @@ static void DrawNav(void)
         FontNavNames(fam, sty);
         snprintf(full[0], 320, "%s", fam);
         snprintf(full[1], 320, "%s%s", sty, modified ? " *" : "");
-        if (view == NV_GLYPH && ed && Editor_GlyphIndex(ed) >= 0 && Editor_GlyphIndex(ed) < font.count) CodeLabel(font.glyphs[Editor_GlyphIndex(ed)].codepoint, full[2], 320);
+        if (view == NV_GLYPH && ed && Editor_GlyphIndex(ed) >= 0 && Editor_GlyphIndex(ed) < font.count) CodeLabel(font.glyphs[Editor_GlyphIndex(ed)].code, full[2], 320);
         else snprintf(full[2], 320, "Glyphs");
         active = view == NV_GLYPH ? 2 : 1;
         break;
@@ -2259,8 +2240,8 @@ static void DrawStatus(int W, int H)
     if (hintText) snprintf(r, sizeof r, "%s", hintText);
     else if (hasFont && !inBrowser && !inFinder && !inEditor && hoverIdx >= 0 && hoverIdx < font.count && !uiBlocked) {
         const PxGlyph *g = &font.glyphs[hoverIdx];
-        CodeLabel(g->codepoint, cl, sizeof cl);
-        snprintf(r, sizeof r, "%s%s   advance %d   %s", cl, px_code_is_codepoint(g->codepoint) || g->codepoint == PX_CODE_DEFAULT ? "" : " (no code point)", g->advance, g->w > 0 ? TextFormat("%d x %d", g->w, g->h) : "empty");
+        CodeLabel(g->code, cl, sizeof cl);
+        snprintf(r, sizeof r, "%s%s   advance %d   %s", cl, px_code_is_codepoint(g->code) || px_code_is_default(g->code) ? "" : " (no code point)", g->advance, g->w > 0 ? TextFormat("%d x %d", g->w, g->h) : "empty");
     }
     rt[0].text = r;
     Th_StatusBar((Rectangle){0, (float)(H - STATUS_H), (float)W, STATUS_H}, 0, l, nl, rt, r[0] ? 1 : 0);
@@ -2285,8 +2266,8 @@ static void DrawEmptyState(Rectangle area)
 /* The Export dialog: what the folder holds, Append or Overwrite, and the backup of the folder's current data */
 /* ---- Add Glyph and New Font ---- */
 
-/* an empty glyph (no ink) with the next code, or without a code point when cp < 0; it is drawn in the glyph view */
-static void DoAddGlyph(int32_t cp)
+/* an empty glyph (no ink) with the code cp, or without a code point when cp < 0; it is drawn in the glyph view */
+static void DoAddGlyph(PxCode cp)
 {
     if (readOnly) return;
     PushUndo(0);
@@ -2297,13 +2278,14 @@ static void DoAddGlyph(int32_t cp)
     g.advance = (a + b) / 2 > 0 ? (a + b) / 2 : 1;
     int ni;
     if (cp < 0) ni = px_font_add_uncoded(&font, &g);
-    else { g.codepoint = cp; ni = px_font_add_glyph(&font, &g); }
+    else { g.code = cp; ni = px_font_add_glyph(&font, &g); }
     needHash = true;
     selN = 0;
     SelOnly(ni);
     revealIdx = ni;
-    if (cp < 0) Th_Toast(1, "Added #%d (no code point)", font.glyphs[ni].codepoint - PX_CODE_UNCODED_FIRST);
-    else Th_Toast(1, "Added U+%04X", (unsigned)cp);
+    char cl[40];
+    CodeLabel(font.glyphs[ni].code, cl, sizeof cl);
+    Th_Toast(1, cp < 0 ? "Added %s (no code point)" : "Added %s", cl);
 }
 
 static void CmdAddGlyph(void)
@@ -2449,7 +2431,7 @@ static void DrawExportDialog(int W, int H)
 static void ModalResult(int b)
 {
     int action = modal.action;
-    int32_t cp = modal.pendingCp;
+    PxCode cp = modal.pendingCp;
     char input[80];
     snprintf(input, sizeof input, "%s", modal.input);
     modal.kind = M_NONE;
@@ -2458,11 +2440,12 @@ static void ModalResult(int b)
     case A_CLONE:
         if (b == 1) DoCloneUncoded();
         else if (b == 2) {
-            int32_t c;
+            PxCode c;
             if (!ParseCodepoint(input, &c)) { /* handled by disabled button */ break; }
-            if (px_font_find(&font, c) >= 0) {
-                char msg[160];
-                snprintf(msg, sizeof msg, "U+%04X already exists in this font.\nReplace it with the clone?", (unsigned)c);
+            if (px_font_find_code(&font, c) >= 0) {
+                char msg[160], cl[40];
+                CodeLabel(c, cl, sizeof cl);
+                snprintf(msg, sizeof msg, "%s already exists in this font.\nReplace it with the clone?", cl);
                 ModalOpen(M_CONFIRM, A_CLONE_REPLACE, "Replace glyph", msg, 2, "Cancel", "Replace", NULL, 1, 0, true);
                 modal.pendingCp = c;
             } else DoClone(c);
@@ -2472,10 +2455,12 @@ static void ModalResult(int b)
     case A_ADDGLYPH:
         if (b == 1) DoAddGlyph(-1);
         else if (b == 2) {
-            int32_t c;
+            PxCode c;
             if (!ParseCodepoint(input, &c)) break;
-            int ex = px_font_find(&font, c);
-            if (ex >= 0) { selN = 0; SelOnly(ex); revealIdx = ex; Th_Toast(0, "U+%04X is already in the font", (unsigned)c); }
+            int ex = px_font_find_code(&font, c);
+            char cl[40];
+            CodeLabel(c, cl, sizeof cl);
+            if (ex >= 0) { selN = 0; SelOnly(ex); revealIdx = ex; Th_Toast(0, "%s is already in the font", cl); }
             else DoAddGlyph(c);
         }
         break;
@@ -2525,14 +2510,15 @@ static void DrawModal(int W, int H)
         if (!Th_TextIs("modal.input")) Th_TextFocus("modal.input", modal.input, false);   /* always has the keyboard */
         if (Th_TextField(ir, "modal.input", modal.input, (int)sizeof modal.input, 0, NULL) & TH_TF_CHANGED) snprintf(modal.input, sizeof modal.input, "%s", Th_TextValue());
         y += TH_ROW_H + TH_GAP;
-        int32_t cp;
-        char info[120];
+        PxCode cp;
+        char info[120], cl[40];
         Color ic = TH_TEXT_DIM;
         if (modal.input[0] == 0) { snprintf(info, sizeof info, "Enter a code point"); inputOk = false; }
         else if (!ParseCodepoint(modal.input, &cp)) { snprintf(info, sizeof info, "Not a valid code point"); inputOk = false; ic = TH_DANGER; }
         else {
-            if (px_font_find(&font, cp) >= 0) { snprintf(info, sizeof info, modal.action == A_ADDGLYPH ? "U+%04X - already in the font" : "U+%04X - already in the font, will ask to replace", (unsigned)cp); ic = TH_TEXT_NOTE; }
-            else snprintf(info, sizeof info, "U+%04X", (unsigned)cp);
+            CodeLabel(cp, cl, sizeof cl);
+            if (px_font_find_code(&font, cp) >= 0) { snprintf(info, sizeof info, modal.action == A_ADDGLYPH ? "%s - already in the font" : "%s - already in the font, will ask to replace", cl); ic = TH_TEXT_NOTE; }
+            else snprintf(info, sizeof info, "%s", cl);
         }
         Th_TextRich(info, pr.x + pad, y, ic, TH_F_BODY, -1);
         y += TH_LINE_H + 4;

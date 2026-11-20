@@ -11,7 +11,7 @@ wait 2
 key delete
 wait 3
 assert blast 4
-assert blastpxfm e6109c134eda8d747bac9a3c2a62d204
+assert blastpxfm 4fba4190f6ba7e10b296c7070234e1ce
 key escape
 wait 3
 
@@ -21,7 +21,7 @@ wait 2
 key delete
 wait 3
 assert blast 5
-assert blastpxtf b5fbcdd0
+assert blastpxtf b7ed69ab
 key escape
 wait 3
 

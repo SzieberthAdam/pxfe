@@ -1,4 +1,4 @@
-# 6b. Glyph view with a colour palette: testdata font 408c4d7d (the colour example of pxfm.md: COLORS 2, the A with the palette 808080 FFFFFF;
+# 6b. Glyph view with a colour palette: testdata font 894ef821 (the colour example of pxfm.md: COLORS 2, the A with the palette 808080 FFFFFF;
 # glyphs U+0020 and U+0041), as a duplicate.  Version 23: the palette bar under the canvas, its first row the glyph's slots, the font's other
 # colours below; the keys '.', 0-9, A-Z pick a slot; drawing keeps the glyph canonical, so a colour drawn first in reading order becomes slot 0.
 wait 5

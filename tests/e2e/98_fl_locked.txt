@@ -1,5 +1,5 @@
 # 98. A locked font may get font layers: they are program settings, the .pxfdb stays byte for byte as it was (assert
-# samefile against a copy), the sidecar is written, and the layers survive Unlock.  Font 0820dc69.
+# samefile against a copy), the sidecar is written, and the layers survive Unlock.  Font 3b52125b.
 wait 5
 assert readonly 1
 assert flayers 0
@@ -44,7 +44,7 @@ wait 12
 assert unsaved 0
 assert sidecar exists
 assert samefile tests/tmp/e2e.pxfdb tests/tmp/e2e_before.pxfdb
-assert sqlfile tests/tmp/e2e.pxfdb-settings "select count(*) from layer where font = '0820dc69a21b1cdb3a44d2cff7d884d8'" 1
+assert sqlfile tests/tmp/e2e.pxfdb-settings "select count(*) from layer where font = '3b52125b2e5f6466823baa4fa3186fa0'" 1
 assert sqlfile tests/tmp/e2e.pxfdb-settings "select count(*) from correction" 1
 # Unlock keeps the layers and the correction
 click @Unlock
@@ -65,6 +65,6 @@ wait 6
 key s ctrl
 wait 12
 assert sqlfile tests/tmp/e2e.pxfdb-settings "select count(*) from layer" 1
-assert sqlfile tests/tmp/e2e.pxfdb-settings "select count(*) from layer where font = '0820dc69a21b1cdb3a44d2cff7d884d8'" 0
+assert sqlfile tests/tmp/e2e.pxfdb-settings "select count(*) from layer where font = '3b52125b2e5f6466823baa4fa3186fa0'" 0
 assert sqlfile tests/tmp/e2e.pxfdb-settings "select count(*) from correction" 1
 assert sqlfile tests/tmp/e2e.pxfdb "select count(*) from pxfm" 4

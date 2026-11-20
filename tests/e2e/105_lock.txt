@@ -1,4 +1,4 @@
-# 105. Lock and unlock (font 0820dc69, the first variant of typeface b925951b).  Everything is locked until it is unlocked; editing an
+# 105. Lock and unlock (font 3b52125b, the first variant of typeface 8e8c9492).  Everything is locked until it is unlocked; editing an
 # unlocked font changes it in place: the typeface, the layer settings and the lock state follow the new hash.
 wait 5
 assert locked 1
@@ -64,8 +64,8 @@ assert nav 1
 assert sql "select count(*) from pxfm" 4
 assert sql "select count(*) from pxtf" 2
 assert sql "select count(*) from pxfm where ascent = 7" 1
-assert sql "select count(*) from pxfm where lower(hex(hash)) = '0820dc69a21b1cdb3a44d2cff7d884d8'" 0
-assert sql "select count(*) from pxtf where lower(hex(hash)) = 'b925951bb94de1d15ec27404b3261476'" 0
+assert sql "select count(*) from pxfm where lower(hex(hash)) = '3b52125b2e5f6466823baa4fa3186fa0'" 0
+assert sql "select count(*) from pxtf where lower(hex(hash)) = '8e8c94921267d3c2c72ec93d3b0cf63d'" 0
 assert sql "select count(*) from pxtf_variant where pxfm not in (select hash from pxfm)" 0
 assert sql "select count(*) from pxtf_variant v join pxfm f on f.hash = v.pxfm where f.ascent = 7" 1
 assert saved pxfm

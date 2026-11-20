@@ -21,10 +21,10 @@ key enter
 wait 4
 assert modal none
 # the files are the ones of the library the database came from, byte for byte
-assert file tests/tmp/xout/pxfm/08/0820dc69a21b1cdb3a44d2cff7d884d8.pxfm exists
-assert samefile tests/tmp/xout/pxfm/08/0820dc69a21b1cdb3a44d2cff7d884d8.pxfm tests/tmp/e2elib/pxfm/08/0820dc69a21b1cdb3a44d2cff7d884d8.pxfm
-assert samefile tests/tmp/xout/pxfm/e6/e6109c134eda8d747bac9a3c2a62d204.pxfm tests/tmp/e2elib/pxfm/e6/e6109c134eda8d747bac9a3c2a62d204.pxfm
-assert samefile tests/tmp/xout/pxtf/b9/b925951bb94de1d15ec27404b3261476.pxtf tests/tmp/e2elib/pxtf/b9/b925951bb94de1d15ec27404b3261476.pxtf
+assert file tests/tmp/xout/pxfm/3b/3b52125b2e5f6466823baa4fa3186fa0.pxfm exists
+assert samefile tests/tmp/xout/pxfm/3b/3b52125b2e5f6466823baa4fa3186fa0.pxfm tests/tmp/e2elib/pxfm/3b/3b52125b2e5f6466823baa4fa3186fa0.pxfm
+assert samefile tests/tmp/xout/pxfm/4f/4fba4190f6ba7e10b296c7070234e1ce.pxfm tests/tmp/e2elib/pxfm/4f/4fba4190f6ba7e10b296c7070234e1ce.pxfm
+assert samefile tests/tmp/xout/pxtf/8e/8e8c94921267d3c2c72ec93d3b0cf63d.pxtf tests/tmp/e2elib/pxtf/8e/8e8c94921267d3c2c72ec93d3b0cf63d.pxtf
 # nothing was changed in the database or the source folder
 assert unsaved 0
 assert snapdir unchanged

@@ -3,7 +3,7 @@
  * the hashes of the original and of the current bitmap, the glyph usage) and Layers (layers.c).  glyphTab: 3 View, 0 Glyph, 2 Layers.
  * The tab is not remembered: the glyph view opens on Glyph.  Every tab scrolls by itself. */
 
-static void DrawGlyphInfo(float px, float *yp, int gi, int32_t insCode)
+static void DrawGlyphInfo(float px, float *yp, int gi, PxCode insCode)
 {
     float y = *yp;
     char cur[33];
@@ -42,7 +42,7 @@ static void DrawGlyphPanel(Rectangle p)
 
     int gi = Editor_GlyphIndex(ed);
     const PxGlyph *g = (gi >= 0 && gi < font.count) ? &font.glyphs[gi] : NULL;
-    int32_t insCode = (g && px_code_is_codepoint(g->codepoint)) ? g->codepoint : -1;
+    PxCode insCode = (g && px_code_is_codepoint(g->code)) ? g->code : PX_NO_CODE;
 
     hovClip = cr;
     hovClipOn = true;

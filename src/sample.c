@@ -190,7 +190,7 @@ void Sample_LoadIni(const char *iniPath)
 int Sample_Layout(const PxFont *f, const char *text, int boxAbove, int boxBelow, int lineGap, int maxLines, SampleLayout *out)
 {
     memset(out, 0, sizeof *out);
-    out->wantDefault = PX_NO_CODEPOINT;
+    out->wantDefault = PX_NO_CODE;
     int a = boxAbove, b = boxBelow;
     if (a <= 0 && b <= 0) { if (!px_font_box(f, &a, &b)) { a = 8; b = 2; } }
     if (a < 0) a = 0;
@@ -208,7 +208,7 @@ int Sample_Layout(const PxFont *f, const char *text, int boxAbove, int boxBelow,
     int bw = bh * 2 / 3;
     if (bw < 2) bw = 2;
     int pen = 0;
-    int32_t prev = PX_NO_CODEPOINT;
+    PxCode prev = PX_NO_CODE;
     const char *p = text;
     while (*p) {
         int sz = 1;
@@ -220,14 +220,15 @@ int Sample_Layout(const PxFont *f, const char *text, int boxAbove, int boxBelow,
             if (out->nlines >= maxL) { pen = -1; break; }
             out->lineStart[out->nlines] = out->nrun;
             out->nlines++;
-            pen = 0; prev = PX_NO_CODEPOINT;
+            pen = 0; prev = PX_NO_CODE;
             continue;
         }
         if (cp < 32 || cp == 127) continue;
-        int gi = px_font_find(f, cp);
+        int gi = px_font_find_cp(f, cp);
         bool fallback = false;
         if (gi < 0 && di >= 0) { gi = di; fallback = true; }
-        if (prev != PX_NO_CODEPOINT) pen += px_font_kern(f, prev, cp);
+        PxCode code = gi >= 0 ? f->glyphs[gi].code : px_code_cp(cp);   /* kerning names the glyph drawn: the default glyph for a missing one */
+        if (prev != PX_NO_CODE) pen += px_font_kern(f, prev, code);
         SampleRun *r = &out->runs[out->nrun++];
         if (gi >= 0) {
             const PxGlyph *g = &f->glyphs[gi];
@@ -238,7 +239,7 @@ int Sample_Layout(const PxFont *f, const char *text, int boxAbove, int boxBelow,
             r->gi = cp == 32 ? -2 : -1; r->x = pen; r->w = bw; r->h = bh;
             pen += bw + 1;
         }
-        prev = cp;
+        prev = code;
     }
     if (pen >= 0) {
         out->lineW[out->nlines - 1] = pen;

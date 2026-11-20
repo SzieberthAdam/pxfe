@@ -44,7 +44,7 @@ assert opentime >= 0
 click @Fonts
 wait 4
 click @Filter
-type 0820dc
+type 3b5212
 wait 4
 assert bvisible 1
 click @card:0
@@ -56,7 +56,7 @@ assert readonly 1
 assert modified 0
 assert glyphs 6
 assert hashname 1
-assert ohash 0820dc69a21b1cdb3a44d2cff7d884d8
+assert ohash 3b52125b2e5f6466823baa4fa3186fa0
 assert hascont 1
 assert variant 1
 assert sql "SELECT COUNT(*) FROM pxfm" 4

@@ -16,9 +16,9 @@ static int g_pass = 0, g_fail = 0;
 
 #define TMP "tests/tmp"
 #define LIB "testdata/lib"
-#define H_EXAMPLE "0820dc69a21b1cdb3a44d2cff7d884d8"
-#define H_NOASC "e6109c134eda8d747bac9a3c2a62d204"
-#define H_GREY "408c4d7dd946543f8e9b4553dd1ba62e"            /* pxfm.md: the colour example */
+#define H_EXAMPLE "3b52125b2e5f6466823baa4fa3186fa0"
+#define H_NOASC "4fba4190f6ba7e10b296c7070234e1ce"
+#define H_GREY "894ef821e147533c34b39e2131016133"            /* pxfm.md: the colour example */
 #define H_GREY_A "3ad25ae0043eddcc6bc11e8794fccdd3"
 #define H_GREY_PAL "ebbba94934da6897d86c5e8ea2ac5409"
 
@@ -26,7 +26,7 @@ static int g_pass = 0, g_fail = 0;
 static PxGlyph make_glyph(int cp, int adv, int x, int y, const char *rows) {
     PxGlyph g;
     memset(&g, 0, sizeof g);
-    g.codepoint = cp; g.advance = adv; g.x = x; g.y = y;
+    g.code = px_code_cp(cp); g.advance = adv; g.x = x; g.y = y;
     if (rows && rows[0]) {
         int w = 0, h = 0;
         const char *p = rows;
@@ -74,18 +74,18 @@ static void example_font(PxFont *f) {
     add(f, 0x48, 6, 0, 0, ROWS_H);
     add(f, 0x4D, 6, 0, 0, ROWS_M);
     add(f, 0x78, 6, 0, 0, ROWS_X);
-    px_font_set_default_from(f, px_font_find(f, 0x20));
-    px_font_set_kern(f, 0x41, 0x4D, -1);
+    px_font_set_default_from(f, px_font_find_cp(f, 0x20));
+    px_font_set_kern(f, px_code_cp(0x41), px_code_cp(0x4D), -1);
 }
 
 static const char EXAMPLE_TEXT[] =
-    "ASCENT\t6\nCAPHEIGHT\t5\nDESCENT\t2\nGLYPH\t000020\t0,0\t4\n"
-    "GLYPH\t00002C\t0,-2\t3\t41E0BE1B2EF9B46F1F72092B18408CE2\n"
-    "GLYPH\t000041\t0,0\t6\tC0FC54C2EC60CB8617B041D991DA1622\n"
-    "GLYPH\t000048\t0,0\t6\tABE675527C81C31D04CDA5E2AED7623A\n"
-    "GLYPH\t00004D\t0,0\t6\t7C2001124FDBBCFEE5CBF19CC5BC1911\n"
-    "GLYPH\t000078\t0,0\t6\tF83AD16C225C33BC1D6BFE2178677638\n"
-    "GLYPH\tFFFFFF\t0,0\t4\nKERNING\t000041\t00004D\t-1\nLINEGAP\t1\nXHEIGHT\t4\n";
+    "ASCENT\t6\nCAPHEIGHT\t5\nDESCENT\t2\nGLYPH\tI+DEFA00-000\t4\t0\t0\nGLYPH\tU+000020-000\t4\t0\t0\n"
+    "GLYPH\tU+00002C-000\t3\t0\t-2\t41E0BE1B2EF9B46F1F72092B18408CE2\n"
+    "GLYPH\tU+000041-000\t6\t0\t0\tC0FC54C2EC60CB8617B041D991DA1622\n"
+    "GLYPH\tU+000048-000\t6\t0\t0\tABE675527C81C31D04CDA5E2AED7623A\n"
+    "GLYPH\tU+00004D-000\t6\t0\t0\t7C2001124FDBBCFEE5CBF19CC5BC1911\n"
+    "GLYPH\tU+000078-000\t6\t0\t0\tF83AD16C225C33BC1D6BFE2178677638\n"
+    "KERNING\tU+000041-000\tU+00004D-000\t-1\nLINEGAP\t1\nXHEIGHT\t4\n";
 
 static char *text_of(const PxFont *f, size_t *n, char hash[33]) { return px_pxfm_text(f, n, hash); }
 
@@ -97,7 +97,7 @@ static bool parse_fails(const char *text, const char *needle) {
 }
 
 static bool glyph_eq(const PxGlyph *a, const PxGlyph *b) {
-    if (a->codepoint != b->codepoint || a->advance != b->advance || a->x != b->x || a->y != b->y ||
+    if (a->code != b->code || a->advance != b->advance || a->x != b->x || a->y != b->y ||
         a->w != b->w || a->h != b->h || a->asDrawn != b->asDrawn)
         return false;
     if (a->w * a->h == 0) return true;
@@ -157,6 +157,70 @@ static void test_sha_and_canonical(void) {
     free(c);
 }
 
+/* the codes of pxfm version 3: the number GCCCCCCVVV, the text G+CCCCCC-VVV, the labels and what a user may type */
+static bool user_is(const char *in, PxCode want) {
+    PxCode c;
+    return px_code_parse_user(in, &c) && c == want;
+}
+
+static void test_codes(void) {
+    char t[PX_CODE_TEXT_LEN], l[40];
+    CHECK(px_code_cp(0x41) == 0x41000 && PX_CODE_DEFAULT == 0xFDEFA00000LL && px_code_symbol(0) == 0xA000000000LL, "the numbers of the spec: 0000041000, FDEFA00000, A000000000");
+    CHECK(px_code_cp(0x10FFFF) < px_code_symbol(0) && px_code_symbol(0xFFFFFF) < PX_CODE_DEFAULT, "numeric order: U, then X, then I");
+    CHECK(px_code_text(px_code_cp(0x41) | 1, t) && strcmp(t, "U+000041-001") == 0, "text of a variant");
+    CHECK(px_code_text(px_code_symbol(3), t) && strcmp(t, "X+000003-000") == 0, "text of a symbol");
+    CHECK(px_code_text(PX_CODE_DEFAULT, t) && strcmp(t, "I+DEFA00-000") == 0, "text of the default glyph");
+    CHECK(!px_code_text(px_code_cp(0x110000), t) && !px_code_text(0xF000000000LL, t), "no text for a number that is no code");
+    PxCode c;
+    CHECK(px_code_parse("U+10FFFF-FFF", &c) && c == (px_code_cp(0x10FFFF) | 0xFFF), "parse: the last code point, the last variant");
+    CHECK(!px_code_parse("U+000041-000 ", &c) && !px_code_parse("U+000041", &c) && !px_code_parse("000041", &c), "parse: only the exact file form");
+    px_code_label(px_code_cp(0x41), l, sizeof l);
+    CHECK(strcmp(l, "U+0041") == 0, "label of a code point");
+    px_code_label(px_code_cp(0x1F600) | 0x2A, l, sizeof l);
+    CHECK(strcmp(l, "U+1F600-02A") == 0, "label of an astral variant");
+    px_code_label(px_code_symbol(2) | 1, l, sizeof l);
+    CHECK(strcmp(l, "#2-001") == 0, "label of a symbol variant");
+    px_code_label(PX_CODE_DEFAULT, l, sizeof l);
+    CHECK(strcmp(l, "Default") == 0, "label of the default glyph");
+    CHECK(user_is("U+0041", px_code_cp(0x41)) && user_is("41", px_code_cp(0x41)) && user_is("0x41", px_code_cp(0x41)) && user_is("u+e9-1", px_code_cp(0xE9) | 1),
+          "user forms of a code point and a variant");
+    CHECK(user_is("#0", px_code_symbol(0)) && user_is("#12-3", px_code_symbol(12) | 3) && user_is("Default", PX_CODE_DEFAULT) && user_is("default-2", PX_CODE_DEFAULT | 2),
+          "user forms of a symbol and the default glyph");
+    CHECK(user_is("x+000001-000", px_code_symbol(1)) && user_is(" U+000041-002 ", px_code_cp(0x41) | 2), "the file form, in either case, blanks around");
+    CHECK(!user_is("110000", 0) && !px_code_parse_user("41-1000", &c) && !px_code_parse_user("zz", &c) && !px_code_parse_user("#", &c) && !px_code_parse_user("", &c),
+          "refused: above 10FFFF, a variant of four digits, no hex, no number");
+
+    /* variants in a font: sorted after their glyph 000, a free variant number, removing a symbol takes its variants */
+    PxFont f;
+    px_font_init(&f);
+    add(&f, 0x41, 5, 0, 0, "0");
+    add_unc(&f, 5, 0, 0, "0.");
+    add_unc(&f, 5, 0, 0, "00");
+    PxGlyph g = make_glyph(0x41, 5, 0, 0, "000");
+    g.code = px_code_cp(0x41) | 1;
+    px_font_add_glyph(&f, &g);
+    g.code = px_code_symbol(0) | 1;
+    px_font_add_glyph(&f, &g);
+    px_glyph_free(&g);
+    CHECK(f.count == 5 && f.glyphs[1].code == (px_code_cp(0x41) | 1) && f.glyphs[3].code == (px_code_symbol(0) | 1), "a variant sorts right after its glyph 000");
+    CHECK(px_font_uncoded_count(&f) == 2 && px_font_free_variant(&f, px_code_cp(0x41)) == 2 && px_font_free_variant(&f, px_code_cp(0x42)) == 1, "symbols counted without variants; the next free variant");
+    CHECK(px_font_find_cp(&f, 0x41) == 0, "find_cp finds the glyph 000");
+    px_font_set_kern(&f, px_code_symbol(1), px_code_cp(0x41) | 1, 2);
+    px_font_remove_glyph(&f, px_font_find_code(&f, px_code_symbol(0)));
+    CHECK(f.count == 3 && f.glyphs[2].code == px_code_symbol(0) && f.glyphs[2].w == 2, "removing a symbol removes its variant and renumbers the later symbol");
+    CHECK(px_font_kern(&f, px_code_symbol(0), px_code_cp(0x41) | 1) == 2, "the kerning pair follows the renumbering");
+    size_t n;
+    char hash[33];
+    char *tx = text_of(&f, &n, hash);
+    CHECK(tx && strstr(tx, "GLYPH\tU+000041-001\t5\t0\t0\t") && strstr(tx, "KERNING\tX+000000-000\tU+000041-001\t2\n"), "a variant and its kerning written");
+    PxFont r;
+    char err[PX_ERR_LEN];
+    CHECK(tx && px_parse_pxfm(tx, n, "v", &r, err) && r.count == 3 && r.glyphs[1].code == (px_code_cp(0x41) | 1), "and read back");
+    if (tx) px_font_free(&r);
+    free(tx);
+    px_font_free(&f);
+}
+
 static void test_spec_examples(void) {
     PxFont f;
     example_font(&f);
@@ -164,7 +228,7 @@ static void test_spec_examples(void) {
     char hash[33];
     char *t = text_of(&f, &n, hash);
     CHECK(strcmp(t, EXAMPLE_TEXT) == 0, "example: written text is the spec's");
-    CHECK(strcmp(hash, H_EXAMPLE) == 0, "example: hash 0820dc69...");
+    CHECK(strcmp(hash, H_EXAMPLE) == 0, "example: hash 3b52125b...");
     char h2[33];
     px_font_hash(&f, h2);
     CHECK(strcmp(h2, H_EXAMPLE) == 0, "example: px_font_hash");
@@ -176,9 +240,9 @@ static void test_spec_examples(void) {
     char err[PX_ERR_LEN];
     CHECK(px_parse_pxfm(EXAMPLE_TEXT, sizeof EXAMPLE_TEXT - 1, "example", &p, err), "example: parses");
     CHECK(strcmp(p.fileHash, H_EXAMPLE) == 0, "example: fileHash");
-    CHECK(px_font_default_index(&p) == p.count - 1 && p.glyphs[p.count - 1].advance == 4 && !p.glyphs[p.count - 1].hash[0], "example: the FFFFFF line is the last glyph of the font");
+    CHECK(px_font_default_index(&p) == p.count - 1 && p.glyphs[p.count - 1].advance == 4 && !p.glyphs[p.count - 1].hash[0], "example: the I+DEFA00-000 line is the last glyph of the font in memory");
     CHECK(p.count == 7 && p.glyphs[1].lazy && p.glyphs[0].lazy == false, "example: glyphs lazy, the space has no file");
-    CHECK(p.kernCount == 1 && px_font_kern(&p, 0x41, 0x4D) == -1, "example: kerning pair");
+    CHECK(p.kernCount == 1 && px_font_kern(&p, px_code_cp(0x41), px_code_cp(0x4D)) == -1, "example: kerning pair");
     t = text_of(&p, &n, hash);
     CHECK(strcmp(t, EXAMPLE_TEXT) == 0, "example: parse then write is the same bytes");
     free(t);
@@ -192,7 +256,7 @@ static void test_spec_examples(void) {
     add(&f, 0x2C, 3, 0, -2, ROWS_COMMA);
     add(&f, 0x41, 6, -1, 0, ROWS_A);
     px_font_hash(&f, h2);
-    CHECK(strcmp(h2, H_NOASC) == 0, "no-ascent example: hash e6109c13...");
+    CHECK(strcmp(h2, H_NOASC) == 0, "no-ascent example: hash 4fba4190...");
     CHECK(px_font_box(&f, &above, &below) && above == 5 && below == 2, "no-ascent: derived box 5 above, 2 below");
     px_font_free(&f);
 
@@ -204,11 +268,11 @@ static void test_spec_examples(void) {
     add(&f, 0x41, 6, 0, 0, ROWS_GREY_A);
     font_colours(&f, WHITE_GREY, 2);
     px_font_hash(&f, h2);
-    CHECK(strcmp(h2, H_GREY) == 0, "grey example: hash 408c4d7d... (pxfm.md)");
+    CHECK(strcmp(h2, H_GREY) == 0, "grey example: hash 894ef821... (pxfm.md)");
     {
         size_t gl;
         char gh[33];
-        char *gt = px_font_glyph_pxgl(&f, &f.glyphs[px_font_find(&f, 0x41)], &gl, gh);
+        char *gt = px_font_glyph_pxgl(&f, &f.glyphs[px_font_find_cp(&f, 0x41)], &gl, gh);
         CHECK(gt && strcmp(gh, H_GREY_A) == 0 && strcmp(gt, "..0..\n.010.\n01.10\n11111\n1...1\n") == 0, "grey example: the A is canonical, 3ad25ae0...");
         free(gt);
         PxPalette *pals;
@@ -217,19 +281,22 @@ static void test_spec_examples(void) {
         px_palettes_free(pals, np);
         CHECK(px_font_colors(&f) == 2, "grey example: COLORS 2");
         char *t2 = text_of(&f, &n, hash);
-        CHECK(strcmp(t2, "ASCENT\t6\nCOLORS\t2\nDESCENT\t2\nGLYPH\t000020\t0,0\t4\n"
-                         "GLYPH\t000041\t0,0\t6\t3AD25AE0043EDDCC6BC11E8794FCCDD3\tEBBBA94934DA6897D86C5E8EA2AC5409\n") == 0, "grey example: the text of pxfm.md");
+        CHECK(strcmp(t2, "ASCENT\t6\nCOLORS\t2\nDESCENT\t2\nGLYPH\tU+000020-000\t4\t0\t0\n"
+                         "GLYPH\tU+000041-000\t6\t0\t0\t3AD25AE0043EDDCC6BC11E8794FCCDD3\tEBBBA94934DA6897D86C5E8EA2AC5409\n") == 0, "grey example: the text of pxfm.md");
         free(t2);
     }
     px_font_free(&f);
 }
 
 static void test_reader_strict(void) {
-    const char *A = "GLYPH\t000041\t0,0\t6\tC0FC54C2EC60CB8617B041D991DA1622\n";
+    const char *A = "GLYPH\tU+000041-000\t6\t0\t0\tC0FC54C2EC60CB8617B041D991DA1622\n";
     char buf[1024];
     CHECK(parse_fails("ASCENT\t6\nBASELINE\t5\n", "pxfm version 1 file"), "v1: BASELINE rejected as version 1");
     CHECK(parse_fails("GLYPH\t000041\t6x8\t0,0\tC0FC54C2EC60CB8617B041D991DA1622\n", "pxfm version 1 file"), "v1: glyph 6x8 rejected as version 1");
-    CHECK(parse_fails("GLYPH\t000041\t5.5\t0,0\tC0FC54C2EC60CB8617B041D991DA1622\n", "pxfm version 1 file"), "v1: fractional advance rejected as version 1");
+    CHECK(parse_fails("GLYPH\t000041\t5.5\t0,0\tC0FC54C2EC60CB8617B041D991DA1622\n", "pxfm version"), "v1: fractional advance rejected as an old version");
+    CHECK(parse_fails("GLYPH\t000041\t0,0\t6\tC0FC54C2EC60CB8617B041D991DA1622\n", "pxfm version 2 file"), "v2: a six-digit code rejected as version 2");
+    CHECK(parse_fails("GLYPH\tU+000041-000\t0,0\t6\tC0FC54C2EC60CB8617B041D991DA1622\n", "pxfm version 2 file"), "v2: offsets x,y rejected as version 2");
+    CHECK(parse_fails("KERNING\t000041\t00004D\t-1\n", "pxfm version 2 file"), "v2: a kerning pair of six-digit codes rejected as version 2");
     CHECK(parse_fails("ascent\t6\n", "unknown key"), "lower-case key rejected");
     CHECK(parse_fails("FOO\t1\n", "unknown key"), "unknown key rejected");
     CHECK(parse_fails("ASCENT\t+6\n", "integer"), "plus sign rejected");
@@ -240,55 +307,62 @@ static void test_reader_strict(void) {
     CHECK(parse_fails("MONOSPACED\tx\n", "no field"), "MONOSPACED with a field rejected");
     CHECK(parse_fails("RATIO\t2:4\n", "RATIO"), "RATIO 2:4 rejected");
     CHECK(parse_fails("RATIO\t1-2\n", "RATIO"), "RATIO 1-2 rejected");
-    CHECK(parse_fails("KERNING\t000041\t00004D\t0\n", "KERNING of 0"), "KERNING 0 rejected");
-    CHECK(parse_fails("KERNING\t000041\t00004D\t1\nKERNING\t000041\t00004D\t2\n", "one pair"), "two KERNING of a pair rejected");
+    CHECK(parse_fails("KERNING\tU+000041-000\tU+00004D-000\t0\n", "KERNING of 0"), "KERNING 0 rejected");
+    CHECK(parse_fails("KERNING\tU+000041-000\tU+00004D-000\t1\nKERNING\tU+000041-000\tU+00004D-000\t2\n", "one pair"), "two KERNING of a pair rejected");
     CHECK(parse_fails("KERNING\t-\t00004D\t1\n", "KERNING"), "KERNING with - rejected");
-    CHECK(parse_fails("GLYPH\t000020\t1,0\t4\n", "0,0"), "glyph without file at 1,0 rejected");
-    CHECK(parse_fails("GLYPH\tFFFFFF\t0,0\t4\nGLYPH\tFFFFFF\t0,0\t4\n", "code FFFFFF"), "two FFFFFF rejected");
-    CHECK(parse_fails("GLYPH\t41\t0,0\t4\n", "six"), "short code point rejected");
-    CHECK(parse_fails("GLYPH\t110000\t0,0\t4\n", "six"), "code point above 10FFFF rejected");
-    CHECK(parse_fails("GLYPH\t00004a\t0,0\t4\n", "six"), "lower-case code point rejected");
-    CHECK(parse_fails("GLYPH\tEFFFFF\t0,0\t4\n", "six"), "code EFFFFF rejected");
+    CHECK(parse_fails("GLYPH\tU+000020-000\t4\t1\t0\n", "offsets 0 and 0"), "glyph without file at 1 0 rejected");
+    CHECK(parse_fails("GLYPH\tI+DEFA00-000\t4\t0\t0\nGLYPH\tI+DEFA00-000\t4\t0\t0\n", "two GLYPH lines of the code I+DEFA00-000"), "two default glyphs rejected");
+    CHECK(parse_fails("GLYPH\tU+41-000\t4\t0\t0\n", "G+CCCCCC-VVV"), "short code point rejected");
+    CHECK(parse_fails("GLYPH\tU+000041-0\t4\t0\t0\n", "G+CCCCCC-VVV"), "short variant rejected");
+    CHECK(parse_fails("GLYPH\tU+110000-000\t4\t0\t0\n", "G+CCCCCC-VVV"), "code point above 10FFFF rejected");
+    CHECK(parse_fails("GLYPH\tU+00004a-000\t4\t0\t0\n", "G+CCCCCC-VVV"), "lower-case code point rejected");
+    CHECK(parse_fails("GLYPH\tu+00004A-000\t4\t0\t0\n", "G+CCCCCC-VVV"), "lower-case group rejected");
+    CHECK(parse_fails("GLYPH\tA+00004A-000\t4\t0\t0\n", "G+CCCCCC-VVV"), "unknown group rejected");
+    CHECK(parse_fails("GLYPH\tI+000000-000\t4\t0\t0\n", "G+CCCCCC-VVV"), "group I other than DEFA00 rejected");
+    CHECK(parse_fails("GLYPH\tI+DEFA00-001\t4\t0\t0\n", NULL) == false, "a variant of the default glyph is fine");
     CHECK(parse_fails("GLYPH\t-\t0,0\t4\n", "version 1"), "code - rejected as version 1");
     CHECK(parse_fails("GLYPH\t_DEF\t0,0\t4\n", "version 1"), "code _DEF rejected as version 1");
-    CHECK(parse_fails("GLYPH\tF00001\t0,0\t4\n", "F00000, F00001"), "uncoded codes must start at F00000");
-    CHECK(parse_fails("GLYPH\tF00000\t0,0\t4\nGLYPH\tF00002\t0,0\t4\n", "F00000, F00001"), "uncoded codes without a gap");
-    CHECK(parse_fails("GLYPH\tF00000\t0,0\t4\nGLYPH\tF00000\t0,0\t4\n", "two GLYPH lines"), "uncoded code twice rejected");
-    CHECK(parse_fails("GLYPH\t000041\t0,0\t4\nKERNING\t000041\tF00000\t1\n", "no GLYPH line has"), "KERNING of a missing F-code rejected");
-    CHECK(parse_fails("GLYPH\t000041\t0,0\t4\nKERNING\t000041\t000042\t1\n", NULL) == false, "KERNING of a code point without glyph is fine");
-    CHECK(parse_fails("GLYPH\t000041\t0;0\t4\n", "x,y"), "bad offsets rejected");
-    CHECK(parse_fails("GLYPH\t000041\t0,0\t4\tabe675527c81c31d04cda5e2aed7623a\n", "upper-case"), "lower-case hash rejected");
+    CHECK(parse_fails("GLYPH\tX+000001-000\t4\t0\t0\n", "X+000000-000, X+000001-000"), "symbol codes must start at X+000000-000");
+    CHECK(parse_fails("GLYPH\tX+000000-000\t4\t0\t0\nGLYPH\tX+000002-000\t4\t0\t0\n", "X+000000-000, X+000001-000"), "symbol codes without a gap");
+    CHECK(parse_fails("GLYPH\tX+000001-001\t4\t0\t0\nGLYPH\tX+000000-000\t4\t0\t0\n", "no glyph of variant 000"), "a symbol variant without its glyph 000 rejected");
+    CHECK(parse_fails("GLYPH\tX+000000-000\t4\t0\t0\nGLYPH\tX+000000-002\t4\t0\t0\nGLYPH\tX+000001-000\t4\t0\t0\n", NULL) == false, "a symbol variant beside its glyph 000 is fine");
+    CHECK(parse_fails("GLYPH\tU+000041-001\t4\t0\t0\n", NULL) == false, "a code point variant without its glyph 000 is fine");
+    CHECK(parse_fails("GLYPH\tX+000000-000\t4\t0\t0\nGLYPH\tX+000000-000\t4\t0\t0\n", "two GLYPH lines"), "uncoded code twice rejected");
+    CHECK(parse_fails("GLYPH\tU+000041-000\t4\t0\t0\nKERNING\tU+000041-000\tX+000000-000\t1\n", "no GLYPH line has"), "KERNING of a missing F-code rejected");
+    CHECK(parse_fails("GLYPH\tU+000041-000\t4\t0\t0\nKERNING\tU+000041-000\tU+000042-000\t1\n", NULL) == false, "KERNING of a code point without glyph is fine");
+    CHECK(parse_fails("GLYPH\tU+000041-000\t4\t0;0\t0\n", "offset x"), "bad offsets rejected");
+    CHECK(parse_fails("GLYPH\tU+000041-000\t4\t0\t0\tabe675527c81c31d04cda5e2aed7623a\n", "upper-case"), "lower-case hash rejected");
     CHECK(parse_fails("ASCENT\t6\xC3\xA9\n", "0x80"), "non-ASCII byte rejected");
     CHECK(parse_fails("COLOR\t0\t808080FF\n", "older pixelglyphlib"), "COLOR (before hex palettes) rejected");
     CHECK(parse_fails("COLORS\t1\n", "COLORS"), "COLORS 1 rejected");
     CHECK(parse_fails("COLORS\t2\nCOLORS\t2\n", "two COLORS"), "two COLORS rejected");
     CHECK(parse_fails("COLORS\t02\n", "integer"), "COLORS 02 rejected");
-    CHECK(parse_fails("COLORS\t2\nGLYPH\t000041\t0,0\t6\t3AD25AE0043EDDCC6BC11E8794FCCDD3\n", "no palette"), "a colour font's glyph line without palette rejected");
-    CHECK(parse_fails("GLYPH\t000041\t0,0\t6\t3AD25AE0043EDDCC6BC11E8794FCCDD3\tEBBBA94934DA6897D86C5E8EA2AC5409\n", "no COLORS"), "a palette without COLORS rejected");
-    CHECK(parse_fails("COLORS\t2\nGLYPH\t000041\t0,0\t6\t3AD25AE0043EDDCC6BC11E8794FCCDD3\tebbba94934da6897d86c5e8ea2ac5409\n", NULL), "lower-case palette hash rejected");
+    CHECK(parse_fails("COLORS\t2\nGLYPH\tU+000041-000\t6\t0\t0\t3AD25AE0043EDDCC6BC11E8794FCCDD3\n", "no palette"), "a colour font's glyph line without palette rejected");
+    CHECK(parse_fails("GLYPH\tU+000041-000\t6\t0\t0\t3AD25AE0043EDDCC6BC11E8794FCCDD3\tEBBBA94934DA6897D86C5E8EA2AC5409\n", "no COLORS"), "a palette without COLORS rejected");
+    CHECK(parse_fails("COLORS\t2\nGLYPH\tU+000041-000\t6\t0\t0\t3AD25AE0043EDDCC6BC11E8794FCCDD3\tebbba94934da6897d86c5e8ea2ac5409\n", NULL), "lower-case palette hash rejected");
     CHECK(parse_fails("SYMBOLIC\tx\n", "SYMBOLIC"), "SYMBOLIC with a field rejected");
     CHECK(parse_fails("SYMBOLIC\nSYMBOLIC\n", "two SYMBOLIC"), "two SYMBOLIC rejected");
     CHECK(parse_fails("ASCENT\t6\t7\n", "exactly 1"), "too many fields rejected");
-    CHECK(parse_fails("GLYPH\t000041\t0,0\n", "3, 4 or 5"), "too few glyph fields rejected");
+    CHECK(parse_fails("GLYPH\tU+000041-000\t4\t0\n", "4, 5 or 6"), "too few glyph fields rejected");
     CHECK(parse_fails("ASCENT\t\n", NULL), "empty field rejected");
 
     /* accepted: whatever the line ends, trailing blanks, empty lines and order; fileHash is the canonical hash */
     PxFont f;
     char err[PX_ERR_LEN];
-    snprintf(buf, sizeof buf, "KERNING\t000041\t00004D\t-1\r\n\r\nLINEGAP\t1  \r\nXHEIGHT\t4\t\rASCENT\t6\n%s", A);
+    snprintf(buf, sizeof buf, "KERNING\tU+000041-000\tU+00004D-000\t-1\r\n\r\nLINEGAP\t1  \r\nXHEIGHT\t4\t\rASCENT\t6\n%s", A);
     CHECK(px_parse_pxfm(buf, strlen(buf), "t", &f, err), "CRLF, CR, blanks, empty lines and any order are accepted");
     char want[33];
-    px_hash128_hex("KERNING\t000041\t00004D\t-1\nLINEGAP\t1\nXHEIGHT\t4\nASCENT\t6\nGLYPH\t000041\t0,0\t6\tC0FC54C2EC60CB8617B041D991DA1622\n", 112, want, false);
+    px_hash128_hex("KERNING\tU+000041-000\tU+00004D-000\t-1\nLINEGAP\t1\nXHEIGHT\t4\nASCENT\t6\nGLYPH\tU+000041-000\t6\t0\t0\tC0FC54C2EC60CB8617B041D991DA1622\n", 112, want, false);
     CHECK(strcmp(f.fileHash, want) != 0 || true, "fileHash computed");
     size_t n;
     char hash[33];
     char *t = text_of(&f, &n, hash);
-    CHECK(strncmp(t, "ASCENT\t6\nGLYPH\t000041", 21) == 0, "writer sorts into canonical order");
+    CHECK(strncmp(t, "ASCENT\t6\nGLYPH\tU+000041-000", 27) == 0, "writer sorts into canonical order");
     free(t);
     px_font_free(&f);
 
     /* dangling FFFFFF is kept verbatim */
-    const char *dang = "GLYPH\t000041\t0,0\t6\tC0FC54C2EC60CB8617B041D991DA1622\nGLYPH\tFFFFFF\t1,0\t9\tC0FC54C2EC60CB8617B041D991DA1622\n";
+    const char *dang = "GLYPH\tI+DEFA00-000\t9\t1\t0\tC0FC54C2EC60CB8617B041D991DA1622\nGLYPH\tU+000041-000\t6\t0\t0\tC0FC54C2EC60CB8617B041D991DA1622\n";
     CHECK(px_parse_pxfm(dang, strlen(dang), "t", &f, err), "dangling FFFFFF parses");
     CHECK(f.count == 2 && px_font_default_index(&f) == 1 && f.glyphs[1].x == 1 && f.glyphs[1].advance == 9, "an FFFFFF line is a glyph of its own, whether or not a coded glyph matches");
     t = text_of(&f, &n, hash);
@@ -299,7 +373,7 @@ static void test_reader_strict(void) {
     CHECK(font_eq(&f, &g), "font copy equal (dangling FFFFFF)");
     px_font_set_default_from(&g, 0);
     t = text_of(&g, &n, hash);
-    CHECK(g.count == 2 && strstr(t, "GLYPH\tFFFFFF\t0,0\t6\tC0FC") != NULL && strstr(t, "1,0\t9") == NULL, "Set Default copies the glyph over the FFFFFF glyph");
+    CHECK(g.count == 2 && strstr(t, "GLYPH\tI+DEFA00-000\t6\t0\t0\tC0FC") != NULL && strstr(t, "\t9\t1\t0") == NULL, "Set Default copies the glyph over the FFFFFF glyph");
     g.glyphs[1].x = 3; px_glyph_touch(&g.glyphs[1]);
     CHECK(g.glyphs[0].x == 0, "the default glyph is an independent copy");
     free(t);
@@ -307,8 +381,8 @@ static void test_reader_strict(void) {
     px_font_free(&f);
 
     /* FFFFFF resolution: smallest code point among equal lines */
-    const char *multi = "GLYPH\t000041\t0,0\t6\tC0FC54C2EC60CB8617B041D991DA1622\nGLYPH\t000061\t0,0\t6\tC0FC54C2EC60CB8617B041D991DA1622\n"
-                        "GLYPH\tFFFFFF\t0,0\t6\tC0FC54C2EC60CB8617B041D991DA1622\n";
+    const char *multi = "GLYPH\tI+DEFA00-000\t6\t0\t0\tC0FC54C2EC60CB8617B041D991DA1622\n"
+                        "GLYPH\tU+000041-000\t6\t0\t0\tC0FC54C2EC60CB8617B041D991DA1622\nGLYPH\tU+000061-000\t6\t0\t0\tC0FC54C2EC60CB8617B041D991DA1622\n";
     px_parse_pxfm(multi, strlen(multi), "t", &f, err);
     CHECK(f.count == 3 && f.glyphs[2].code == PX_CODE_DEFAULT, "FFFFFF repeating two coded glyphs is a third glyph, last");
     t = text_of(&f, &n, hash);
@@ -317,11 +391,11 @@ static void test_reader_strict(void) {
     px_font_free(&f);
 
     /* uncoded glyphs, a kerning pair naming an F-code, the default glyph an uncoded one's twin */
-    const char *unc = "GLYPH\t000041\t0,0\t6\tC0FC54C2EC60CB8617B041D991DA1622\nGLYPH\tF00000\t0,0\t6\tC0FC54C2EC60CB8617B041D991DA1622\n"
-                      "GLYPH\tF00001\t0,0\t4\nGLYPH\tFFFFFF\t0,0\t6\tC0FC54C2EC60CB8617B041D991DA1622\nKERNING\t000041\tF00001\t-2\n";
+    const char *unc = "GLYPH\tI+DEFA00-000\t6\t0\t0\tC0FC54C2EC60CB8617B041D991DA1622\nGLYPH\tU+000041-000\t6\t0\t0\tC0FC54C2EC60CB8617B041D991DA1622\n"
+                      "GLYPH\tX+000000-000\t6\t0\t0\tC0FC54C2EC60CB8617B041D991DA1622\nGLYPH\tX+000001-000\t4\t0\t0\nKERNING\tU+000041-000\tX+000001-000\t-2\n";
     CHECK(px_parse_pxfm(unc, strlen(unc), "t", &f, err), "uncoded glyphs and a kerning pair naming an F-code parse");
-    CHECK(f.count == 4 && px_font_uncoded_count(&f) == 2 && f.glyphs[1].code == 0xF00000 && f.glyphs[2].code == 0xF00001 && f.glyphs[3].code == PX_CODE_DEFAULT, "uncoded glyphs sort after the code points, the default glyph last");
-    CHECK(px_font_default_index(&f) == 3 && px_font_kern(&f, 0x41, 0xF00001) == -2, "default glyph is the smallest code (a code point first), kerning with an F-code");
+    CHECK(f.count == 4 && px_font_uncoded_count(&f) == 2 && f.glyphs[1].code == px_code_symbol(0) && f.glyphs[2].code == px_code_symbol(1) && f.glyphs[3].code == PX_CODE_DEFAULT, "uncoded glyphs sort after the code points, the default glyph last");
+    CHECK(px_font_default_index(&f) == 3 && px_font_kern(&f, px_code_cp(0x41), px_code_symbol(1)) == -2, "default glyph is the smallest code (a code point first), kerning with an F-code");
     t = text_of(&f, &n, hash);
     CHECK(strcmp(t, unc) == 0, "uncoded glyphs round trip");
     free(t);
@@ -342,26 +416,26 @@ static void test_writer_details(void) {
     add_unc(&f, 5, 0, 0, "0");
     add_unc(&f, 5, 0, 0, "0");                /* alike in every field: still two lines, they have their own codes */
     add(&f, 0x41, 5, 0, 0, "0");
-    px_font_set_kern(&f, 0x41, 0x41, 2);
-    px_font_set_kern(&f, 0x42, 0x41, 0);      /* not stored */
-    px_font_set_kern(&f, 0x41, 0x41, 0);      /* removed */
-    px_font_set_kern(&f, 0x42, 0x43, -3);
-    px_font_set_kern(&f, 0x41, 0x43, 1);
+    px_font_set_kern(&f, px_code_cp(0x41), px_code_cp(0x41), 2);
+    px_font_set_kern(&f, px_code_cp(0x42), px_code_cp(0x41), 0);      /* not stored */
+    px_font_set_kern(&f, px_code_cp(0x41), px_code_cp(0x41), 0);      /* removed */
+    px_font_set_kern(&f, px_code_cp(0x42), px_code_cp(0x43), -3);
+    px_font_set_kern(&f, px_code_cp(0x41), px_code_cp(0x43), 1);
     f.kern[0].value = 0;                      /* a zero left in the array is dropped by the writer */
-    px_font_set_kern(&f, 0xF00001, 0x41, 4);
-    px_font_set_kern(&f, 0x41, 0xF00005, 1);  /* names an F-code no glyph has: not written */
+    px_font_set_kern(&f, px_code_symbol(1), px_code_cp(0x41), 4);
+    px_font_set_kern(&f, px_code_cp(0x41), px_code_symbol(5), 1);  /* names an F-code no glyph has: not written */
     size_t n;
     char hash[33];
     char *t = text_of(&f, &n, hash);
-    CHECK(strstr(t, "KERNING\t000041\t000043\t1\n") != NULL && strstr(t, "KERNING\t000042\t000043") == NULL, "kerning written; a zero left in the array is dropped");
-    CHECK(strstr(t, "KERNING\t000041\t000041") == NULL, "removed kerning pair not written");
+    CHECK(strstr(t, "KERNING\tU+000041-000\tU+000043-000\t1\n") != NULL && strstr(t, "KERNING\tU+000042-000\tU+000043-000") == NULL, "kerning written; a zero left in the array is dropped");
+    CHECK(strstr(t, "KERNING\tU+000041-000\tU+000041-000") == NULL, "removed kerning pair not written");
     int lines = 0;
     for (char *p = t; *p; p++) if (*p == '\n') lines++;
     /* GLYPH 41, F00000, F00001 = 3; KERNING 41-43 and F00001-41 = 2; INTERNALLEADING MONOSPACED QUADWIDTH RATIO
      * STRIKEOUT x2 UNDERLINE x2 = 8 */
-    CHECK(lines == 13 && strstr(t, "F00005") == NULL, "every glyph line written, a kerning pair of a missing F-code dropped, every metric line present");
+    CHECK(lines == 13 && strstr(t, "X+000005") == NULL, "every glyph line written, a kerning pair of a missing F-code dropped, every metric line present");
     /* sorted order of keys */
-    const char *order[] = {"GLYPH\t000041", "GLYPH\tF00000", "GLYPH\tF00001", "INTERNALLEADING", "KERNING", "MONOSPACED", "QUADWIDTH", "RATIO",
+    const char *order[] = {"GLYPH\tU+000041-000", "GLYPH\tX+000000-000", "GLYPH\tX+000001-000", "INTERNALLEADING", "KERNING", "MONOSPACED", "QUADWIDTH", "RATIO",
                            "STRIKEOUTPOSITION", "STRIKEOUTTHICKNESS", "UNDERLINEPOSITION", "UNDERLINETHICKNESS"};
     const char *pos = t;
     bool ordered = true;
@@ -431,7 +505,7 @@ static void test_change_detection(void) {
     example_font(&f);
     char h0[33], h1[33];
     px_font_hash(&f, h0);
-    int a = px_font_find(&f, 0x41);
+    int a = px_font_find_cp(&f, 0x41);
     f.glyphs[a].pix[2] = '.';
     px_glyph_touch(&f.glyphs[a]);
     px_font_hash(&f, h1);
@@ -451,11 +525,11 @@ static void test_change_detection(void) {
     px_font_hash(&f, h1);
     CHECK(strcmp(h0, h1) != 0, "moving a glyph changes the hash (no touch needed)");
     f.glyphs[a].y = 0;
-    px_font_remove_glyph(&f, px_font_find(&f, 0x20));
-    CHECK(px_font_default_index(&f) == f.count - 1 && px_font_find(&f, 0x20) < 0, "removing the glyph the default was copied from leaves the default glyph");
+    px_font_remove_glyph(&f, px_font_find_cp(&f, 0x20));
+    CHECK(px_font_default_index(&f) == f.count - 1 && px_font_find_cp(&f, 0x20) < 0, "removing the glyph the default was copied from leaves the default glyph");
     px_font_remove_glyph(&f, px_font_default_index(&f));
-    CHECK(px_font_default_index(&f) < 0 && px_font_find(&f, 0x41) >= 0, "the default glyph can be removed");
-    px_font_remove_glyph(&f, px_font_find(&f, 0x4D));
+    CHECK(px_font_default_index(&f) < 0 && px_font_find_cp(&f, 0x41) >= 0, "the default glyph can be removed");
+    px_font_remove_glyph(&f, px_font_find_cp(&f, 0x4D));
     CHECK(f.kernCount == 0, "removing a glyph drops its kerning pairs");
     px_font_free(&f);
 
@@ -465,15 +539,15 @@ static void test_change_detection(void) {
     add_unc(&f, 5, 0, 0, "0.");
     add_unc(&f, 5, 0, 0, "00");
     add_unc(&f, 5, 0, 0, "000");
-    px_font_set_default_from(&f, px_font_find(&f, 0xF00002));
-    px_font_set_kern(&f, 0xF00001, 0xF00002, 3);
-    px_font_set_kern(&f, 0xF00000, 0x41, 2);
-    px_font_remove_glyph(&f, px_font_find(&f, 0xF00000));
-    CHECK(f.count == 4 && f.glyphs[1].code == 0xF00000 && f.glyphs[2].code == 0xF00001 && f.glyphs[1].w == 2 && f.glyphs[2].w == 3, "removing F00000 renumbers the later glyphs");
+    px_font_set_default_from(&f, px_font_find_code(&f, px_code_symbol(2)));
+    px_font_set_kern(&f, px_code_symbol(1), px_code_symbol(2), 3);
+    px_font_set_kern(&f, px_code_symbol(0), px_code_cp(0x41), 2);
+    px_font_remove_glyph(&f, px_font_find_code(&f, px_code_symbol(0)));
+    CHECK(f.count == 4 && f.glyphs[1].code == px_code_symbol(0) && f.glyphs[2].code == px_code_symbol(1) && f.glyphs[1].w == 2 && f.glyphs[2].w == 3, "removing F00000 renumbers the later glyphs");
     CHECK(px_font_default_index(&f) == f.count - 1 && f.glyphs[f.count - 1].w == 3 && px_font_uncoded_count(&f) == 2, "the default glyph (a copy) stays last and is not an F-code");
-    CHECK(f.kernCount == 1 && px_font_kern(&f, 0xF00000, 0xF00001) == 3, "kerning pairs follow the renumbering; those of the removed glyph go");
-    px_font_remove_glyph(&f, px_font_find(&f, 0xF00000));
-    CHECK(px_font_uncoded_count(&f) == 1 && f.glyphs[1].code == 0xF00000 && f.kernCount == 0 && px_font_default_index(&f) == f.count - 1, "removing an uncoded glyph keeps the default glyph last");
+    CHECK(f.kernCount == 1 && px_font_kern(&f, px_code_symbol(0), px_code_symbol(1)) == 3, "kerning pairs follow the renumbering; those of the removed glyph go");
+    px_font_remove_glyph(&f, px_font_find_code(&f, px_code_symbol(0)));
+    CHECK(px_font_uncoded_count(&f) == 1 && f.glyphs[1].code == px_code_symbol(0) && f.kernCount == 0 && px_font_default_index(&f) == f.count - 1, "removing an uncoded glyph keeps the default glyph last");
     px_font_free(&f);
 
     /* speed: 8000 glyphs, a hash after each of 200 edits */
@@ -506,24 +580,24 @@ static void test_change_detection(void) {
 static void test_lazy_loading(void) {
     PxFont f;
     char err[PX_ERR_LEN];
-    CHECK(px_read_pxfm_lines(LIB "/pxfm/08/" H_EXAMPLE ".pxfm", &f, err), "lazy: lines read");
+    CHECK(px_read_pxfm_lines(LIB "/pxfm/3b/" H_EXAMPLE ".pxfm", &f, err), "lazy: lines read");
     CHECK(strcmp(f.fileHash, H_EXAMPLE) == 0, "lazy: file hash");
     bool allLazy = true;
-    for (int i = 0; i < f.count; i++) if (f.glyphs[i].codepoint != 0x20 && f.glyphs[i].codepoint != PX_CODE_DEFAULT && !f.glyphs[i].lazy) allLazy = false;
+    for (int i = 0; i < f.count; i++) if (f.glyphs[i].code != px_code_cp(0x20) && f.glyphs[i].code != PX_CODE_DEFAULT && !f.glyphs[i].lazy) allLazy = false;
     CHECK(allLazy, "lazy: no bitmap loaded");
     int above, below;
     CHECK(!px_font_box(&f, &above, &below) == false, "lazy: box exact because ASCENT/DESCENT are stated");
-    int32_t want[] = {0x41, 0x78, 0x1234};
+    PxCode want[] = {px_code_cp(0x41), px_code_cp(0x78), px_code_cp(0x1234)};
     CHECK(px_load_glyphs(&f, LIB, want, 3, err), "lazy: load A and x (and a missing code point)");
-    CHECK(!f.glyphs[px_font_find(&f, 0x41)].lazy && !f.glyphs[px_font_find(&f, 0x78)].lazy &&
-          f.glyphs[px_font_find(&f, 0x48)].lazy, "lazy: only the asked glyphs are loaded");
-    CHECK(f.glyphs[px_font_find(&f, 0x41)].w == 5 && f.glyphs[px_font_find(&f, 0x78)].h == 4, "lazy: bitmaps right");
+    CHECK(!f.glyphs[px_font_find_cp(&f, 0x41)].lazy && !f.glyphs[px_font_find_cp(&f, 0x78)].lazy &&
+          f.glyphs[px_font_find_cp(&f, 0x48)].lazy, "lazy: only the asked glyphs are loaded");
+    CHECK(f.glyphs[px_font_find_cp(&f, 0x41)].w == 5 && f.glyphs[px_font_find_cp(&f, 0x78)].h == 4, "lazy: bitmaps right");
     char h[33];
     px_font_hash(&f, h);
     CHECK(strcmp(h, H_EXAMPLE) == 0, "lazy: hash is the same with some glyphs loaded");
     CHECK(px_load_glyphs(&f, LIB, NULL, 0, err), "lazy: load the rest");
     PxFont full;
-    CHECK(px_read_pxfm(LIB "/pxfm/08/" H_EXAMPLE ".pxfm", NULL, &full, err), "full read from the library path");
+    CHECK(px_read_pxfm(LIB "/pxfm/3b/" H_EXAMPLE ".pxfm", NULL, &full, err), "full read from the library path");
     CHECK(font_eq(&f, &full), "lazy + load all == full read");
     px_font_hash(&full, h);
     CHECK(strcmp(h, full.fileHash) == 0, "hash of a freshly read font == file hash");
@@ -531,20 +605,20 @@ static void test_lazy_loading(void) {
     px_font_free(&full);
 
     /* palette font and no-ascent font */
-    CHECK(px_read_pxfm(LIB "/pxfm/40/" H_GREY ".pxfm", NULL, &f, err), "grey font read");
+    CHECK(px_read_pxfm(LIB "/pxfm/89/" H_GREY ".pxfm", NULL, &f, err), "grey font read");
     {
-        const PxGlyph *ga = &f.glyphs[px_font_find(&f, 0x41)];
+        const PxGlyph *ga = &f.glyphs[px_font_find_cp(&f, 0x41)];
         const PxPalette *pa = px_glyph_palette(&f, ga);
         CHECK(ga->pi > 0 && pa->n == 2 && pa->c[0] == 0x808080FFu && pa->c[1] == 0xFFFFFFFFu && ga->pix[2] == '0', "grey font: the A has its palette, its pixels are those of its file");
-        CHECK(px_font_is_colour(&f) && f.glyphs[px_font_find(&f, 0x20)].pi == 0, "grey font: a colour font, the space has the default palette");
+        CHECK(px_font_is_colour(&f) && f.glyphs[px_font_find_cp(&f, 0x20)].pi == 0, "grey font: a colour font, the space has the default palette");
     }
-    CHECK(px_font_colors(&f) == 2 && f.npals == 2 && strcmp(f.glyphs[px_font_find(&f, 0x41)].pal, H_GREY_PAL) == 0, "grey font: COLORS 2, the palette remembered (the table: the default and it)");
+    CHECK(px_font_colors(&f) == 2 && f.npals == 2 && strcmp(f.glyphs[px_font_find_cp(&f, 0x41)].pal, H_GREY_PAL) == 0, "grey font: COLORS 2, the palette remembered (the table: the default and it)");
     px_font_hash(&f, h);
     CHECK(strcmp(h, H_GREY) == 0, "grey font hash");
     px_font_free(&f);
-    CHECK(px_read_pxfm(LIB "/pxfm/e6/" H_NOASC ".pxfm", NULL, &f, err), "no-ascent font read");
+    CHECK(px_read_pxfm(LIB "/pxfm/4f/" H_NOASC ".pxfm", NULL, &f, err), "no-ascent font read");
     CHECK(px_font_box(&f, &above, &below) && above == 5 && below == 2 && !f.has[PXM_ASCENT], "no-ascent font: derived box, nothing stated");
-    CHECK(f.glyphs[px_font_find(&f, 0x41)].x == -1, "offset x -1 read");
+    CHECK(f.glyphs[px_font_find_cp(&f, 0x41)].x == -1, "offset x -1 read");
     px_font_free(&f);
 }
 
@@ -604,7 +678,7 @@ static void test_colour_fonts(void) {
     CHECK(px_font_colors(&f) == 2, "shared: COLORS 2");
     size_t n;
     char *t = text_of(&f, &n, hash);
-    CHECK(strstr(t, "COLORS\t2\n") && strstr(t, "SYMBOLIC\n") && strstr(t, "GLYPH\t000049\t0,0\t2\t") && strstr(t, "\tEBBBA94934DA6897D86C5E8EA2AC5409\nSYMBOLIC"), "shared: COLORS, SYMBOLIC and the palette field written");
+    CHECK(strstr(t, "COLORS\t2\n") && strstr(t, "SYMBOLIC\n") && strstr(t, "GLYPH\tU+000049-000\t2\t0\t0\t") && strstr(t, "\tEBBBA94934DA6897D86C5E8EA2AC5409\nSYMBOLIC"), "shared: COLORS, SYMBOLIC and the palette field written");
     free(t);
     CHECK(px_save_final(&f, TMP "/colourlib", hash, path, sizeof path, err), "shared: saved");
     PxFont r;
@@ -614,7 +688,7 @@ static void test_colour_fonts(void) {
     px_font_hash(&r, h2);
     CHECK(strcmp(h2, hash) == 0, "shared: the same hash read back");
     /* an edit that keeps the colours keeps the palette; a new colour on the I gives it a palette of its own */
-    PxGlyph *gi = &r.glyphs[px_font_find(&r, 0x49)];
+    PxGlyph *gi = &r.glyphs[px_font_find_cp(&r, 0x49)];
     gi->advance = 3;
     px_glyph_touch(gi);
     np = px_font_write_palettes(&r, &pals);
@@ -624,9 +698,9 @@ static void test_colour_fonts(void) {
         char hBefore[33];
         px_font_hash(&r, hBefore);
         int sharedPi = gi->pi;
-        CHECK(sharedPi > 0 && sharedPi == r.glyphs[px_font_find(&r, 0x41)].pi, "shared: the A and the I point at one table entry");
+        CHECK(sharedPi > 0 && sharedPi == r.glyphs[px_font_find_cp(&r, 0x41)].pi, "shared: the A and the I point at one table entry");
         int s = px_glyph_add_color(&r, gi, 0xFF0000FFu);   /* the I uses entry 0 (grey) only: red is appended (version 23: white, unused, stays) */
-        CHECK(s == 2 && gi->pi != sharedPi && r.glyphs[px_font_find(&r, 0x41)].pi == sharedPi, "copy on write: the I gets a palette of its own, the A keeps the shared one");
+        CHECK(s == 2 && gi->pi != sharedPi && r.glyphs[px_font_find_cp(&r, 0x41)].pi == sharedPi, "copy on write: the I gets a palette of its own, the A keeps the shared one");
         CHECK(px_glyph_palette(&r, gi)->n == 3 && px_glyph_palette(&r, gi)->c[2] == 0xFF0000FFu, "append: red takes a new entry, the unused one stays");
         gi->pix[0] = '2';
         px_glyph_touch(gi);
@@ -664,7 +738,7 @@ static void test_colour_fonts(void) {
     free(ht);
     char text[400], ug[33], up[33];
     for (int i = 0; i < 33; i++) { ug[i] = (char)toupper((unsigned char)gh[i]); up[i] = (char)toupper((unsigned char)ph[i]); }
-    snprintf(text, sizeof text, "COLORS\t2\nGLYPH\t000041\t0,0\t2\t%s\t%s\n", ug, up);
+    snprintf(text, sizeof text, "COLORS\t2\nGLYPH\tU+000041-000\t2\t0\t0\t%s\t%s\n", ug, up);
     PxFont g;
     CHECK(px_parse_pxfm(text, strlen(text), "t", &g, err), "not canonical: the pxfm parses");
     CHECK(!px_load_glyphs(&g, L, NULL, 0, err) && strstr(err, "reading order"), "not canonical: the glyph file '10' is rejected");
@@ -686,7 +760,7 @@ static void test_colour_fonts(void) {
         write_text_file(hexd, name, ht);
         free(ht);
         for (int i = 0; i < 33; i++) up[i] = (char)toupper((unsigned char)ph[i]);
-        o += (size_t)snprintf(big + o, 8000 - o, "GLYPH\t%06X\t0,0\t2\t%s\t%s\n", 0x41 + k, ug, up);
+        o += (size_t)snprintf(big + o, 8000 - o, "GLYPH\tU+%06X-000\t2\t0\t0\t%s\t%s\n", 0x41 + k, ug, up);
     }
     CHECK(px_parse_pxfm(big, o, "t", &g, err) && px_font_colors(&g) == 37, "37 colours: the pxfm parses with COLORS 37");
     CHECK(px_load_glyphs(&g, L, NULL, 0, err), "37 colours over the glyphs: loaded (only a glyph is limited to 36)");
@@ -765,13 +839,13 @@ static void test_canonical_palettes(void) {
     }
     /* an empty glyph of the default palette: its black is no colour of its own */
     add(&f, 0x42, 4, 0, 0, "...");
-    PxGlyph *e = &f.glyphs[px_font_find(&f, 0x42)];
+    PxGlyph *e = &f.glyphs[px_font_find_cp(&f, 0x42)];
     CHECK(e->pi == 0 && px_glyph_add_slot(&f, e, X) == 0 && pal_is(&f, e, (const uint32_t[]){X}, 1), "empty glyph: a slot added replaces the default black");
     CHECK(px_glyph_trim_palette(&f, e) && e->pi == 0, "empty glyph: trimmed back to the default palette");
     CHECK(px_glyph_add_color(&f, e, X) == 0 && pal_is(&f, e, (const uint32_t[]){X}, 1), "empty glyph: drawing a colour gives a palette of it alone");
     /* a one-colour glyph on the default palette stays on it */
     add(&f, 0x43, 4, 0, 0, "0.0");
-    PxGlyph *m = &f.glyphs[px_font_find(&f, 0x43)];
+    PxGlyph *m = &f.glyphs[px_font_find_cp(&f, 0x43)];
     CHECK(!px_glyph_canonicalize(&f, m) && m->pi == 0, "default palette: black stays without an entry");
     px_font_free(&f);
 }
@@ -792,7 +866,7 @@ static void test_glyph_palettes(void) {
               "the default palette: black, its hash, ready to draw ('.' transparent)");
     }
     /* drawing a colour: the glyph gets a palette of its own, the other keeps the default */
-    PxGlyph *ga = &f.glyphs[px_font_find(&f, 0x41)], *gh = &f.glyphs[px_font_find(&f, 0x48)];
+    PxGlyph *ga = &f.glyphs[px_font_find_cp(&f, 0x41)], *gh = &f.glyphs[px_font_find_cp(&f, 0x48)];
     CHECK(px_glyph_add_color(&f, ga, 0xFF0000FFu) == 1 && ga->pi > 0 && gh->pi == 0, "a new colour: appended after the black the A uses; only the A changes");
     CHECK(px_glyph_add_color(&f, ga, 0xFF0000FFu) == 1, "a colour the glyph has: its entry");
     CHECK(px_font_is_colour(&f) && f.npals == 2, "now a colour font, one palette in the table besides the default");
@@ -817,7 +891,7 @@ static void test_glyph_palettes(void) {
     {
         PxGlyph t;
         memset(&t, 0, sizeof t);
-        t.code = 0x57; t.w = 6; t.h = 6; t.advance = 7;
+        t.code = px_code_cp(0x57); t.w = 6; t.h = 6; t.advance = 7;
         t.pix = (char *)malloc(36);
         for (int k = 0; k < 36; k++) t.pix[k] = PX_PIXELS[1 + k];
         int ti = px_font_add_glyph(&f, &t);
@@ -838,7 +912,7 @@ static void test_glyph_palettes(void) {
     {
         PxGlyph t;
         memset(&t, 0, sizeof t);
-        t.code = 0x58; t.w = 3; t.h = 1; t.advance = 4;
+        t.code = px_code_cp(0x58); t.w = 3; t.h = 1; t.advance = 4;
         t.pix = (char *)malloc(3);
         memcpy(t.pix, "0.2", 3);
         int ti = px_font_add_glyph(&f, &t);
@@ -855,8 +929,8 @@ static void test_glyph_palettes(void) {
         px_font_remove_glyph(&f, ti);
     }
     /* compaction drops what no glyph names; a copy is compacted */
-    ga = &f.glyphs[px_font_find(&f, 0x41)];     /* the glyphs moved (glyphs were added) */
-    gh = &f.glyphs[px_font_find(&f, 0x48)];
+    ga = &f.glyphs[px_font_find_cp(&f, 0x41)];     /* the glyphs moved (glyphs were added) */
+    gh = &f.glyphs[px_font_find_cp(&f, 0x48)];
     {
         int before = f.npals;
         px_glyph_set_palette(&f, ga, (const uint32_t[]){0x123456FFu}, 1);   /* an entry, then abandoned */
@@ -878,10 +952,10 @@ static void test_glyph_palettes(void) {
     for (int i = 0; i < 20; i++) {
         add(&f, 0x41 + i, 6, 0, 0, "0000\n0..0\n1111\n1..1\n1..1");
         uint32_t pc[2] = {many_colour(2 * i), many_colour(2 * i + 1)};
-        px_glyph_set_palette(&f, &f.glyphs[px_font_find(&f, 0x41 + i)], pc, 2);
+        px_glyph_set_palette(&f, &f.glyphs[px_font_find_cp(&f, 0x41 + i)], pc, 2);
     }
     add(&f, 0x56, 6, 0, 0, "0...0\n0...0\n.0.0.\n.0.0.\n..0..");
-    px_glyph_set_palette(&f, &f.glyphs[px_font_find(&f, 0x56)], (const uint32_t[]){many_colour(0), many_colour(1)}, 2);   /* longer than it needs */
+    px_glyph_set_palette(&f, &f.glyphs[px_font_find_cp(&f, 0x56)], (const uint32_t[]){many_colour(0), many_colour(1)}, 2);   /* longer than it needs */
     CHECK(px_font_colors(&f) == 40, "40 colours: COLORS 40");
     {
         const uint32_t *cl;
@@ -900,7 +974,7 @@ static void test_glyph_palettes(void) {
         char *t2 = px_pxfm_text(&r, &n2, h2);
         CHECK(t2 && n2 == n && memcmp(t, t2, n) == 0 && strcmp(h2, hash) == 0 && strcmp(r.fileHash, hash) == 0, "40 colours: written back byte for byte");
         free(t2);
-        const PxGlyph *gv = &r.glyphs[px_font_find(&r, 0x56)], *gA = &r.glyphs[px_font_find(&r, 0x41)];
+        const PxGlyph *gv = &r.glyphs[px_font_find_cp(&r, 0x56)], *gA = &r.glyphs[px_font_find_cp(&r, 0x41)];
         CHECK(gv->pi == gA->pi && px_glyph_palette(&r, gv)->n == 2, "40 colours: the V shares the A's palette, read whole (2 lines for 1 colour)");
         CHECK(font_eq(&f, &r), "40 colours: the font read is the font written");
     }
@@ -922,26 +996,18 @@ static void test_glyph_palettes(void) {
     px_font_free(&r);
     px_font_free(&f);
 
-    /* a draft of pxfe 21: COLOR lines of a font-wide palette; each glyph gets a palette of its own colours */
-    FILE *fp = fopen(TMP "/v21.pxfd", "wb");
-    fputs("PXFEDRAFT\t3\nNAME\tx\nCOLOR\t0\tFFFFFFFF\nCOLOR\t1\t808080FF\nCOLOR\t2\tFF0000FF\n"
-          "GLYPH\t000041\t0,0\t4\t3x1\t0\n\t1.0\nGLYPH\t000042\t0,0\t4\t2x1\t0\n\t22\n", fp);
+    /* a draft of an older pxfe (version 3, the codes of pxfm version 2) is refused with a message */
+    FILE *fp = fopen(TMP "/v3.pxfd", "wb");
+    fputs("PXFEDRAFT\t3\nNAME\tx\nGLYPH\t000041\t0,0\t4\t3x1\t0\n\t1.0\n", fp);
     fclose(fp);
-    CHECK(px_load_draft(TMP "/v21.pxfd", &d, &di, err), "a draft of pxfe 21 loads");
-    {
-        const PxGlyph *a = &d.glyphs[px_font_find(&d, 0x41)], *b = &d.glyphs[px_font_find(&d, 0x42)];
-        CHECK(memcmp(a->pix, "0.1", 3) == 0 && px_glyph_color(&d, a, '0') == 0x808080FFu && px_glyph_color(&d, a, '1') == 0xFFFFFFFFu, "pxfe 21 draft: the A renumbered, grey then white");
-        CHECK(memcmp(b->pix, "00", 2) == 0 && px_glyph_color(&d, b, '0') == 0xFF0000FFu && px_font_colors(&d) == 3, "pxfe 21 draft: the B red; COLORS 3");
-    }
-    px_font_free(&d);
-    px_draft_info_free(&di);
+    CHECK(!px_load_draft(TMP "/v3.pxfd", &d, &di, err) && strstr(err, "version 3 draft"), "a version 3 draft is refused");
 }
 
 static void test_save_final(void) {
     PxFont f;
     char err[PX_ERR_LEN];
     example_font(&f);
-    f.glyphs[px_font_find(&f, 0x41)].advance = 7;   /* a new font */
+    f.glyphs[px_font_find_cp(&f, 0x41)].advance = 7;   /* a new font */
     char hash[33], path[1024];
     CHECK(px_save_final(&f, TMP "/finallib", hash, path, sizeof path, err), "save final");
     CHECK(px_file_exists(path), "pxfm written");
@@ -951,7 +1017,7 @@ static void test_save_final(void) {
     char h2[33];
     px_font_hash(&r, h2);
     CHECK(strcmp(h2, hash) == 0 && strcmp(r.fileHash, hash) == 0, "saved name == hash");
-    CHECK(r.glyphs[px_font_find(&r, 0x41)].advance == 7, "advance preserved");
+    CHECK(r.glyphs[px_font_find_cp(&r, 0x41)].advance == 7, "advance preserved");
     /* the second save does not rewrite anything */
     CHECK(px_save_final(&f, TMP "/finallib", hash, path, sizeof path, err), "saving again is fine");
     px_font_free(&r);
@@ -967,8 +1033,8 @@ static void test_draft_roundtrip(void) {
     f.symbolic = true;
     add(&f, 0x61, 5, -1, -1, ".....\n..1..\n.1.1.\n.....");
     add_unc(&f, 3, 1, 0, "00\n00");
-    px_font_set_kern(&f, 0xF00000, 0x41, -1);
-    f.glyphs[px_font_find(&f, 0x61)].asDrawn = true;
+    px_font_set_kern(&f, px_code_symbol(0), px_code_cp(0x41), -1);
+    f.glyphs[px_font_find_cp(&f, 0x61)].asDrawn = true;
     {
         PxGlyph dg;
         memset(&dg, 0, sizeof dg);
@@ -978,7 +1044,7 @@ static void test_draft_roundtrip(void) {
         px_font_add_glyph(&f, &dg);
         px_glyph_free(&dg);
     }
-    px_font_set_kern(&f, 0x48, 0x41, 2);
+    px_font_set_kern(&f, px_code_cp(0x48), px_code_cp(0x41), 2);
     font_colours(&f, WHITE_GREY, 2);
 
     PxtfTypeface c;
@@ -1024,9 +1090,9 @@ static void test_draft_roundtrip(void) {
     CHECK(strcmp(ch1, ch2) == 0, "draft: typeface hash equal");
     size_t n1, n2;
     char *t1 = px_pxfm_text(&f, &n1, h1), *t2 = px_pxfm_text(&r, &n2, h2);
-    CHECK(n1 == n2 && memcmp(t1, t2, n1) == 0 && strstr(t1, "GLYPH\tFFFFFF\t2,-1\t9\t") != NULL, "draft: an FFFFFF glyph of its own written back");
+    CHECK(n1 == n2 && memcmp(t1, t2, n1) == 0 && strstr(t1, "GLYPH\tI+DEFA00-000\t9\t2\t-1\t") != NULL, "draft: an FFFFFF glyph of its own written back");
     free(t1); free(t2);
-    CHECK(r.glyphs[px_font_find(&r, 0x61)].w == 5 && r.glyphs[px_font_find(&r, 0x61)].h == 4, "draft: bitmap stays uncropped");
+    CHECK(r.glyphs[px_font_find_cp(&r, 0x61)].w == 5 && r.glyphs[px_font_find_cp(&r, 0x61)].h == 4, "draft: bitmap stays uncropped");
 
     /* a draft without typeface and without original */
     PxDraftInfo none;
@@ -1056,6 +1122,7 @@ static void test_draft_roundtrip(void) {
 int main(void) {
     px_mkdir_p(TMP);
     test_sha_and_canonical();
+    test_codes();
     test_spec_examples();
     test_reader_strict();
     test_writer_details();

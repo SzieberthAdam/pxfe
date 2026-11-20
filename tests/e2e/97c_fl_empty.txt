@@ -1,5 +1,5 @@
 # 97c. No layers and everything locked, no sidecar: an unlocked font with a pixel edit and Save writes the lock (and nothing else); a layer is
-# added (Save), removing the last layer and locking the font again and Save deletes the file.  0820dc69.
+# added (Save), removing the last layer and locking the font again and Save deletes the file.  3b52125b.
 wait 5
 click @Unlock
 wait 4

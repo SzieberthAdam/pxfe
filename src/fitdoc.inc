@@ -101,10 +101,10 @@ static void LayersShiftY(float d)
 
 /* ---- glyphs from pixels ---- */
 
-static bool GlyphFromFit(const FitBitmap *b, int32_t code, PxGlyph *g)
+static bool GlyphFromFit(const FitBitmap *b, PxCode code, PxGlyph *g)
 {
     memset(g, 0, sizeof *g);
-    g->codepoint = code;
+    g->code = code;
     g->advance = b->advance < 0 ? 0 : b->advance;
     if (b->w <= 0 || b->h <= 0 || !b->pix) return true;
     g->pix = (char *)malloc((size_t)b->w * (size_t)b->h);
@@ -121,7 +121,7 @@ static bool GlyphIsFit(const PxGlyph *g, const FitBitmap *b)
 {
     PxGlyph t;
     if (g->advance != (b->advance < 0 ? 0 : b->advance)) return false;
-    if (!GlyphFromFit(b, g->codepoint, &t)) return false;
+    if (!GlyphFromFit(b, g->code, &t)) return false;
     int gx, gy;
     px_glyph_written_offset(g, &gx, &gy);
     bool same = px_glyph_same_shape(g, &t) && gx == t.x && gy == t.y;
@@ -132,7 +132,7 @@ static bool GlyphIsFit(const PxGlyph *g, const FitBitmap *b)
 static void GlyphSetFit(PxGlyph *g, const FitBitmap *b)
 {
     PxGlyph t;
-    if (!GlyphFromFit(b, g->codepoint, &t)) return;
+    if (!GlyphFromFit(b, g->code, &t)) return;
     free(g->pix);
     g->pix = t.pix; g->w = t.w; g->h = t.h; g->x = t.x; g->y = t.y; g->advance = t.advance;
     g->asDrawn = false;
@@ -140,10 +140,10 @@ static void GlyphSetFit(PxGlyph *g, const FitBitmap *b)
     px_glyph_touch(g);
 }
 
-/* draws a code point as the settings `set` say (the file is `src`'s); false when the file has no glyph for it */
-static bool FitDrawCode(FlLayer *src, const FlLayer *set, int32_t code, FitBitmap *out)
+/* draws the glyph of a code (of its code point) as the settings `set` say (the file is `src`'s); false when the file has no glyph for it */
+static bool FitDrawCode(FlLayer *src, const FlLayer *set, PxCode code, FitBitmap *out)
 {
-    int gi = px_code_is_codepoint(code) ? outline_glyph_index(src->ol, code) : 0;
+    int gi = px_code_is_codepoint(code) ? outline_glyph_index(src->ol, px_code_codepoint(code)) : 0;
     if (gi <= 0) return false;
     FitParams p;
     FitCorr c;
@@ -163,8 +163,8 @@ static int FitApply(FlLayer *l, bool all)
     FlLayer_FitParams(l, 0, &pn);
     bool global = memcmp(&po, &pn, sizeof po) != 0;
     for (int i = 0; i < font.count; i++) {
-        int32_t code = font.glyphs[i].codepoint;
-        if (!px_code_is_codepoint(code)) continue;
+        PxCode code = font.glyphs[i].code;
+        if (!px_code_is_codepoint(code) || px_code_variant(code)) continue;   /* a variant is an alternative of its own: it never follows */
         if (!all && !global) {
             FitCorr co, cn;
             FlLayer_FitCorr(old, code, &co);
@@ -237,7 +237,7 @@ static void FitStatsUpdate(FlLayer *l)
     fitStats.follow = fitStats.kept = fitStats.absent = 0;
     for (int i = 0; i < font.count; i++) {
         FitBitmap b;
-        if (!FitDrawCode(l, l, font.glyphs[i].codepoint, &b)) { fitStats.absent++; continue; }
+        if (px_code_variant(font.glyphs[i].code) || !FitDrawCode(l, l, font.glyphs[i].code, &b)) { fitStats.absent++; continue; }
         if (GlyphIsFit(&font.glyphs[i], &b)) fitStats.follow++; else fitStats.kept++;
         fit_bitmap_free(&b);
     }
@@ -257,10 +257,10 @@ static void GridCorrections(FlLayer *l, const FitGrid *g)
     for (int i = 0; i < g->nphase; i++) {
         FitCorr fc;
         if (!fit_grid_corr(g, g->phaseCp[i], &fc)) continue;
-        const FlCorr *old = FlLayer_Corr(l, g->phaseCp[i]);
-        FlCorr c = old ? *old : (FlCorr){g->phaseCp[i], 0, 0, 1.0f, 0};
+        const FlCorr *old = FlLayer_Corr(l, px_code_cp(g->phaseCp[i]));
+        FlCorr c = old ? *old : (FlCorr){px_code_cp(g->phaseCp[i]), 0, 0, 1.0f, 0};
         c.dx = fc.dx;
-        FlLayer_SetCorr(l, g->phaseCp[i], &c);
+        FlLayer_SetCorr(l, px_code_cp(g->phaseCp[i]), &c);
     }
 }
 
@@ -661,8 +661,8 @@ static bool ImportSheetCreate(void)
         PxGlyph g;
         memset(&g, 0, sizeof g);
         if (!c->iw) {
-            if (c->code != 32 || px_font_find(&f, 32) >= 0) continue;
-            g.codepoint = 32;
+            if (c->code != 32 || px_font_find_cp(&f, 32) >= 0) continue;
+            g.code = px_code_cp(32);
             g.advance = c->w;
             px_font_add_glyph(&f, &g);
             continue;
@@ -681,15 +681,15 @@ static bool ImportSheetCreate(void)
         g.x = rows ? 0 : c->ix - c->x;
         g.y = base - (c->iy + c->ih - c->y);
         g.advance = rows ? c->iw + gap : c->w;
-        if (c->code >= 0 && c->code <= PX_CODE_MAX_CODEPOINT && px_font_find(&f, c->code) < 0) { g.codepoint = c->code; px_font_add_glyph(&f, &g); }
+        if (c->code >= 0 && c->code <= PX_CODE_MAX_CODEPOINT && px_font_find_cp(&f, c->code) < 0) { g.code = px_code_cp(c->code); px_font_add_glyph(&f, &g); }
         else { px_font_add_uncoded(&f, &g); uncoded++; }   /* a glyph without a known character is kept, without a code point */
         px_glyph_free(&g);
     }
     free(buf);
-    if (px_font_find(&f, 32) < 0) {   /* a sheet rarely draws the space */
+    if (px_font_find_cp(&f, 32) < 0) {   /* a sheet rarely draws the space */
         PxGlyph g;
         memset(&g, 0, sizeof g);
-        g.codepoint = 32;
+        g.code = px_code_cp(32);
         g.advance = sh->layout == SHEET_GRID ? sh->cellW : imax_(2, (sh->ascent + sh->descent) / 3);
         px_font_add_glyph(&f, &g);
     }
@@ -739,8 +739,8 @@ static bool ImportFontCreate(void)
         for (int i = 0; i < ncp; i++) {
             FitBitmap b;
             PxGlyph g;
-            if (!FitDrawCode(l, l, cp[2 * i], &b)) { skipped++; continue; }
-            if (GlyphFromFit(&b, cp[2 * i], &g)) { px_font_add_glyph(&f, &g); px_glyph_free(&g); }
+            if (!FitDrawCode(l, l, px_code_cp(cp[2 * i]), &b)) { skipped++; continue; }
+            if (GlyphFromFit(&b, px_code_cp(cp[2 * i]), &g)) { px_font_add_glyph(&f, &g); px_glyph_free(&g); }
             fit_bitmap_free(&b);
         }
         free(cp);
@@ -755,10 +755,10 @@ static bool ImportFontCreate(void)
         int n = bm_glyph_count(l->bm, l->strike);
         for (int i = 0; i < n; i++) {
             const BmGlyph *bg = bm_glyph_at(l->bm, l->strike, i);
-            if (!bg || bg->codepoint < 0 || bg->codepoint > PX_CODE_MAX_CODEPOINT || px_font_find(&f, bg->codepoint) >= 0) { skipped++; continue; }
+            if (!bg || bg->codepoint < 0 || bg->codepoint > PX_CODE_MAX_CODEPOINT || px_font_find_cp(&f, bg->codepoint) >= 0) { skipped++; continue; }
             PxGlyph g;
             memset(&g, 0, sizeof g);
-            g.codepoint = bg->codepoint;
+            g.code = px_code_cp(bg->codepoint);
             g.advance = bg->advance < 0 ? 0 : bg->advance;
             if (bg->w > 0 && bg->h > 0 && bg->pix) {
                 g.pix = (char *)malloc((size_t)bg->w * (size_t)bg->h);
@@ -949,7 +949,7 @@ static void DrawImportSheetDialog(int W, int H)
                     Color col = mono ? TH_TEXT : Th_FromRGBA(sh->px[p] | 0xFFu);
                     DrawRectangle((int)cx + xx * z, (int)py + (c->iy - c->y - sh->lineTop + yy) * z, z, z, col);
                 }
-            if (c->code >= 0) Th_CodeDraw(c->code, (Rectangle){cx - 3, py + (float)(boxH * z) + 1, cwd, 16}, c->score < 0.45f && sh->recognised ? TH_TEXT_NOTE : TH_TEXT_DIM, false, 1);
+            if (c->code >= 0) Th_CodeDraw(px_code_cp(c->code), (Rectangle){cx - 3, py + (float)(boxH * z) + 1, cwd, 16}, c->score < 0.45f && sh->recognised ? TH_TEXT_NOTE : TH_TEXT_DIM, false, 1);
             else Th_TextSmall("?", cx + 2, py + (float)(boxH * z) + 2, TH_TEXT_NOTE);
             cx += cwd;
         }

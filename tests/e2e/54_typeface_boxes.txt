@@ -1,4 +1,4 @@
-# 54. The Typefaces tab: one box per typeface (testdata/lib: typeface b925951b "Test Sans" with two variants, b5fbcdd0 "Uncoded Mono" with one).
+# 54. The Typefaces tab: one box per typeface (testdata/lib: typeface 8e8c9492 "Test Sans" with two variants, b7ed69ab "Uncoded Mono" with one).
 wait 8
 assert inbrowser 1
 assert btab 0
@@ -50,11 +50,11 @@ click @card:1
 wait 2
 assert bselhdr 0
 assert bsel 1
-assert bselpxfm e6109c134eda8d747bac9a3c2a62d204
+assert bselpxfm 4fba4190f6ba7e10b296c7070234e1ce
 click @card:0
 wait 2
 assert bsel 0
-assert bselpxfm 0820dc69a21b1cdb3a44d2cff7d884d8
+assert bselpxfm 3b52125b2e5f6466823baa4fa3186fa0
 click @hdr:1
 wait 2
 assert bselhdr 1
@@ -97,14 +97,14 @@ dblclick @card:1
 wait 8
 assert inbrowser 0
 assert readonly 1
-assert ohash e6109c134eda8d747bac9a3c2a62d204
+assert ohash 4fba4190f6ba7e10b296c7070234e1ce
 click @nav.0
 wait 8
 click @Typefaces
 wait 6
 assert inbrowser 1
 assert bsel 1
-assert bselpxfm e6109c134eda8d747bac9a3c2a62d204
+assert bselpxfm 4fba4190f6ba7e10b296c7070234e1ce
 
 # ---- the lock of a variant row, then Enter opens the font
 click @card:0
@@ -128,16 +128,16 @@ wait 2
 key enter
 wait 8
 assert nav 1
-assert bselpxfm 0820dc69a21b1cdb3a44d2cff7d884d8
+assert bselpxfm 3b52125b2e5f6466823baa4fa3186fa0
 key enter
 wait 8
 assert inbrowser 0
 assert readonly 0
-assert ohash 0820dc69a21b1cdb3a44d2cff7d884d8
+assert ohash 3b52125b2e5f6466823baa4fa3186fa0
 key left alt
 wait 6
 assert nav 1
-assert bselpxfm 0820dc69a21b1cdb3a44d2cff7d884d8
+assert bselpxfm 3b52125b2e5f6466823baa4fa3186fa0
 click @nav.0
 wait 8
 assert inbrowser 1

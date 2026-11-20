@@ -1,4 +1,4 @@
-# 127. The rectangle and the ellipse are clipped to the selection (version 19), font 0820dc69 unlocked, glyph U+0020 (empty, advance 4).
+# 127. The rectangle and the ellipse are clipped to the selection (version 19), font 3b52125b unlocked, glyph U+0020 (empty, advance 4).
 # Selection: columns 1..3 and rows 2..5 (12 cells); an undo drops the selection, so each block selects again.
 wait 5
 click @Unlock

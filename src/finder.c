@@ -1,6 +1,6 @@
 /* finder.c - the glyph finder view (see finder.h and DESIGN.md "The Glyphs view").
  *
- * The distinct bitmaps of a code point come from a worker thread (store_glyphs_for_code on its own StoreConn); the bitmaps
+ * The distinct bitmaps of a code point come from a worker thread (store_glyphs_for_codepoint on its own StoreConn); the bitmaps
  * of the cells that are on screen are read on the UI thread, one pxgl row each (a few microseconds), and kept as
  * textures in a cache the size of the result list.  The grid is virtualized by rows. */
 #define WIN32_LEAN_AND_MEAN
@@ -175,7 +175,7 @@ static DWORD WINAPI worker_main(LPVOID p)
 
         StoreCodeGlyphList l = { 0 };
         char err[PX_ERR_LEN];
-        if (code >= 0 && !store_glyphs_for_code(c, code, &l, err)) memset(&l, 0, sizeof l);
+        if (code >= 0 && !store_glyphs_for_codepoint(c, code, &l, err)) memset(&l, 0, sizeof l);
 
         EnterCriticalSection(&f->cs);
         if (f->hasPend) store_code_glyph_list_free(&f->pend);
@@ -420,7 +420,7 @@ static void draw_view_tab(Finder *f, Rectangle P)
         Rectangle cb = { x, y, 44, 44 };
         Th_Card(cb, 0);
         if (Th_CodeVisible(f->code)) {
-            Th_CodeDraw(f->code, cb, TH_TEXT, false, 2);   /* Unifont at 32 px: twice the pixels */
+            Th_CodeDraw(px_code_cp(f->code), cb, TH_TEXT, false, 2);   /* Unifont at 32 px: twice the pixels */
         } else {
             Rectangle bx = { cb.x + 12, cb.y + 8, 20, 28 };
             Th_DashedHLine(bx.x, bx.x + bx.width, bx.y, 3, TH_TEXT_DIM);
@@ -625,7 +625,7 @@ bool Finder_UpdateDraw(Finder *f, Rectangle area, InsightTarget *target)
     if (f->sideTab == 0) draw_view_tab(f, panel);
     bool clicked = false;
     if (f->insight) {
-        Insight_SetPreferredCode(f->insight, f->code);
+        Insight_SetPreferredCode(f->insight, f->code >= 0 ? px_code_cp(f->code) : PX_NO_CODE);
         if (f->sel >= 0 && f->sel < f->nOrder) {
             char h[1][33];
             memcpy(h[0], f->list.g[f->order[f->sel]].glyph, 33);

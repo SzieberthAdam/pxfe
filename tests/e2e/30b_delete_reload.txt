@@ -3,6 +3,6 @@ waitfor loading = 0 60000
 wait 5
 assert storetypefaces 1
 assert sql "select count(*) from pxfm" 1
-assert sql "select count(*) from pxfm where lower(hex(hash)) = '408c4d7dd946543f8e9b4553dd1ba62e'" 0
+assert sql "select count(*) from pxfm where lower(hex(hash)) = '894ef821e147533c34b39e2131016133'" 0
 assert dbmodified 0
 assert statusdb saved

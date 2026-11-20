@@ -1,4 +1,4 @@
-# 135. A locked font refuses the Fill, the Eyedropper, the Polygon and the Contour (version 20), font 0820dc69 (locked), glyph U+0020 (empty, advance 4).
+# 135. A locked font refuses the Fill, the Eyedropper, the Polygon and the Contour (version 20), font 3b52125b (locked), glyph U+0020 (empty, advance 4).
 wait 5
 assert locked 1
 assert readonly 1

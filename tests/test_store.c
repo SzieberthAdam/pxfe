@@ -20,14 +20,14 @@ static int g_pass = 0, g_fail = 0;
 #define TMP "tests/tmp"
 #define LIB "testdata/lib"
 #define DB "testdata/lib.pxfdb"
-#define H_EXAMPLE "0820dc69a21b1cdb3a44d2cff7d884d8"
-#define H_GREY "408c4d7dd946543f8e9b4553dd1ba62e"
+#define H_EXAMPLE "3b52125b2e5f6466823baa4fa3186fa0"
+#define H_GREY "894ef821e147533c34b39e2131016133"
 #define G_GREY_A "3ad25ae0043eddcc6bc11e8794fccdd3"
 #define P_GREY "ebbba94934da6897d86c5e8ea2ac5409"
-#define H_NOASC "e6109c134eda8d747bac9a3c2a62d204"
-#define H_UNC "fa96e3583da8e003fc25404ac00f764e"
-#define T_SANS "b925951bb94de1d15ec27404b3261476"
-#define T_UNC "b5fbcdd0dd5009013337c15e57fa7672"
+#define H_NOASC "4fba4190f6ba7e10b296c7070234e1ce"
+#define H_UNC "54caf68fe9ec18634701a55bfc87b5c0"
+#define T_SANS "8e8c94921267d3c2c72ec93d3b0cf63d"
+#define T_UNC "b7ed69ab357b00edcb64d1160fbf71b4"
 #define G_A "c0fc54c2ec60cb8617b041d991da1622"
 #define G_H "abe675527c81c31d04cda5e2aed7623a"
 
@@ -131,7 +131,7 @@ static void test_open_pxfdb(void) {
     CHECK(count_rows(s, "pxtf_variant") == 3, "3 typeface variants");
     store_close(s);
     CHECK(!store_open_pxfdb(TMP "/does-not-exist.pxfdb", NULL, &s, err), "a missing file is an error");
-    CHECK(!store_open_pxfdb(LIB "/pxfm/08/" H_EXAMPLE ".pxfm", NULL, &s, err) && err[0], "a text file is not a pxfdb");
+    CHECK(!store_open_pxfdb(LIB "/pxfm/3b/" H_EXAMPLE ".pxfm", NULL, &s, err) && err[0], "a text file is not a pxfdb");
 }
 
 static void test_text_from_rows(void) {
@@ -218,25 +218,25 @@ static void test_model(void) {
     StoreConn *c = store_conn_open(s);
     PxFont f;
     CHECK(store_load_font(c, H_UNC, NULL, 0, &f, err), "the font with uncoded glyphs loads");
-    CHECK(f.count == 6 && px_font_uncoded_count(&f) == 2 && f.glyphs[3].code == 0xF00000 && f.glyphs[4].code == 0xF00001, "codes F00000 and F00001 after the code points");
+    CHECK(f.count == 6 && px_font_uncoded_count(&f) == 2 && f.glyphs[3].code == px_code_symbol(0) && f.glyphs[4].code == px_code_symbol(1), "codes F00000 and F00001 after the code points");
     CHECK(px_font_default_index(&f) == 5 && f.glyphs[5].code == PX_CODE_DEFAULT, "the FFFFFF line is the last glyph of the font");
-    CHECK(px_font_kern(&f, 0x41, 0xF00000) == -1 && px_font_kern(&f, 0xF00001, 0xF00000) == 1, "kerning pairs naming F-codes");
+    CHECK(px_font_kern(&f, px_code_cp(0x41), px_code_symbol(0)) == -1 && px_font_kern(&f, px_code_symbol(1), px_code_symbol(0)) == 1, "kerning pairs naming F-codes");
     CHECK(f.hasRatio && f.monospaced && f.glyphs[3].w == 5 && f.glyphs[3].h == 4 && f.glyphs[3].pix[0] == '0', "ratio, monospaced, bitmaps of the uncoded glyphs");
     px_font_free(&f);
-    int32_t want[] = {0x41, 0xF00001};
+    PxCode want[] = {px_code_cp(0x41), px_code_symbol(1)};
     CHECK(store_load_font(c, H_UNC, want, 2, &f, err), "load only some codes");
-    CHECK(!f.glyphs[px_font_find(&f, 0x41)].lazy && f.glyphs[px_font_find(&f, 0x48)].lazy && !f.glyphs[px_font_find(&f, 0xF00001)].lazy && f.glyphs[px_font_find(&f, 0xF00000)].lazy, "only the asked glyphs have bitmaps");
+    CHECK(!f.glyphs[px_font_find_cp(&f, 0x41)].lazy && f.glyphs[px_font_find_cp(&f, 0x48)].lazy && !f.glyphs[px_font_find_code(&f, px_code_symbol(1))].lazy && f.glyphs[px_font_find_code(&f, px_code_symbol(0))].lazy, "only the asked glyphs have bitmaps");
     char h[33];
     px_font_hash(&f, h);
     CHECK(strcmp(h, H_UNC) == 0, "its hash is right with glyphs still lazy");
-    CHECK(store_load_glyph_bitmaps(c, &f, NULL, 0, err) && !f.glyphs[px_font_find(&f, 0x48)].lazy, "store_load_glyph_bitmaps loads the rest");
+    CHECK(store_load_glyph_bitmaps(c, &f, NULL, 0, err) && !f.glyphs[px_font_find_cp(&f, 0x48)].lazy, "store_load_glyph_bitmaps loads the rest");
     px_font_free(&f);
     CHECK(!store_load_font(c, "00000000000000000000000000000000", NULL, 0, &f, err) && err[0], "an unknown font is an error");
-    CHECK(store_load_font(c, H_GREY, NULL, 0, &f, err) && px_glyph_palette(&f, &f.glyphs[px_font_find(&f, 0x41)])->n == 2 &&
-          px_glyph_color(&f, &f.glyphs[px_font_find(&f, 0x41)], '0') == 0x808080FFu && px_glyph_color(&f, &f.glyphs[px_font_find(&f, 0x41)], '1') == 0xFFFFFFFFu &&
-          px_font_colors(&f) == 2 && strcmp(f.glyphs[px_font_find(&f, 0x41)].pal, P_GREY) == 0, "grey font with its palette (the A's own)");
+    CHECK(store_load_font(c, H_GREY, NULL, 0, &f, err) && px_glyph_palette(&f, &f.glyphs[px_font_find_cp(&f, 0x41)])->n == 2 &&
+          px_glyph_color(&f, &f.glyphs[px_font_find_cp(&f, 0x41)], '0') == 0x808080FFu && px_glyph_color(&f, &f.glyphs[px_font_find_cp(&f, 0x41)], '1') == 0xFFFFFFFFu &&
+          px_font_colors(&f) == 2 && strcmp(f.glyphs[px_font_find_cp(&f, 0x41)].pal, P_GREY) == 0, "grey font with its palette (the A's own)");
     px_font_free(&f);
-    CHECK(store_load_font(c, H_NOASC, NULL, 0, &f, err) && !f.has[PXM_ASCENT] && f.glyphs[px_font_find(&f, 0x41)].x == -1, "no-ascent font, offset -1");
+    CHECK(store_load_font(c, H_NOASC, NULL, 0, &f, err) && !f.has[PXM_ASCENT] && f.glyphs[px_font_find_cp(&f, 0x41)].x == -1, "no-ascent font, offset -1");
     px_font_free(&f);
     PxtfTypeface tf;
     CHECK(store_load_typeface(c, T_UNC, &tf, err) && tf.count == 1 && strcmp(tf.v[0].format, "RAW") == 0 && strcmp(tf.v[0].text[PXTF_CODEPAGE], "cp437-graphic") == 0 && tf.v[0].nopts == 1, "typeface: RAW format, CODEPAGE as a text, CELL as an option");
@@ -276,11 +276,11 @@ static void test_queries(void) {
     CHECK(store_fonts_with_glyphs(c, one, 1, &el, err) && el.count == 1 && strcmp(el.e[0].pxfm, H_GREY) == 0, "the grey A is only in the grey font");
     store_entry_list_free(&el);
     StoreCodeGlyphList cg;
-    CHECK(store_glyphs_for_code(c, 0x41, &cg, err) && cg.count == 2 && cg.g[0].nFonts == 3 && strcmp(cg.g[0].glyph, G_A) == 0 && cg.g[0].width == 5 && cg.g[0].height == 5, "code U+0041: 2 distinct bitmaps, the common one first");
+    CHECK(store_glyphs_for_codepoint(c, 0x41, &cg, err) && cg.count == 2 && cg.g[0].nFonts == 3 && strcmp(cg.g[0].glyph, G_A) == 0 && cg.g[0].width == 5 && cg.g[0].height == 5, "code U+0041: 2 distinct bitmaps, the common one first");
     store_code_glyph_list_free(&cg);
-    CHECK(store_glyphs_for_code(c, 0x110000, &cg, err) && cg.count == 0, "code above 10FFFF: none");
+    CHECK(store_glyphs_for_codepoint(c, 0x110000, &cg, err) && cg.count == 0, "code above 10FFFF: none");
     store_code_glyph_list_free(&cg);
-    CHECK(store_glyphs_for_code(c, 0x2C, &cg, err) && cg.count == 1 && cg.g[0].yMin == -2, "comma: one bitmap, y -2");
+    CHECK(store_glyphs_for_codepoint(c, 0x2C, &cg, err) && cg.count == 1 && cg.g[0].yMin == -2, "comma: one bitmap, y -2");
     store_code_glyph_list_free(&cg);
     store_conn_close(c);
     store_close(s);
@@ -311,7 +311,7 @@ static void shape_font(PxFont *f, const char *rows, int adv, int ascent) {
     f->has[PXM_DESCENT] = true; f->m[PXM_DESCENT] = 2;
     for (int c = 0x21; c <= 0x3A; c++) {
         PxGlyph g = make_glyph(adv, 0, 0, rows);
-        g.code = c;
+        g.code = px_code_cp(c);
         px_font_add_glyph(f, &g);
         px_glyph_free(&g);
     }
@@ -531,7 +531,7 @@ static void test_save(void) {
         /* a glyph edited: the glyph only the old font had goes */
         char oldH[33];
         snprintf(oldH, sizeof oldH, "%s", er.pxfm);
-        int gi = px_font_find(&f, 0x41);
+        int gi = px_font_find_cp(&f, 0x41);
         PxGlyph *g = &f.glyphs[gi];
         g->pix[0] = g->pix[0] == '0' ? '.' : '0';
         px_glyph_touch(g);
@@ -588,9 +588,9 @@ static void test_export(void) {
     /* Append on a partial folder: existing files untouched, missing ones added */
     rm_rf(TMP "/ex_b");
     copy_tree(LIB, TMP "/ex_b");
-    DeleteFileA(TMP "/ex_b/pxfm/08/" H_EXAMPLE ".pxfm");
+    DeleteFileA(TMP "/ex_b/pxfm/3b/" H_EXAMPLE ".pxfm");
     DeleteFileA(TMP "/ex_b/pxgl/c0/" G_A ".pxgl");
-    px_write_file(TMP "/ex_b/pxfm/40/" H_GREY ".pxfm", "EDITED\n", 7);
+    px_write_file(TMP "/ex_b/pxfm/89/" H_GREY ".pxfm", "EDITED\n", 7);
     px_write_file(TMP "/ex_b/notes.txt", "mine\n", 5);
     px_mkdir_p(TMP "/ex_b/other");
     px_write_file(TMP "/ex_b/other/x.txt", "x", 1);
@@ -598,7 +598,7 @@ static void test_export(void) {
     CHECK(store_export_folder(s, TMP "/ex_b", STORE_EXPORT_APPEND, NULL, &res, err), "Append");
     CHECK(res.written.fonts == 1 && res.written.glyphs == 1 && res.written.typefaces == 0 && res.skipped.fonts == 3 && res.skipped.typefaces == 2 && res.skipped.glyphs == 5 && res.skipped.palettes == 1 && res.deleted.fonts == 0, "Append: wrote the 2 missing files, skipped the 11 that were there, deleted nothing");
     CHECK(snap_changed(&before, NULL, 0) == 0 && snap_count_in(TMP "/ex_b") == before.n + 2, "Append: every earlier file is byte for byte the same (the edited one too); exactly 2 added");
-    CHECK(same_file(TMP "/ex_b/pxfm/08/" H_EXAMPLE ".pxfm", LIB "/pxfm/08/" H_EXAMPLE ".pxfm") && same_file(TMP "/ex_b/pxgl/c0/" G_A ".pxgl", LIB "/pxgl/c0/" G_A ".pxgl"), "Append: the new files are the library's bytes");
+    CHECK(same_file(TMP "/ex_b/pxfm/3b/" H_EXAMPLE ".pxfm", LIB "/pxfm/3b/" H_EXAMPLE ".pxfm") && same_file(TMP "/ex_b/pxgl/c0/" G_A ".pxgl", LIB "/pxgl/c0/" G_A ".pxgl"), "Append: the new files are the library's bytes");
     snap_free(&before);
 
     /* Overwrite: only the contents of pxtf/ pxfm/ pxgl/ go */
@@ -649,9 +649,9 @@ static void test_deletions(void) {
     }
     long glyphsBefore = count_rows(s, "glyph");
     /* the glyphs that only the italic font uses */
-    long only = sql_int(s, "SELECT COUNT(DISTINCT glyph) FROM pxfm_glyph a WHERE pxfm = x'" "e6109c134eda8d747bac9a3c2a62d204" "' AND glyph IS NOT NULL"
+    long only = sql_int(s, "SELECT COUNT(DISTINCT glyph) FROM pxfm_glyph a WHERE pxfm = x'" "4fba4190f6ba7e10b296c7070234e1ce" "' AND glyph IS NOT NULL"
                            " AND NOT EXISTS (SELECT 1 FROM pxfm_glyph b WHERE b.glyph = a.glyph AND b.pxfm <> a.pxfm)");
-    long shared = sql_int(s, "SELECT COUNT(DISTINCT glyph) FROM pxfm_glyph a WHERE pxfm = x'" "e6109c134eda8d747bac9a3c2a62d204" "' AND glyph IS NOT NULL"
+    long shared = sql_int(s, "SELECT COUNT(DISTINCT glyph) FROM pxfm_glyph a WHERE pxfm = x'" "4fba4190f6ba7e10b296c7070234e1ce" "' AND glyph IS NOT NULL"
                              " AND EXISTS (SELECT 1 FROM pxfm_glyph b WHERE b.glyph = a.glyph AND b.pxfm <> a.pxfm)");
     printf("      the italic font: %ld glyphs only it uses, %ld shared with others\n", only, shared);
 
@@ -745,7 +745,7 @@ static void test_deletions(void) {
         StoreExportResult er;
         rm_rf(TMP "/del_root");
         CHECK(store_export_folder(s2, TMP "/del_root", STORE_EXPORT_APPEND, NULL, &er, err) && er.written.fonts == 3 && er.written.typefaces == 1, "del 4: Export writes only what is left");
-        CHECK(!px_file_exists(TMP "/del_root/pxfm/fa/" H_UNC ".pxfm") && !px_file_exists(TMP "/del_root/pxtf/b5/" T_UNC ".pxtf"), "del 4: the deleted font and typeface have no file");
+        CHECK(!px_file_exists(TMP "/del_root/pxfm/54/" H_UNC ".pxfm") && !px_file_exists(TMP "/del_root/pxtf/b7/" T_UNC ".pxtf"), "del 4: the deleted font and typeface have no file");
         store_close(s2);
     }
 }
@@ -772,17 +772,17 @@ static void test_default_glyph(void) {
     CHECK(store_save_to_memory(s, &f, NULL, 0, &r, err) && r.newPxfm && r.newGlyphs == 2, "default glyph: the font and both bitmaps (the default's too) are new");
     CHECK(count_rows(s, "glyph") == glyphs0 + 2, "default glyph: its bitmap is in the glyph table");
     char q[400];
-    snprintf(q, sizeof q, "SELECT COUNT(*) FROM pxfm_glyph WHERE code = 16777215 AND x = 1 AND y = -1 AND advance = 7 AND pxfm = x'%s'", r.pxfm);
-    CHECK(sql_int(s, q) == 1, "default glyph: one FFFFFF row with its own offsets and advance");
+    snprintf(q, sizeof q, "SELECT COUNT(*) FROM pxfm_glyph WHERE code = 1090646966272 AND x = 1 AND y = -1 AND advance = 7 AND pxfm = x'%s'", r.pxfm);
+    CHECK(sql_int(s, q) == 1, "default glyph: one I+DEFA00-000 row with its own offsets and advance");
     StoreConn *c = store_conn_open(s);
     PxFont l;
     CHECK(store_load_font(c, r.pxfm, NULL, 0, &l, err) && l.count == f.count && px_font_default_index(&l) == l.count - 1, "default glyph: loads as the last glyph");
     int di = px_font_default_index(&l);
     CHECK(di >= 0 && l.glyphs[di].x == 1 && l.glyphs[di].y == -1 && l.glyphs[di].advance == 7 && l.glyphs[di].w == 3 && l.glyphs[di].h == 3 && l.glyphs[di].pix && l.glyphs[di].pix[0] == '0' && l.glyphs[di].pix[1] == '.', "default glyph: the bitmap came back");
-    CHECK(px_font_find(&l, 0x21) >= 0 && l.glyphs[px_font_find(&l, 0x21)].w == 5, "default glyph: the other glyphs are not touched");
+    CHECK(px_font_find_cp(&l, 0x21) >= 0 && l.glyphs[px_font_find_cp(&l, 0x21)].w == 5, "default glyph: the other glyphs are not touched");
     px_font_free(&l);
     store_conn_close(c);
-    CHECK(store_save(s, err) && file_sql_int(TMP "/dg/a.pxfdb", "SELECT COUNT(*) FROM pxfm_glyph WHERE code = 16777215") == 3, "default glyph: Save keeps the FFFFFF row (3 fonts have one)");
+    CHECK(store_save(s, err) && file_sql_int(TMP "/dg/a.pxfdb", "SELECT COUNT(*) FROM pxfm_glyph WHERE code = 1090646966272") == 3, "default glyph: Save keeps the default glyph row (3 fonts have one)");
     Store *chk = NULL;
     CHECK(store_open_pxfdb(TMP "/dg/a.pxfdb", NULL, &chk, err) && same_content(s, chk), "default glyph: the reloaded file has the same content");
     store_close(chk);
@@ -790,7 +790,7 @@ static void test_default_glyph(void) {
     /* export and import: the line and the glyph file are there */
     CHECK(store_export_folder(s, TMP "/dg/out", STORE_EXPORT_APPEND, NULL, &xr, err), "default glyph: export");
     CHECK(store_import_to_file(TMP "/dg/out", TMP "/dg/b.pxfdb", NULL, err), "default glyph: import of the exported folder");
-    CHECK(file_sql_int(TMP "/dg/b.pxfdb", "SELECT COUNT(*) FROM pxfm_glyph WHERE code = 16777215") == 3 && file_sql_int(TMP "/dg/b.pxfdb", "SELECT COUNT(*) FROM glyph") == file_sql_int(TMP "/dg/a.pxfdb", "SELECT COUNT(*) FROM glyph"), "default glyph: nothing dropped by export and import");
+    CHECK(file_sql_int(TMP "/dg/b.pxfdb", "SELECT COUNT(*) FROM pxfm_glyph WHERE code = 1090646966272") == 3 && file_sql_int(TMP "/dg/b.pxfdb", "SELECT COUNT(*) FROM glyph") == file_sql_int(TMP "/dg/a.pxfdb", "SELECT COUNT(*) FROM glyph"), "default glyph: nothing dropped by export and import");
     /* deleting the font removes the glyph only the default used */
     StoreDeletePlan p;
     char hash[33];
@@ -904,7 +904,7 @@ static void test_palettes(void) {
     }
     CHECK(ncol == 2 && nnull == 3, "palettes: pxfm.colors is 2 for the grey font, NULL for the 3 others");
     int pal = 0;
-    if (sqlite3_prepare_v2(db, "SELECT COUNT(*) FROM pxfm_glyph WHERE hex(palette) = upper('" P_GREY "') AND code = 65", -1, &st, NULL) == SQLITE_OK) {
+    if (sqlite3_prepare_v2(db, "SELECT COUNT(*) FROM pxfm_glyph WHERE hex(palette) = upper('" P_GREY "') AND code = 266240", -1, &st, NULL) == SQLITE_OK) {
         if (sqlite3_step(st) == SQLITE_ROW) pal = sqlite3_column_int(st, 0);
         sqlite3_finalize(st);
     }
@@ -931,10 +931,10 @@ static void test_palettes(void) {
     f.symbolic = true;
     PxGlyph g;
     memset(&g, 0, sizeof g);
-    g.codepoint = 0x41; g.advance = 4; g.w = 3; g.h = 2;
+    g.code = px_code_cp(0x41); g.advance = 4; g.w = 3; g.h = 2;
     g.pix = (char *)malloc(6); memcpy(g.pix, "2.01.0", 6);
     px_font_add_glyph(&f, &g);
-    g.codepoint = 0x42; memcpy(g.pix, "0.0.00", 6);
+    g.code = px_code_cp(0x42); memcpy(g.pix, "0.0.00", 6);
     px_font_add_glyph(&f, &g);
     px_glyph_free(&g);
     font_colours(&f, (const uint32_t[]){0x000000FFu, 0x808080FFu, 0xFF000080u}, 3);
@@ -977,7 +977,7 @@ static void test_palettes(void) {
         for (int i = 0; i < 20; i++) {
             PxGlyph mg;
             memset(&mg, 0, sizeof mg);
-            mg.codepoint = 0x61 + i; mg.advance = 3; mg.w = 2; mg.h = 1;
+            mg.code = px_code_cp(0x61 + i); mg.advance = 3; mg.w = 2; mg.h = 1;
             mg.pix = (char *)malloc(2); memcpy(mg.pix, "01", 2);
             int gi = px_font_add_glyph(&m, &mg);
             px_glyph_free(&mg);
@@ -1022,7 +1022,7 @@ static void test_palettes(void) {
     copy_tree(TMP "/ex_pal", TMP "/bad_pal");
     {
         size_t n;
-        char *t = px_read_file(LIB "/pxfm/40/" H_GREY ".pxfm", &n);
+        char *t = px_read_file(LIB "/pxfm/89/" H_GREY ".pxfm", &n);
         char *q = t ? strstr(t, "COLORS\t2") : NULL;
         if (q) q[7] = '3';
         char hh[33];
@@ -1072,7 +1072,7 @@ static void test_lib_colors(void) {
 }
 
 /* testdata/lib_many.pxfdb: one font of 40 colours over its glyphs (version 22) */
-#define H_MANY "cd17ae6df4a73ab2581ed3fcf3ebf554"
+#define H_MANY "b6a511befd442427c26d8d6dc6033a90"
 static void test_lib_many(void) {
     char err[PX_ERR_LEN];
     Store *s = NULL;
@@ -1085,7 +1085,7 @@ static void test_lib_many(void) {
     px_font_hash(&f, h);
     const uint32_t *cl;
     CHECK(strcmp(h, H_MANY) == 0 && px_font_colors(&f) == 40 && px_font_color_list(&f, &cl) == 40, "lib_many: its hash, COLORS 40, a colour list of 40");
-    const PxGlyph *ga = &f.glyphs[px_font_find(&f, 0x41)], *gu = &f.glyphs[px_font_find(&f, 0x55)], *gv = &f.glyphs[px_font_find(&f, 0x56)], *gw = &f.glyphs[px_font_find(&f, 0x57)];
+    const PxGlyph *ga = &f.glyphs[px_font_find_cp(&f, 0x41)], *gu = &f.glyphs[px_font_find_cp(&f, 0x55)], *gv = &f.glyphs[px_font_find_cp(&f, 0x56)], *gw = &f.glyphs[px_font_find_cp(&f, 0x57)];
     CHECK(ga->pi == gu->pi && ga->pi == gv->pi && gw->ncol == 36, "lib_many: A, U and V share a palette; W has 36 colours");
     px_font_free(&f);
     store_conn_close(c);

@@ -1,6 +1,6 @@
-# 42. Adding layers in the glyph view of a duplicate of 0820dc69 (glyphs 20 2C 41 48 4D 78): from this font (same code, a typed
-# character, a U+ code, a code the font lacks), from another font of the library (Test Sans Italic e6109c13), the layers following
-# PgDn / PgUp, and staying while another font (Uncoded Mono fa96e358) is opened.  Layers never touch the font.
+# 42. Adding layers in the glyph view of a duplicate of 3b52125b (glyphs 20 2C 41 48 4D 78): from this font (same code, a typed
+# character, a U+ code, a code the font lacks), from another font of the library (Test Sans Italic 4fba4190), the layers following
+# PgDn / PgUp, and staying while another font (Uncoded Mono 54caf68f) is opened.  Layers never touch the font.
 wait 5
 click @Unlock
 wait 4
@@ -173,7 +173,7 @@ key enter
 wait 8
 assert inbrowser 0
 assert readonly 1
-assert ohash fa96e3583da8e003fc25404ac00f764e
+assert ohash 54caf68fe9ec18634701a55bfc87b5c0
 sleep 600
 click @cell:U+0041
 key enter

@@ -36,7 +36,7 @@ assert unsaved 0
 assert storefonts 1
 assert wtitle x07f.pxfdb
 assert sqlfile tests/tmp/x07f.pxfdb "select count(*) from pxfm" 1
-assert sqlfile tests/tmp/x07f.pxfdb "select count(*) from pxfm_glyph where code = 65" 1
+assert sqlfile tests/tmp/x07f.pxfdb "select count(*) from pxfm_glyph where code = 266240" 1
 # the menu has New Database too; with nothing unsaved it starts another empty one at once
 click @Menu
 wait 4

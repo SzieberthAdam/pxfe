@@ -1,6 +1,6 @@
 # 21. Insight and the glyph finder on testdata/lib (copy in tests/tmp/e2elib).
-# Glyph A (C0FC54C2...) is in 3 fonts (0820dc69, e6109c13, fa96e358), a second A bitmap (3AD25AE0...) is in 1 font (408c4d7d);
-# the bitmap of x (F83AD16C...) is in 0820dc69 and, uncoded, in fa96e358.
+# Glyph A (C0FC54C2...) is in 3 fonts (3b52125b, 4fba4190, 54caf68f), a second A bitmap (3AD25AE0...) is in 1 font (894ef821);
+# the bitmap of x (F83AD16C...) is in 3b52125b and, uncoded, in 54caf68f.
 waitfor loading = 0 60000
 wait 5
 assert inbrowser 1
@@ -9,7 +9,7 @@ assert inbrowser 1
 click @Fonts
 wait 4
 click @Filter
-type 0820dc
+type 3b5212
 waitfor bvisible = 1 5000
 wait 2
 assert bvisible 1
@@ -21,13 +21,13 @@ assert bside 1
 waitfor similar >= 1 10000
 assert similar 3
 shot tests/tmp/shots/21_similar.png
-# the first row of the list (best score first: the Uncoded Mono font fa96e358), found by its widget name
+# the first row of the list (best score first: the Uncoded Mono font 54caf68f), found by its widget name
 click @similar_row_0
 wait 8
 assert inbrowser 0
 assert infont 1
 assert readonly 1
-assert ohash fa96e3583da8e003fc25404ac00f764e
+assert ohash 54caf68fe9ec18634701a55bfc87b5c0
 assert hashname 1
 key left alt
 wait 4
@@ -52,25 +52,25 @@ wait 4
 click @bside_View
 assert bside 0
 click @Filter
-type 0820dc
+type 3b5212
 wait 4
 sleep 600
 click @card:0
 wait 3
 dblclick @card:0
 wait 6
-assert ohash 0820dc69a21b1cdb3a44d2cff7d884d8
+assert ohash 3b52125b2e5f6466823baa4fa3186fa0
 sleep 600
 click @cell:U+0041
 waitfor usage >= 0 10000
 wait 10
 assert usage 3
-# the numbers against the store: the bitmap of A (as drawn by 0820dc69 for U+0041) is held by 3 fonts under any code, by
+# the numbers against the store: the bitmap of A (as drawn by 3b52125b for U+0041) is held by 3 fonts under any code, by
 # the typeface variants that name them (usagevar), and drawn for U+0041 by the fonts the finder counts (usagecode)
 assert sql "SELECT COUNT(DISTINCT pxfm) FROM pxfm_glyph WHERE glyph=x'C0FC54C2EC60CB8617B041D991DA1622'" 3
 assert sql "SELECT COUNT(*) FROM pxtf_variant WHERE pxfm IN (SELECT pxfm FROM pxfm_glyph WHERE glyph=x'C0FC54C2EC60CB8617B041D991DA1622')" 3
 assert usagevar 3
-assert sql "SELECT COUNT(DISTINCT pxfm) FROM pxfm_glyph WHERE code=65 AND glyph=x'C0FC54C2EC60CB8617B041D991DA1622'" 3
+assert sql "SELECT COUNT(DISTINCT pxfm) FROM pxfm_glyph WHERE code=266240 AND glyph=x'C0FC54C2EC60CB8617B041D991DA1622'" 3
 assert usagecode 3
 click @ptab_Glyph
 wait 4
@@ -83,12 +83,12 @@ click @cell:U+0078
 waitfor usage = 2 5000
 # x: its bitmap is held by 2 fonts (one of them draws it for no code point), but only 1 draws it for U+0078, which is the number the finder shows
 assert sql "SELECT COUNT(DISTINCT pxfm) FROM pxfm_glyph WHERE glyph=x'F83AD16C225C33BC1D6BFE2178677638'" 2
-assert sql "SELECT COUNT(DISTINCT pxfm) FROM pxfm_glyph WHERE code=120 AND glyph=x'F83AD16C225C33BC1D6BFE2178677638'" 1
+assert sql "SELECT COUNT(DISTINCT pxfm) FROM pxfm_glyph WHERE code=491520 AND glyph=x'F83AD16C225C33BC1D6BFE2178677638'" 1
 assert usagecode 1
 sleep 450
 click @cell:U+002C
 waitfor usage = 2 5000
-# several glyphs (A and x): the fonts that hold all of them (0820dc69, fa96e358)
+# several glyphs (A and x): the fonts that hold all of them (3b52125b, 54caf68f)
 sleep 450
 click @cell:U+0041
 click @cell:U+0078 ctrl

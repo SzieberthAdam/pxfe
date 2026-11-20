@@ -1,4 +1,4 @@
-# 115. Delete, cut, copy and paste of a selection (version 16), font 0820dc69 unlocked, glyphs U+0020 (empty, advance 4) and U+0078.
+# 115. Delete, cut, copy and paste of a selection (version 16), font 3b52125b unlocked, glyphs U+0020 (empty, advance 4) and U+0078.
 # Delete and cut clear the selected cells (one undo step each); the clipboard keeps the pixels and the cells; a paste floats where the pixels were
 # copied from (or at the top left of the view when they would be out of view) and is one undo step; '.' cells of the pixels are transparent.
 wait 5

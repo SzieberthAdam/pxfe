@@ -1,4 +1,4 @@
-# 136. The tool strip with fourteen tools (version 20), font 0820dc69 unlocked, glyph U+0020.
+# 136. The tool strip with fourteen tools (version 20), font 3b52125b unlocked, glyph U+0020.
 # At the smallest window (1110 x 600) the fourteen buttons need three columns (the sample strip under the glyph view takes some of the height)
 # (a group that does not fit the rest of a column starts the next one); every button answers to its name there.
 wait 5

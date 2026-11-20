@@ -1,4 +1,4 @@
-# 119. Pixel-perfect pencil strokes (version 17), font 0820dc69 unlocked, glyph U+0020 (empty, advance 4; font box rows 0..7).
+# 119. Pixel-perfect pencil strokes (version 17), font 3b52125b unlocked, glyph U+0020 (empty, advance 4; font box rows 0..7).
 # The bar's Pixel-perfect option (Pencil, Line and Curve): a stroke whose cells make an L loses the middle one.  Off by default, kept in pxfe.ini.
 wait 5
 click @Unlock

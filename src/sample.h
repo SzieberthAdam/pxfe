@@ -50,7 +50,7 @@ typedef struct SampleLayout {
     int width;                            /* the widest line */
     int above, below;                     /* the font box (rows over / under the baseline) */
     int lineH;                            /* distance between two baselines: above + below + line gap */
-    int32_t wantDefault;                  /* a default glyph whose bitmap is not loaded yet (the caller requests it), else PX_NO_CODEPOINT */
+    PxCode wantDefault;                   /* a default glyph whose bitmap is not loaded yet (the caller requests it), else PX_NO_CODE */
 } SampleLayout;
 
 /* Lays `text` out in font f.  boxAbove / boxBelow: the font box (both 0: px_font_box of f).  lineGap: pixels between the

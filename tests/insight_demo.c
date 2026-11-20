@@ -135,7 +135,7 @@ int main(int argc, char **argv)
                 printf("results %d\n", Finder_ResultCount(fd));
                 if (query) {
                     StoreCodeGlyphList l; char e2[PX_ERR_LEN]; double q0 = GetTime();
-                    if (store_glyphs_for_code(store_main_conn(store), Finder_ParseQuery(query), &l, e2)) {
+                    if (store_glyphs_for_codepoint(store_main_conn(store), Finder_ParseQuery(query), &l, e2)) {
                         printf("store_glyphs_for_code on one thread: %.1f ms (%d)\n", (GetTime() - q0) * 1000, l.count);
                         store_code_glyph_list_free(&l);
                     }

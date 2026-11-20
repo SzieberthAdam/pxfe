@@ -1,4 +1,4 @@
-# 40. The glyph view's own bar on a locked font (0820dc69): the font view's second row and the read-only band are gone,
+# 40. The glyph view's own bar on a locked font (3b52125b): the font view's second row and the read-only band are gone,
 # the bar has the zoom (Fit, minus, value, plus), the Metrics toggle and the lock button.
 wait 5
 assert readonly 1

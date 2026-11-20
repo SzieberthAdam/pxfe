@@ -5,7 +5,7 @@
 
 pxfe is a desktop browser and editor for the pixel fonts of a pixelglyphlib library: pxtf typefaces, pxfm fonts, pxgl glyph files and hex palettes, kept in one pxfdb SQLite database.
 It is written in C99 with raylib 6 and SQLite 3.54 (`vendor/sqlite3/`, static).
-The formats are specified in `C:/Users/jnsGEzD3/Documents/GitHub/pixelglyphlib/spec/`: `pxfm.md`, `pxtf.md`, `pxgl.md`, `hex.md` and `pxfdb.md`; pxfe follows the spec as of commit 5dd97ca2c4 ("Add hex palettes, canonical colour glyphs, COLORS and SYMBOLIC").
+The formats are specified in `C:/Users/jnsGEzD3/Documents/GitHub/pixelglyphlib/spec/`: `pxfm.md`, `pxtf.md`, `pxgl.md`, `hex.md` and `pxfdb.md`; pxfe follows the spec of pxfm version 3, as in the working tree after commit 5dd97ca2c4: codes `G+CCCCCC-VVV` with variants, and the glyph line `GLYPH code advance x y [glyph [palette]]`.
 The whole UI is in English.
 
 ## Build
@@ -25,7 +25,7 @@ The tests are described in `HANDOFF.md` and `tests/e2e/README.md`.
 
 | File | What it does |
 | --- | --- |
-| `src/pxfont.h/.c` | font model, SHA-256, canonical form, pxfm v2, pxgl and hex read and write, the per-glyph palette table, drafts; no raylib |
+| `src/pxfont.h/.c` | font model, SHA-256, canonical form, pxfm v3 and its codes, pxgl and hex read and write, the per-glyph palette table, drafts; no raylib |
 | `src/pxtf.h/.c` | typeface model, pxtf read and write; no raylib |
 | `src/store.h/.c`, `src/store_int.h` | the SQLite store in memory: load, import, save, export, change counter, rows and model both ways, lists, deletion with cascade, editing in place, glyph usage; no raylib |
 | `src/store_sim.c` | similar fonts and typefaces; no raylib |
@@ -88,7 +88,7 @@ Exactly three UI sizes (18, 16, 13) and the pixel face at 16:
 - Unifont is drawn only at 16 px or 32 px, with point filtering and whole-pixel positions.
   Both `.otf` files stay in memory and a glyph is rasterised with `LoadFontData` when first drawn, into a 1024 x 1024 atlas of 32 x 32 slots that is flushed when full; planes 1 to 16 come from `unifont_upper`.
 - At 16 px every coverage value of the Unifont `.otf` outlines is 0 or 255, so no atlas had to be made by hand.
-- Glyph captions (`Th_CodeDraw`, `Th_TextRich`): the character itself in Unifont, centred; "U+XXXX" while the mouse is over the caption or its cell, and always for a code point with no visible Unifont image (controls, blanks, marks without an advance, code points Unifont lacks); "#n" for a glyph without a code point.
+- Glyph captions (`Th_CodeDraw`, `Th_TextRich`): the character itself in Unifont, centred; "U+XXXX" while the mouse is over the caption or its cell, and always for a code point with no visible Unifont image (controls, blanks, marks without an advance, code points Unifont lacks); "#n" for a glyph without a code point; a variant adds its "-VVV" to the text and shows no image.
   Sites: the font view's cell captions, the glyph segment of the navigation bar, the glyph view's bar, the layer rows, the Glyph usage rows, the code beside Find in Library, the Add Glyph dialog.
 - A glyph preview (the large character of the Glyphs view) is Unifont at 32 px, never another size.
 - Roles differ by size, weight and colour, never by a size of their own: a new role takes one of the five rows above.
@@ -268,7 +268,7 @@ This file and `HANDOFF.md` follow the author's Markdown protocol: a heading has 
 
 ## The font model
 
-- Every position is counted from the baseline and the pen: a glyph's offsets `x,y` put the bottom-left corner of its bitmap `x` columns right of the pen and `y` rows above the baseline.
+- Every position is counted from the baseline and the pen: a glyph's offsets `x` and `y` put the bottom-left corner of its bitmap `x` columns right of the pen and `y` rows above the baseline.
 - Advances, offsets and metrics are integers.
 - Every font-wide metric is optional, because a pxfm holds only what its source states: `ASCENT`, `DESCENT`, `LINEGAP`, `CAPHEIGHT`, `XHEIGHT`, `INTERNALLEADING`, `QUADWIDTH`, `RATIO`, `UNDERLINEPOSITION`, `UNDERLINETHICKNESS`, `STRIKEOUTPOSITION`, `STRIKEOUTTHICKNESS`, `MONOSPACED`, plus `COLORS`, `SYMBOLIC`, `GLYPH` and `KERNING`.
 - A font without `ASCENT` or `DESCENT` is drawn in a box taken from the glyphs; that box is never written.
@@ -278,12 +278,17 @@ This file and `HANDOFF.md` follow the author's Markdown protocol: a heading has 
 
 ### Codes
 
-- A code point is shown as `U+XXXX`.
-- A glyph without a code point has a code from `F00000` up, without gaps, shown as `#n` (its code minus `F00000`); deleting one renumbers the later ones and their kerning pairs, and a new one takes the next code.
+- A code is a group, a number and a variant: `U+000041-000` for U+0041, `X+000003-000` for the fourth glyph without a code point (a symbol), `I+DEFA00-000` for the default glyph; the variants of a glyph are `-001` to `-FFF`.
+- In memory and in the pxfdb a code is the 40-bit number `GCCCCCCVVV` (`PxCode`, an `int64_t`; U is 0, X is A, I is F), so U+0041 is `0x41000` and the default glyph `0xFDEFA00000`; numeric order puts the code points first, then the symbols, then the default glyph, each glyph before its variants.
+- The file sorts its lines by bytes, so the `I` line comes before the `U` lines there.
+- The UI shows `U+0041`, `#3` for a symbol and "Default", with `-001` for a variant (`px_code_label`); a code field takes those, hex with or without `U+` or `0x`, `#n`, `default` and the file form, each with `-V` for a variant (`px_code_parse_user`).
+- The symbols are `X+000000-000` up, without gaps; deleting one deletes its variants and renumbers the later symbols and their kerning pairs; a new one takes the next number.
+- A variant is a glyph of its own: it is drawn only where it is chosen by its code, a layer or the fit never follows it, and Unifont shows no image for it.
+- A text of the version 2 form (six hex digits, offsets `x,y`) is refused as "pxfm version 2 file".
 
 ### The default glyph
 
-- The glyph drawn for a missing code is an ordinary glyph with the code `FFFFFF`: its own bitmap, offsets and advance, sorted last, a `GLYPH FFFFFF` line and a `pxfm_glyph` row; nothing else refers to it.
+- The glyph drawn for a missing code is an ordinary glyph with the code `I+DEFA00-000`: its own bitmap, offsets and advance, last in memory, a `GLYPH I+DEFA00-000` line and a `pxfm_glyph` row; nothing else refers to it.
 - The glyph count and the uncoded count skip it.
 - The grid shows it last, captioned "Default"; it can be opened, edited and deleted, but not given another code.
 - "Set Default" copies the selected glyph's bitmap, offsets and advance into it, as an independent copy.
@@ -293,7 +298,7 @@ This file and `HANDOFF.md` follow the author's Markdown protocol: a heading has 
 - Files are named by their hashes; storage is content-addressed, so an edit changes the hash of what it touches, and a glyph's pxgl is never changed in place.
 - A font is modified exactly when the canonical hash of its current state differs from the hash the store holds, so an undone edit leaves it unmodified.
 - Reader and writer round-trip: every pxfm, pxtf, pxgl and palette, read and written unchanged, gives the bytes and hash of its name; the text writer and the converter from rows agree byte for byte.
-- A short hash (8 digits) is shown where space is tight, the full hash in the panels' info blocks; every label names its owner: "Font 0820dc69", "Typeface b925951b", "Glyph c0fc54c2".
+- A short hash (8 digits) is shown where space is tight, the full hash in the panels' info blocks; every label names its owner: "Font 3b52125b", "Typeface 8e8c9492", "Glyph c0fc54c2".
 
 ### Typefaces
 
@@ -302,7 +307,8 @@ This file and `HANDOFF.md` follow the author's Markdown protocol: a heading has 
 
 ### Drafts
 
-The core reads and writes the draft format `PXFEDRAFT 3` (`PALETTE <HASH> <RRGGBBAA,...>` lines, a GLYPH line with the read palette hash or `-` and the glyph's own palette, `SYMBOLIC`; font-wide `COLOR` lines give every glyph those colours); the UI has no drafts.
+The core reads and writes the draft format `PXFEDRAFT 4` (`PALETTE <HASH> <RRGGBBAA,...>` lines, a GLYPH line with the code in the file form, the read palette hash or `-` and the glyph's own palette, `SYMBOLIC`); the UI has no drafts.
+A draft of version 2 or 3 (the codes of pxfm version 2) is refused with a message.
 
 ## Palettes and colours
 
@@ -348,7 +354,7 @@ Each glyph has its own palette, so a font may have any number of colours; a glyp
 - Writing renumbers the glyph text canonically (`px_font_glyph_pxgl`; one colour: every ink pixel `0`).
 - A glyph's palette (`glyph_write_palette`): the palette it was read with when its first k lines are still its colours in reading order, so an unchanged font is written back byte for byte; otherwise the used colours in reading order, then the rest of its palette without repeats.
 - `COLORS` is written when there are at least two; palettes go to `palette/xx/<hash>.hex` (an existing file is left) and into the table with `OR IGNORE`.
-- The colour example of `pxfm.md` is font `408c4d7d…`, its A `3ad25ae0…`, its palette `ebbba949…`.
+- The colour example of `pxfm.md` is font `894ef821…`, its A `3ad25ae0…`, its palette `ebbba949…`.
 
 ### SYMBOLIC
 
@@ -365,6 +371,8 @@ The text folders (`pxtf/`, `pxfm/`, `pxgl/`, `palette/`) are reached only throug
 - The library lives in memory as one SQLite database with the pxfdb schema; every view reads it through the store.
 - The open font is a `PxFont` document; the store holds what is committed.
 - A pxfdb made before hex palettes is refused: "made by an older pixelglyphlib (before hex palettes: colour lines, no palette table): rebuild it from its files with the current pixelglyphlib"; pxfe never migrates it.
+- A pxfdb with the codes of pxfm version 2 (more `pxfm_glyph` rows with a variant than without) is refused: "made by an older pixelglyphlib (codes of pxfm version 2): rebuild it from its files with the current pixelglyphlib"; the schema is the same, so only the codes tell.
+- `store_glyphs_for_codepoint` (the Glyph usage and the finder) takes every variant of a code point.
 
 ### Load, Save, Save As
 
@@ -410,7 +418,7 @@ Both are plain zip files of library files named by their hashes: the pxfm or pxt
 - A deleted font's typefaces lose that variant and are rewritten under new hashes; a typeface left with no variant goes.
 - Deleting a typeface deletes its pxtf and every font of it that no other typeface names.
 - Glyphs and palettes that the deletion leaves unnamed go too; earlier orphans are left alone.
-- The confirmation names exactly what goes: "Delete 1 font, 1 typeface (Typeface b925951b loses variant 0002 and is rewritten), 14 glyphs, 2 palettes?".
+- The confirmation names exactly what goes: "Delete 1 font, 1 typeface (Typeface 8e8c9492 loses variant 0002 and is rewritten), 14 glyphs, 2 palettes?".
 - A deletion is made in memory; Save writes it.
 
 ### New Font
@@ -422,7 +430,8 @@ The name is only the session's title: an orphaned font has no name in the databa
 
 `<db>-settings` (`fsettings.h`, SQLite) holds program settings by hash beside the database: the font layers, their per-glyph corrections, and the locks.
 
-- Schema version 3: the `layer` table (with `em`, `aspect`, `follow`, `mode`, `threshold`) and `unlocked(kind, hash)` (0 font, 1 typeface; only unlocked things have a row); older files are upgraded in memory and on disk at the next save.
+- Schema version 4: the `layer` table (with `em`, `aspect`, `follow`, `mode`, `threshold`), `correction` keyed by the code of pxfm version 3, and `unlocked(kind, hash)` (0 font, 1 typeface; only unlocked things have a row); older files are upgraded in memory and on disk at the next save.
+  The upgrade from 3 turns the correction codes into codes of version 3 (`FFFFFF` the default glyph, `F0000n` the symbol n, any other a code point).
 - It is read at Load and written at Save; a settings-only change makes the document unsaved without changing the store's change counter, and Save then writes only the sidecar.
 - Save As writes a new sidecar; with no settings at all nothing is written and an old sidecar is deleted.
 - When a commit changes a hash, `fs_rename_font` and `fs_rename_typeface` move the layers, corrections and lock.
@@ -596,7 +605,7 @@ Tabs **View | Font | Glyph | Similar | Layers**, remembered; selecting a glyph n
 
 - Click selects, Ctrl+click toggles, Shift+click extends, Ctrl+A selects all, Esc clears.
 - Select Occurrences (`Ctrl+Shift+A`) adds every glyph of the same bitmap shape as a selected one.
-- Delete (`Del`) after a confirmation; Clone (`Ctrl+D`) to a code typed in a dialog (`U+XXXX`, hex, or a character); Add Glyph adds an empty glyph with or without a code; Set Default.
+- Delete (`Del`) after a confirmation; Clone (`Ctrl+D`) to a code typed in a dialog (`U+XXXX`, hex, a character, `-V` for a variant); Add Glyph adds an empty glyph with or without a code; Set Default.
 - `Enter` or a double click opens the glyph view.
 - Every editing command refuses on a locked font.
 - There is no context menu.
@@ -644,8 +653,8 @@ Tabs **View | Glyph | Layers** (`src/gpanel.inc`); opening the glyph view shows 
 
 - Code point, character, advance and offsets are fields, dim while the font is locked.
 - Advance: 0 or more; offsets: any sign, dim for a glyph without ink; one undo step, steps on one field within 0.8 s merged.
-- Code point: hex, with or without `U+` or `0x`; Character: one character or the word `space`; applied on Enter, Tab or a click elsewhere.
-- Refused with an error toast: a code another glyph has, `FFFFFF`, above 10FFFF, no code; the default glyph's code fields are dim; an uncoded glyph can get a code, and the later uncoded glyphs are renumbered.
+- Code point: hex, with or without `U+` or `0x`, and `-V` for a variant; Character: one character or the word `space` (a variant keeps its number); applied on Enter, Tab or a click elsewhere.
+- Refused with an error toast: a code another glyph has, the default glyph's codes, a symbol code, above 10FFFF, no code, and a symbol that has variants; the default glyph's code fields are dim; an uncoded glyph can get a code, and the later symbols are renumbered.
 - The glyph moves to its place in the order (`px_font_remove_glyph`, `px_font_add_glyph`); the view and selection stay on it (`Editor_SetGlyphIndex`); kerning pairs follow the new code; undo and redo find it by code.
 
 ### The ink

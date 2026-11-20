@@ -13,11 +13,11 @@ set EXE=tests\tmp\pxfe_e2e.exe
 set OPTS=--ini tests\tmp\e2e.ini
 set LIBD=tests\tmp\e2elib
 set DB=tests\tmp\e2e.pxfdb
-set H1=0820dc69a21b1cdb3a44d2cff7d884d8
-set H2=e6109c134eda8d747bac9a3c2a62d204
-set H3=408c4d7dd946543f8e9b4553dd1ba62e
-set H4=fa96e3583da8e003fc25404ac00f764e
-set HTF=b925951bb94de1d15ec27404b3261476
+set H1=3b52125b2e5f6466823baa4fa3186fa0
+set H2=4fba4190f6ba7e10b296c7070234e1ce
+set H3=894ef821e147533c34b39e2131016133
+set H4=54caf68fe9ec18634701a55bfc87b5c0
+set HTF=8e8c94921267d3c2c72ec93d3b0cf63d
 set REALH=b86206e5d4408e60dd8174f29050daa7
 set REALD=tests\tmp\reallib
 set FAILS=0
@@ -171,10 +171,10 @@ call :run 102_import_glyph "%DB%"
 call :run 102b_import_reload "%DB%"
 call :fresh
 call :run 104_default_glyph "%DB% --font %H1%"
-call :run 104b_default_reload "%DB% --font 897787da6f47a5d4ad8068bf5bc1bab8"
+call :run 104b_default_reload "%DB% --font cf58b248897bb194e0dd4ffbf4e7e80e"
 call :fresh
 call :run 105_lock "%DB% --font %H1%"
-call :run 105b_lock_reload "%DB% --font 36e0649997646b5da1e22ded4ab8f8db"
+call :run 105b_lock_reload "%DB% --font c32554175140f1245df90398b8c3a3a0"
 call :fresh
 call :run 106_import_sheet "%DB%"
 call :fresh
@@ -245,15 +245,15 @@ call :fresh
 call :run 138_symbolic "%DB%"
 call :fresh
 copy /y testdata\lib_many.pxfdb tests\tmp\e2e.pxfdb >nul
-call :run 139_many_colours "%DB% --font cd17ae6df4a73ab2581ed3fcf3ebf554"
+call :run 139_many_colours "%DB% --font b6a511befd442427c26d8d6dc6033a90"
 call :fresh
 call :run 140_palette_keys "%DB% --font %H1%"
 call :fresh
 copy /y testdata\lib_many.pxfdb tests\tmp\e2e.pxfdb >nul
-call :run 141_palette_drag "%DB% --font cd17ae6df4a73ab2581ed3fcf3ebf554"
+call :run 141_palette_drag "%DB% --font b6a511befd442427c26d8d6dc6033a90"
 call :fresh
 copy /y testdata\lib_many.pxfdb tests\tmp\e2e.pxfdb >nul
-call :run 142_shots_bar_many "%DB% --font cd17ae6df4a73ab2581ed3fcf3ebf554"
+call :run 142_shots_bar_many "%DB% --font b6a511befd442427c26d8d6dc6033a90"
 call :fresh
 call :run 143_shots_picker "%DB% --font %H1%"
 call :fresh

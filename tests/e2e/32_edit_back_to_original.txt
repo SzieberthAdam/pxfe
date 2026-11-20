@@ -21,5 +21,5 @@ click @Typefaces
 wait 8
 assert sql "select count(*) from pxfm" 4
 assert sql "select count(*) from pxtf" 2
-assert sql "select count(*) from pxfm where lower(hex(hash)) = '0820dc69a21b1cdb3a44d2cff7d884d8'" 1
-assert sql "select count(*) from pxtf_variant where lower(hex(pxfm)) = '0820dc69a21b1cdb3a44d2cff7d884d8'" 1
+assert sql "select count(*) from pxfm where lower(hex(hash)) = '3b52125b2e5f6466823baa4fa3186fa0'" 1
+assert sql "select count(*) from pxtf_variant where lower(hex(pxfm)) = '3b52125b2e5f6466823baa4fa3186fa0'" 1

@@ -1,4 +1,4 @@
-# 112. Selection and moving (version 16), font 0820dc69 unlocked, glyph U+0020 (empty, advance 4; font box rows 0..7, @ecell:x,y).
+# 112. Selection and moving (version 16), font 3b52125b unlocked, glyph U+0020 (empty, advance 4; font box rows 0..7, @ecell:x,y).
 # Marquee, drag-move of the selected pixels, drop, undo (one step per move), the arrow keys, Esc, Ctrl+drag copy.
 wait 5
 click @Unlock
