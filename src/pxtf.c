@@ -102,6 +102,21 @@ PxtfVariant *pxtf_clone_variant(PxtfTypeface *c, int number) {
     return d;
 }
 
+PxtfVariant *pxtf_add_variant(PxtfTypeface *c) {
+    if (c->count == c->cap) {
+        int cap = c->cap ? c->cap * 2 : 4;
+        PxtfVariant *nv = (PxtfVariant *)realloc(c->v, sizeof(PxtfVariant) * (size_t)cap);
+        if (!nv) return NULL;
+        c->v = nv;
+        c->cap = cap;
+    }
+    PxtfVariant *d = &c->v[c->count];
+    memset(d, 0, sizeof *d);
+    d->number = c->count ? c->v[c->count - 1].number + 1 : 1;   /* ascending: the new one is last */
+    c->count++;
+    return d;
+}
+
 PxtfVariant *pxtf_find_variant(PxtfTypeface *c, int number) {
     for (int i = 0; i < c->count; i++) if (c->v[i].number == number) return &c->v[i];
     return NULL;
@@ -324,9 +339,11 @@ char *pxtf_text(const PxtfTypeface *c, size_t *len, char hashOut[33]) {
         if (strcmp(c->v[i].type ? c->v[i].type : "", c->v[0].type ? c->v[0].type : "") != 0) shareType = false;
     }
     char up[33];
+    if (c->count == 0) { buf_str(&b, "FORMAT\t" PXTF_EDITOR_FORMAT "\n"); }   /* a typeface made in an editor, with no variant yet */
     if (c->count > 0 && shareFormat && c->v[0].format) { buf_str(&b, "FORMAT\t"); buf_str(&b, c->v[0].format); buf_str(&b, "\n"); }
     upper_hash(c->hash, up);
     buf_str(&b, "HASH\t"); buf_str(&b, up); buf_str(&b, "\n");
+    if (c->count == 0) { buf_str(&b, "TYPE\t" PXTF_EDITOR_TYPE "\n"); }
     if (c->count > 0 && shareType && c->v[0].type) {
         char *e = pxtf_escape(c->v[0].type);
         if (!e) { free(b.p); return NULL; }
@@ -682,7 +699,10 @@ bool pxtf_parse(const char *data, size_t len, PxtfTypeface *out, char err[PX_ERR
 #undef LFAIL
 
     if (!haveHash) { fail(err, "no HASH of 32 upper-case hex digits"); goto bad; }
-    if (c.count == 0) { fail(err, "no variant"); goto bad; }
+    if (c.count == 0 && !(topFormat && strcmp(topFormat, PXTF_EDITOR_FORMAT) == 0 && topType && strcmp(topType, PXTF_EDITOR_TYPE) == 0)) {
+        fail(err, "no variant (only a typeface of FORMAT " PXTF_EDITOR_FORMAT " and TYPE " PXTF_EDITOR_TYPE " can have none)");
+        goto bad;
+    }
     for (int pass = 0; pass < 2; pass++) {
         const char *name = pass == 0 ? "FORMAT" : "TYPE";
         char *top = pass == 0 ? topFormat : topType;

@@ -1171,12 +1171,41 @@ void store_entry_list_free(StoreEntryList *l) {
     memset(l, 0, sizeof *l);
 }
 
+static int cmp_entry_pxtf(const void *a, const void *b) {
+    const StoreEntry *x = (const StoreEntry *)a, *y = (const StoreEntry *)b;
+    int r = strcmp(x->pxtf, y->pxtf);
+    return r ? r : x->variant - y->variant;
+}
+
+/* the typefaces with no variant (made in an editor, spec "A typeface made in an editor"): one entry each, variant 0 and pxfm "" */
+static bool list_empty_typefaces(sqlite3 *db, StoreEntryList *out, char err[PX_ERR_LEN]) {
+    sqlite3_stmt *st;
+    if (sqlite3_prepare_v2(db, "SELECT hash FROM pxtf t WHERE NOT EXISTS (SELECT 1 FROM pxtf_variant v WHERE v.pxtf = t.hash)", -1, &st, NULL) != SQLITE_OK)
+        return fail(err, "sqlite: %s", sqlite3_errmsg(db));
+    int added = 0;
+    while (sqlite3_step(st) == SQLITE_ROW) {
+        StoreEntry *nv = (StoreEntry *)realloc(out->e, sizeof(StoreEntry) * (size_t)(out->count + 1));
+        if (!nv) { sqlite3_finalize(st); return fail(err, "out of memory"); }
+        out->e = nv;
+        StoreEntry *e = &out->e[out->count++];
+        memset(e, 0, sizeof *e);
+        store_blob_to_hex((const uint8_t *)sqlite3_column_blob(st, 0), e->pxtf);
+        e->family = e->style = e->fullname = e->designer = "";
+        e->format = PXTF_EDITOR_FORMAT;
+        e->colors = 1;
+        added++;
+    }
+    sqlite3_finalize(st);
+    if (added) qsort(out->e, (size_t)out->count, sizeof(StoreEntry), cmp_entry_pxtf);   /* by pxtf hash, then number, as before */
+    return true;
+}
+
 bool store_list_typefaces(StoreConn *c, StoreEntryList *out, char err[PX_ERR_LEN]) {
     memset(out, 0, sizeof *out);
     RLOCK(c);
     FontFacts *facts;
     int nf;
-    bool ok = read_facts(c->db, &facts, &nf, err) && list_variants(c->db, out, facts, nf, err);
+    bool ok = read_facts(c->db, &facts, &nf, err) && list_variants(c->db, out, facts, nf, err) && list_empty_typefaces(c->db, out, err);
     free(facts);
     RUNLOCK(c);
     if (!ok) store_entry_list_free(out);
@@ -1713,6 +1742,7 @@ char *store_pxtf_text(StoreConn *c, const char *hex, size_t *len, char hashOut[3
     ls_addf(&top, "HASH\t%s", up);
     if (nv > 0 && sameF) ls_addf(&top, "FORMAT\t%s", vs[0].format);
     if (nv > 0 && sameT) { char *e = pxtf_escape(vs[0].type); ls_addf(&top, "TYPE\t%s", e); free(e); }
+    if (nv == 0) { ls_addf(&top, "FORMAT\t%s", PXTF_EDITOR_FORMAT); ls_addf(&top, "TYPE\t%s", PXTF_EDITOR_TYPE); }   /* a typeface made in an editor, no variant yet */
     ls_emit(&top, &b, NULL);
     ls_free(&top);
     for (int i = 0; i < nv; i++) {
@@ -2683,6 +2713,34 @@ done:
     ReleaseSRWLockShared(&s->lock);
     free(tfs);
     if (ok && (p.nFonts || p.nGone || p.nRw)) ok = store_apply_delete(s, &p, err);
+    store_plan_free(&p);
+    return ok;
+}
+
+/* A new typeface with no variant, as an editor makes it: FORMAT PXFE, TYPE pxfe and a random HASH (there is no source file). */
+bool store_new_typeface(Store *s, char hashOut[33], char err[PX_ERR_LEN]) {
+    static volatile LONG serial = 0;
+    struct { LARGE_INTEGER qpc; FILETIME ft; DWORD pid, tid; LONG n; void *p; } seed;
+    memset(&seed, 0, sizeof seed);
+    QueryPerformanceCounter(&seed.qpc);
+    GetSystemTimeAsFileTime(&seed.ft);
+    seed.pid = GetCurrentProcessId();
+    seed.tid = GetCurrentThreadId();
+    seed.n = InterlockedIncrement(&serial);
+    seed.p = (void *)&seed;
+    uint8_t d[32];
+    px_sha256(&seed, sizeof seed, d);
+    StoreDeletePlan p;
+    memset(&p, 0, sizeof p);
+    p.rw = (StoreRewrite *)calloc(1, sizeof(StoreRewrite));
+    p.newTf = (PxtfTypeface *)calloc(1, sizeof(PxtfTypeface));
+    if (!p.rw || !p.newTf) { store_plan_free(&p); return fail(err, "out of memory"); }
+    p.nRw = 1;
+    pxtf_init(&p.newTf[0]);
+    store_blob_to_hex(d, p.newTf[0].hash);
+    pxtf_hash(&p.newTf[0], p.rw[0].newPxtf);
+    snprintf(hashOut, 33, "%s", p.rw[0].newPxtf);
+    bool ok = store_apply_delete(s, &p, err);
     store_plan_free(&p);
     return ok;
 }

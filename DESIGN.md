@@ -311,6 +311,8 @@ This file and `HANDOFF.md` follow the author's Markdown protocol: a heading has 
 
 - A pxtf (`pxtf/xx/<hash>.pxtf`) is the fonts of one source file, as variants with text fields (family, style, full name, weight name, slant, copyright, designer, licence…) and the italic, underlined and struck-out flags; `CODEPAGE` is a text key.
 - A font that no typeface names is "Orphaned".
+- A typeface made in pxfe (New Typeface, Add Font) follows the spec's "A typeface made in an editor": `FORMAT PXFE`, `TYPE pxfe` (`PXTF_EDITOR_FORMAT`, `PXTF_EDITOR_TYPE`) and a random `HASH`; it may have no variant, and then the two are top lines.
+  The store has no `pxtf_variant` row for it; `store_list_typefaces` lists it as one entry of variant 0 and pxfm "", and `store_pxtf_text` and `pxtf_text` write the two top lines.
 
 ### Drafts
 
@@ -535,6 +537,8 @@ The library views are Typefaces, Typeface and Fonts (`src/browser.c`).
   Every font hash of a card or row is in the details line (size and glyphs), small, at the right, with the unlock mark beside it, as the typeface hash in a box header; the hashes stand on the baseline of the text beside them.
   Filters work on variants: a box shows when any variant matches, with only the matching variants.
   A variant row selects that font, the header the typeface.
+  A typeface with no variant is a box with its header only ("0 variants"); its header is selected and it cannot be opened.
+  After the boxes, a square "+" as tall as such a box makes a new, empty typeface (see "New Typeface and Add Font").
 - Fonts: one card per font: family and style (or the hash) in the first row, details (format, size `ASCENT + DESCENT`, glyph count, Mono, Symbolic, ratio) and the font hash in the second, and the sample, pixel perfect.
 - The lists are virtualized; fonts load lazily on worker threads (the pxfm and the glyphs of the sample's characters, cached, reloaded when the sample changes); a 1,200-font library shows its cards within a second.
 - A press selects; a press on the entry that is selected already, or Enter, opens it.
@@ -545,7 +549,7 @@ The library views are Typefaces, Typeface and Fonts (`src/browser.c`).
 ### The side panel
 
 - The View area (see "View area"), then the tabs **Typeface | Font | Similar** in the Typefaces and Typeface views, **Font | Similar** in the Fonts view.
-- View: FILTER: the name filter (substring over family, full name, style, designer, hash; `Ctrl+F` focuses it), the Style dropdown built from the values present, and the switches Monospaced and Colours side by side; SAMPLE: the sample field, as tall as its lines (up to 12, then it scrolls), and the presets (see "Samples"); then, with no caption of their own, Zoom, Columns (a stepper, 1 to 16, showing the count Auto gives while Auto is on; Auto at the right) and Sort by (Name, Size, Glyphs).
+- View, with no captions of its own: the name filter (substring over family, full name, style, designer, hash; `Ctrl+F` focuses it), the Style dropdown built from the values present, the switches Monospaced and Colours side by side; Zoom, Columns (a stepper, 1 to 16, showing the count Auto gives while Auto is on; Auto at the right) and Sort by (Name, Size, Glyphs, beside its label); then the sample field, as tall as its lines (up to 12, then it scrolls), and the presets (see "Samples").
   In the Typeface view only the sample and the zoom.
   The counts are in the status line; the library is rescanned after a commit, a deletion or a load.
 - Typeface and Font: see "The Typeface and Font tabs".
@@ -571,11 +575,12 @@ The library views are Typefaces, Typeface and Fonts (`src/browser.c`).
 
 `DrawInfoTab` (`src/panel.inc`) draws both, for the library views (through `Browser_SetInfoTab`) and for the font view's Font tab.
 
-- The padlock and "Locked" or "Unlocked: edits change it in place"; the boxed hash (the current one and the stored one while they differ).
-- A row of commands: Export Typeface… and Delete Typeface; Clone Font, Export Font… and Delete Font.
-  They are queued (`LibCmd`) and run at the end of the frame (`RunLibCommand`), because they may replace the document or rescan the library.
-- Typeface: TYPEFACE (the variant count and format at the right): the typeface-wide fields (family, version, designer, URLs, copyright, trademark, licence, vendor, description, code page); an edit sets the field in every variant.
-- Font: FONT (its variant number at the right): style, full name, weight name, slant and the italic, underlined and struck-out switches of its variant.
+- The padlock and "Locked" or "Unlocked: edits change it in place".
+- Typeface: META (the variant count and format at the right): the typeface-wide fields (family, version, designer, URLs, copyright, trademark, licence, vendor, description, code page); an edit sets the field in every variant.
+  A typeface with no variant has no META.
+  Then ACTIONS: the boxed hash (the current one and the stored one while they differ, each with a small label), Add Font… (off while locked), and Export Typeface… and Delete Typeface.
+- Font: the boxed hash; Clone Font, Export Font… and Delete Font; then FONT (its variant number at the right): style, full name, weight name, slant and the italic, underlined and struck-out switches of its variant.
+- The commands are queued (`LibCmd`) and run at the end of the frame (`RunLibCommand`), because they may replace the document or rescan the library.
 - Read-only fields can be selected and copied; they are editable only for the open document's font and typeface while unlocked (Enter or a click elsewhere keeps, Escape reverts); the first navigation segment shows "*" while it differs from the database.
 - Leaving the view, opening a font, Save, Export, Load and quit commit the edit in place; it has no undo.
 
@@ -584,6 +589,14 @@ The library views are Typefaces, Typeface and Fonts (`src/browser.c`).
 - A new variant of the same typeface, under the next number, naming the same font, its style "<style> copy" (`pxtf_clone_variant`, `CloneFont`).
 - It needs the typeface unlocked; the open font's edits are committed first.
 - The two variants share the font until one is edited: `CommitEdits` points only the open variant at the new font, and `store_edit_in_place`, given the typeface, keeps the old font for the other variant.
+
+### New Typeface and Add Font
+
+- The "+" after the boxes returns `BROWSER_NEW_TYPEFACE`; `NewTypeface` (panel.inc) makes it with `store_new_typeface`, unlocks it, rescans, and selects its header with the Typeface tab showing (`Browser_SelectTypeface`).
+- Add Font… opens a dialog (`af`, `DrawAddFontDialog`): the fonts of the library with a name or hash filter, by name; a click selects, a double click, Enter or Add adds, Escape cancels.
+- `AddFontToTypeface`: the font becomes a new variant under the next number (`pxtf_add_variant`), and stays in its other typefaces.
+  The variant has `FORMAT PXFE`, `TYPE pxfe`, no reading options, the typeface-wide fields of the typeface's first variant (of the font's old variant when the typeface has none), and the style, names, slant and flags of the font's old variant (the first that names it; `STYLE Regular` when there is none).
+- The typeface must be unlocked; it is rewritten under a new hash with `store_edit_in_place`, as Clone Font does.
 
 ### Similar fonts and typefaces
 

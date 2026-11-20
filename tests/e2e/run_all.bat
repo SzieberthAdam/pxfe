@@ -260,6 +260,8 @@ call :fresh
 call :run 144_kerning "%DB% --font %H1%"
 call :run 145_view_area "%DB% --font %H1%"
 call :fresh
+call :run 146_new_typeface "%DB%"
+call :fresh
 call :run 70_panel_tabs "%DB%"
 
 echo.

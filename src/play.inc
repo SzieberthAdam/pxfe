@@ -342,7 +342,9 @@ static bool GetInt(const char *name, long *v)
     else if (!strcmp(name, "hascont")) *v = hasCont;
     else if (!strcmp(name, "variant")) *v = contVariant;
     else if (!strcmp(name, "xdopen")) *v = xd.open;                                                  /* the Export dialog */
-    else if (!strcmp(name, "nfopen")) *v = nf.open;                                                  /* the New Font dialog */
+    else if (!strcmp(name, "nfopen")) *v = nf.open;
+    else if (!strcmp(name, "afopen")) *v = af.open;                                                  /* the Add Font dialog */
+    else if (!strcmp(name, "afrows")) *v = af.nvis;                                                  /* its fonts that match the filter */                                                  /* the New Font dialog */
     else if (!strcmp(name, "ifopen")) *v = fimp.open;                                                /* the Import Font File dialog */
     else if (!strcmp(name, "ifsheet")) *v = fimp.sheet;                                              /* the dialog is of a picture (sheet.h) */
     else if (!strcmp(name, "iflayout")) *v = fimp.sheet ? fimp.sh.layout : 0;                        /* 1 grid, 2 rows, 3 marker row */

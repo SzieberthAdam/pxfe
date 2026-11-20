@@ -629,6 +629,81 @@ static void test_export(void) {
     store_close(s);
 }
 
+/* ------------------------------------------------------------------ a typeface made in the editor: no variant, then an added font */
+
+static void test_editor_typeface(void) {
+    char err[PX_ERR_LEN];
+    Store *s = NULL;
+    CHECK(store_open_pxfdb(DB, NULL, &s, err), "editor tf: load");
+    if (!s) return;
+    char h[33];
+    CHECK(store_new_typeface(s, h, err) && count_rows(s, "pxtf") == 3 && store_modified(s), "editor tf: a new typeface with no variant");
+    StoreConn *c = store_conn_open(s);
+    StoreEntryList l;
+    int found = -1;
+    if (store_list_typefaces(c, &l, err)) {
+        for (int i = 0; i < l.count; i++) if (strcmp(l.e[i].pxtf, h) == 0) found = i;
+        CHECK(found >= 0 && l.e[found].variant == 0 && l.e[found].pxfm[0] == 0 && strcmp(l.e[found].format, "PXFE") == 0 && l.count == 4, "editor tf: listed as one entry of variant 0, no font");
+        bool sorted = true;
+        for (int i = 1; i < l.count; i++) if (strcmp(l.e[i - 1].pxtf, l.e[i].pxtf) > 0) sorted = false;
+        CHECK(sorted, "editor tf: the list stays in pxtf order");
+        store_entry_list_free(&l);
+    }
+    PxtfTypeface t;
+    pxtf_init(&t);
+    CHECK(store_load_typeface(c, h, &t, err) && t.count == 0, "editor tf: loads with no variant");
+    size_t n;
+    char back[33];
+    char *txt = store_pxtf_text(c, h, &n, back);
+    CHECK(txt && strncmp(txt, "FORMAT\tPXFE\nHASH\t", 17) == 0 && strstr(txt, "\nTYPE\tpxfe\n") && strcmp(back, h) == 0, "editor tf: its text has FORMAT PXFE and TYPE pxfe at the top and hashes to its key");
+    free(txt);
+    store_conn_close(c);
+    /* Add Font: a font of another typeface becomes variant 0001 */
+    PxtfVariant *v = pxtf_add_variant(&t);
+    memcpy(v->pxfm, H_EXAMPLE, 33);
+    v->format = _strdup("PXFE");
+    v->type = _strdup("pxfe");
+    pxtf_set_text(v, PXTF_STYLE, "Regular");
+    StoreEditResult er;
+    CHECK(store_edit_in_place(s, H_EXAMPLE, NULL, h, &t, &er, err) && strcmp(er.pxtf, h) != 0 && count_rows(s, "pxtf") == 3 && count_rows(s, "pxfm") == 4, "editor tf: a font added (the typeface gets a new hash; the font stays where it was)");
+    pxtf_free(&t);
+    /* and a PXFE variant in a FON-less typeface of another FORMAT: per-variant FORMAT and TYPE lines */
+    c = store_conn_open(s);
+    pxtf_init(&t);
+    CHECK(store_load_typeface(c, T_UNC, &t, err), "editor tf: load Uncoded Mono");
+    store_conn_close(c);
+    v = pxtf_add_variant(&t);
+    memcpy(v->pxfm, H_NOASC, 33);
+    v->format = _strdup("PXFE");
+    v->type = _strdup("pxfe");
+    CHECK(store_edit_in_place(s, H_NOASC, NULL, T_UNC, &t, &er, err), "editor tf: a PXFE variant added to a RAW typeface");
+    pxtf_free(&t);
+    rm_rf(TMP "/ex_ed");
+    StoreExportResult res;
+    CHECK(store_export_folder(s, TMP "/ex_ed", STORE_EXPORT_APPEND, NULL, &res, err) && res.written.typefaces == 3, "editor tf: exported (3 typefaces)");
+    Store *b2 = NULL;
+    rm_rf(TMP "/imp_ed");
+    CHECK(store_import_folder(TMP "/ex_ed", TMP "/imp_ed/x.pxfdb", NULL, &b2, err) && same_content(s, b2), "editor tf: the exported folder imports to the same content (the strict reader takes the PXFE files)");
+    if (!b2) printf("      %s\n", err);
+    store_close(b2);
+    CHECK(store_save_as(s, TMP "/ed.pxfdb", err), "editor tf: saved");
+    Store *b3 = NULL;
+    CHECK(store_open_pxfdb(TMP "/ed.pxfdb", NULL, &b3, err) && same_content(s, b3), "editor tf: reloaded: the same content");
+    store_close(b3);
+    store_close(s);
+    /* an empty typeface alone: exported and imported */
+    s = NULL;
+    CHECK(store_open_pxfdb(DB, NULL, &s, err) && store_new_typeface(s, h, err), "editor tf: a second, empty one");
+    rm_rf(TMP "/ex_ed2");
+    CHECK(store_export_folder(s, TMP "/ex_ed2", STORE_EXPORT_APPEND, NULL, &res, err) && res.written.typefaces == 3, "editor tf: the empty one exported");
+    b2 = NULL;
+    rm_rf(TMP "/imp_ed2");
+    CHECK(store_import_folder(TMP "/ex_ed2", TMP "/imp_ed2/x.pxfdb", NULL, &b2, err) && same_content(s, b2) && count_rows(b2, "pxtf") == 3, "editor tf: the empty one imports back");
+    if (!b2) printf("      %s\n", err);
+    store_close(b2);
+    store_close(s);
+}
+
 /* ------------------------------------------------------------------ deletions */
 
 static void test_deletions(void) {
@@ -1102,6 +1177,7 @@ int main(void) {
     test_save();
     test_export();
     test_deletions();
+    test_editor_typeface();
     test_default_glyph();
     test_similarity();
     test_threads();

@@ -36,6 +36,11 @@ typedef enum PxtfText {
 const char *pxtf_text_key(PxtfText t);     /* "COPYRIGHT", ... */
 const char *pxtf_text_label(PxtfText t);   /* "Copyright", "Designer URL", ... */
 
+/* A typeface made in an editor (spec "A typeface made in an editor"): FORMAT PXFE, TYPE pxfe, a random HASH; it may have no
+ * variant (the writer then puts these two at the top), and a variant added in the editor has them and no reading options. */
+#define PXTF_EDITOR_FORMAT "PXFE"
+#define PXTF_EDITOR_TYPE   "pxfe"
+
 typedef struct PxtfVariant {
     int number;                    /* >= 1 */
     char pxfm[33];                 /* lower-case hash of the variant's pxfm */
@@ -56,6 +61,7 @@ void pxtf_free(PxtfTypeface *c);                    /* frees what it holds, not 
 bool pxtf_copy(PxtfTypeface *dst, const PxtfTypeface *src);
 PxtfVariant *pxtf_find_variant(PxtfTypeface *c, int number);   /* or NULL */
 PxtfVariant *pxtf_clone_variant(PxtfTypeface *c, int number);  /* a copy of that variant appended under the next number; NULL on failure */
+PxtfVariant *pxtf_add_variant(PxtfTypeface *c);                /* an empty variant appended under the next number (1 in an empty typeface) */
 bool pxtf_set_text(PxtfVariant *v, PxtfText t, const char *utf8); /* NULL or "" clears; copies */
 
 /* Text field escapes (spec "Text"): backslash, tab, line end (LF, CR LF, CR -> \n), other controls \xHH, trailing

@@ -120,7 +120,8 @@ void Th_RectLines(Rectangle r, Color c);                /* 1 px outline inside r
 #define TH_BTN_OFF(enabled) ((enabled) ? 0 : TH_BTN_DISABLED)
 enum { TH_IC_PENCIL, TH_IC_ERASER, TH_IC_LINE, TH_IC_RECT, TH_IC_FILL, TH_IC_PREV, TH_IC_NEXT, TH_IC_LEFT, TH_IC_RIGHT, TH_IC_UP, TH_IC_DOWN,
        TH_IC_CLOSE, TH_IC_EYE, TH_IC_EYE_OFF, TH_IC_CHEV_DOWN, TH_IC_CHEV_RIGHT, TH_IC_SEARCH, TH_IC_LOCK, TH_IC_UNLOCK,
-       TH_IC_MARQUEE, TH_IC_LASSO, TH_IC_WAND, TH_IC_MOVE, TH_IC_CURVE, TH_IC_ELLIPSE, TH_IC_PICK, TH_IC_POLY, TH_IC_CONTOUR };
+       TH_IC_MARQUEE, TH_IC_LASSO, TH_IC_WAND, TH_IC_MOVE, TH_IC_CURVE, TH_IC_ELLIPSE, TH_IC_PICK, TH_IC_POLY, TH_IC_CONTOUR,
+       TH_IC_PLUS /* a plus as large as a fifth of the smaller side of r (at least 4 px each way) */ };
 bool  Th_Button(Rectangle r, const char *label, int flags, const char *hint);
 void  Th_Icon(int ic, Rectangle r, Color c);   /* an icon alone, centred in r (a state mark, not a control) */
 #define Th_ButtonDanger(r, label) Th_Button(r, label, TH_BTN_DANGER, NULL)   /* every delete command */
@@ -253,6 +254,7 @@ void Th_Spinner(Vector2 c, float radius, Color col);
 #define TH_HASH_ACCENT  2   /* the hash is a changed state */
 #define TH_HASH_MEASURE 4
 #define TH_HASH_SMALL   8   /* small size (kind word), for a line of small text: the status bar */
+#define TH_HASH_NOCAP  16   /* Th_HashField: the box only, inside a section the caller draws */
 float Th_HashShort(const char *kind, const char *hash, float x, float y, int flags, const char *copyName);
 void  Th_HashField(float x, float *y, float w, const char *caption, const char *hash, const char *name, const char *what, int flags);
 extern bool (*Th_HoverFn)(Rectangle r);

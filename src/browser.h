@@ -14,7 +14,8 @@ typedef enum {
     BROWSER_INSIGHT,    /* the user clicked an entry of the "Similar" list: see BrowserChoice.insight */
     BROWSER_DELETE_FONT = 4, /* (the numbers are kept for the scripts) Del on a font: main.c confirms and deletes the font choice.pxfm */
     BROWSER_DELETE_TYPEFACE, /* Del on a box header: the typeface choice.pxtf */
-    BROWSER_OPEN_TYPEFACE    /* a box header was opened: the browser itself switches to the Typeface view (never returned to main) */
+    BROWSER_OPEN_TYPEFACE,   /* a box header was opened: the browser itself switches to the Typeface view (never returned to main) */
+    BROWSER_NEW_TYPEFACE     /* the "+" after the boxes: main.c makes a new, empty typeface (store_new_typeface) */
 } BrowserAction;
 
 typedef struct BrowserChoice {
@@ -103,6 +104,7 @@ const char *Browser_LastPxtf(const Browser *b);
 
 /* The Typeface view (the Typefaces tab narrowed to one typeface, its fonts as large rows).  Opened by a double click, Enter or Open
  * on a box header; the application's navigation bar shows it and leaves it (Browser_SetTab also leaves it). */
+void     Browser_SelectTypeface(Browser *b, const char *pxtf);   /* the Typefaces list (the Typeface view closed) with that box's header selected and the Typeface tab showing */
 bool     Browser_OpenTypeface(Browser *b, const char *pxtf, const char *selPxfm);   /* false when the library has no such typeface; selPxfm (may be NULL) is the font to select */
 void     Browser_CloseTypeface(Browser *b);
 bool     Browser_InTypeface(const Browser *b);

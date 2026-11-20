@@ -1,0 +1,48 @@
+# 146. New Typeface (the "+" after the boxes) and Add Font (the library view).
+# The "+" makes a typeface with no variant (FORMAT PXFE, TYPE pxfe), unlocked, its header selected and its Typeface tab showing; its box has the header only.
+# Add Font lists the fonts of the library; the chosen one becomes variant 0001 and stays in its other typeface too.
+# A locked typeface has Add Font off.
+wait 10
+assert btypefaces 2
+assert storetypefaces 2
+assert bboxes 2
+assert w.NewTypeface 1
+shot tests/tmp/shots/146_plus.png
+click @NewTypeface
+wait 6
+assert storetypefaces 3
+assert btypefaces 3
+assert bboxes 3
+assert bselhdr 1
+assert bside 2
+assert toast New typeface
+assert w.Add_Font… 1
+assert w.hash_typeface_full 1
+shot tests/tmp/shots/146_empty.png
+# Add Font: filter, choose, add
+click @Add_Font…
+wait 4
+assert afopen 1
+assert afrows 4
+type 3b52
+wait 3
+assert afrows 1
+shot tests/tmp/shots/146_dialog.png
+click @af.row0
+wait 2
+click @af.add
+wait 6
+assert afopen 0
+assert toast variant 0001
+assert storetypefaces 3
+assert btypefaces 3
+assert bselhdr 1
+shot tests/tmp/shots/146_added.png
+# Escape closes the dialog with nothing added
+click @Add_Font…
+wait 4
+assert afopen 1
+key escape
+wait 3
+assert afopen 0
+assert storetypefaces 3

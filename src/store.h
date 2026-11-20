@@ -161,6 +161,10 @@ typedef struct StoreEditResult {
 } StoreEditResult;
 bool store_edit_in_place(Store *s, const char *oldPxfm, const PxFont *font, const char *oldPxtf, const PxtfTypeface *tf, StoreEditResult *out, char err[PX_ERR_LEN]);
 
+/* A new typeface with no variant (FORMAT PXFE, TYPE pxfe, a random HASH); hashOut is its pxtf hash.  store_list_typefaces lists such a
+ * typeface as one entry of variant 0 and pxfm "". */
+bool store_new_typeface(Store *s, char hashOut[33], char err[PX_ERR_LEN]);
+
 /* ------------------------------------------------------------------ export to folders */
 
 typedef struct StoreFolderScan {

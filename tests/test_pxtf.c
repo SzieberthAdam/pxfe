@@ -131,6 +131,24 @@ static void test_errors(void) {
     CHECK(pfails(TRY("%s0001\n\tPXFM\tfbb120e8372cdfa484f0107dfba46860\n", top), "PXFM"), "lower-case PXFM rejected");
     CHECK(pfails("FORMAT\tFON\nTYPE\tx\n0001\n\tPXFM\tFBB120E8372CDFA484F0107DFBA46860\n", "HASH"), "no HASH rejected");
     CHECK(pfails(TRY("%s", top), "no variant"), "no variant rejected");
+    {   /* a typeface made in an editor: FORMAT PXFE and TYPE pxfe at the top, and it may have no variant */
+        const char *ed = "FORMAT\tPXFE\nHASH\t43B49707749923470CDD7F5FCD6A552D\nTYPE\tpxfe\n";
+        PxtfTypeface e;
+        char err[PX_ERR_LEN] = "";
+        bool ok = pxtf_parse(ed, strlen(ed), &e, err);
+        CHECK(ok && e.count == 0, "an editor typeface with no variant accepted");
+        if (ok) {
+            size_t n;
+            char *again = pxtf_text(&e, &n, NULL);
+            CHECK(again && n == strlen(ed) && memcmp(again, ed, n) == 0, "an editor typeface with no variant written as read");
+            free(again);
+            PxtfVariant *v = pxtf_add_variant(&e);
+            CHECK(v && v->number == 1 && e.count == 1, "pxtf_add_variant: variant 0001 in an empty typeface");
+            pxtf_free(&e);
+        }
+        CHECK(pfails("FORMAT\tPXFE\nHASH\t43B49707749923470CDD7F5FCD6A552D\nTYPE\tfnt-v2\n", "no variant"), "no variant with another TYPE rejected");
+        CHECK(pfails("HASH\t43B49707749923470CDD7F5FCD6A552D\n", "no variant"), "no variant and no FORMAT rejected");
+    }
     CHECK(pfails(TRY("%s%s%s", top, v1, v1), "ascending"), "variant twice rejected");
     CHECK(pfails(TRY("%s0002\n\tPXFM\tFBB120E8372CDFA484F0107DFBA46860\n0001\n\tPXFM\tFBB120E8372CDFA484F0107DFBA46860\n", top), "ascending"), "descending variants rejected");
     CHECK(pfails(TRY("%s0000\n\tPXFM\tFBB120E8372CDFA484F0107DFBA46860\n", top), "out of range"), "variant 0 rejected");

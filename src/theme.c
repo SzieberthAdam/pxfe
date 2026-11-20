@@ -512,6 +512,13 @@ void Th_Icon(int ic, Rectangle r, Color c)
     case TH_IC_RIGHT: th_tri((Vector2){x - 3, y - 4}, (Vector2){x + 3, y}, (Vector2){x - 3, y + 4}, c); break;
     case TH_IC_UP: th_tri((Vector2){x - 4, y + 3}, (Vector2){x, y - 3}, (Vector2){x + 4, y + 3}, c); break;
     case TH_IC_DOWN: th_tri((Vector2){x - 4, y - 3}, (Vector2){x, y + 3}, (Vector2){x + 4, y - 3}, c); break;
+    case TH_IC_PLUS: {
+        float h = floorf(fminf(r.width, r.height) * 0.2f);
+        if (h < 4) h = 4;
+        DrawRectangle((int)(x - h), (int)y - 1, (int)(2 * h), 2, c);
+        DrawRectangle((int)x - 1, (int)(y - h), 2, (int)(2 * h), c);
+        break;
+    }
     case TH_IC_CLOSE: DrawLineEx((Vector2){x - 4, y - 4}, (Vector2){x + 4, y + 4}, 1.6f, c); DrawLineEx((Vector2){x + 4, y - 4}, (Vector2){x - 4, y + 4}, 1.6f, c); break;
     case TH_IC_EYE: case TH_IC_EYE_OFF:
         DrawEllipseLines((int)x, (int)y, 7, 4, c); DrawCircle((int)x, (int)y, 2.2f, c);
@@ -891,7 +898,7 @@ float Th_HashShort(const char *kind, const char *hash, float x, float y, int fla
 
 void Th_HashField(float x, float *y, float w, const char *caption, const char *hash, const char *name, const char *what, int flags)
 {
-    if (!Th_Section(caption, x + 16, y, w - 32, NULL)) return;
+    if (!(flags & TH_HASH_NOCAP) && !Th_Section(caption, x + 16, y, w - 32, NULL)) return;
     Rectangle r = { x + 16, *y, w - 32, TH_ROW_H };   /* on the panel's margins, as the section caption and the rows */
     bool hv = th_hash_copy(r, name, hash, what);
     th_draw_rounded_button(th_snap(r), TH_PANEL_ALT, hv ? TH_ACCENT : TH_LINE);

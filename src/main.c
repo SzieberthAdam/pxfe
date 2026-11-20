@@ -2578,7 +2578,7 @@ static void DrawModal(int W, int H)
  * ---------------------------------------------------------------------------------------------- */
 static void HandleShortcuts(void)
 {
-    if (modal.kind != M_NONE || xd.open || nf.open || fimp.open || Th_ColorPickIsOpen() || (Th_TextIs(NULL) && !Th_TextIs("Filter") && !Th_TextIs("finder.search")) || Sample_TextFocused()) return;   /* a text field owns the keyboard (the library and finder searches leave the navigation keys) */
+    if (modal.kind != M_NONE || xd.open || nf.open || af.open || fimp.open || Th_ColorPickIsOpen() || (Th_TextIs(NULL) && !Th_TextIs("Filter") && !Th_TextIs("finder.search")) || Sample_TextFocused()) return;   /* a text field owns the keyboard (the library and finder searches leave the navigation keys) */
     bool ctrl = IsKeyDown(KEY_LEFT_CONTROL) || IsKeyDown(KEY_RIGHT_CONTROL);
     bool shift = IsKeyDown(KEY_LEFT_SHIFT) || IsKeyDown(KEY_RIGHT_SHIFT);
     bool alt = IsKeyDown(KEY_LEFT_ALT) || IsKeyDown(KEY_RIGHT_ALT);
@@ -2738,7 +2738,7 @@ int main(int argc, char **argv)
         ClearBackground(TH_BG);
         /* the mouse button that opened a document (a double click) is still down: its release must not hit the new view */
         if (swallowMouse && !IsMouseButtonDown(MOUSE_BUTTON_LEFT) && !IsMouseButtonReleased(MOUSE_BUTTON_LEFT)) swallowMouse = false;
-        bool baseBlocked = modal.kind != M_NONE || xd.open || nf.open || fimp.open || job.active || swallowMouse || Th_ColorPickIsOpen();
+        bool baseBlocked = modal.kind != M_NONE || xd.open || nf.open || af.open || fimp.open || job.active || swallowMouse || Th_ColorPickIsOpen();
         uiBlocked = baseBlocked || fileMenu.open;   /* an open menu owns the mouse: nothing below it reacts */
         Th_SetInputBlocked(uiBlocked);
         hintText = NULL;
@@ -2787,6 +2787,7 @@ int main(int argc, char **argv)
             if (got && ch.action != BROWSER_NONE) {
                 if (ch.action == BROWSER_DELETE_FONT) AskDelete(false, ch.pxfm, false);
                 else if (ch.action == BROWSER_DELETE_TYPEFACE) AskDelete(true, ch.pxtf, false);
+                else if (ch.action == BROWSER_NEW_TYPEFACE) NewTypeface();
                 else if (ch.action == BROWSER_INSIGHT && ch.insight.action == INSIGHT_FIND_CODE) HandleInsightTarget(&ch.insight);
                 else RunChoice(&ch);
             }
@@ -2839,6 +2840,7 @@ int main(int argc, char **argv)
         }
         DrawExportDialog(W, H);
         DrawNewFontDialog(W, H);
+        DrawAddFontDialog(W, H);
         DrawImportFontDialog(W, H);
         DrawModal(W, H);
         if (Th_ColorPickIsOpen()) {   /* the colour picker: modal over everything */

@@ -128,6 +128,7 @@ bool library_scan(Store *store, Library *lib, char err[PX_ERR_LEN]) {
     for (int i = 0; i < nt; i++) {
         LibEntry *e = &lib->e[lib->count++];
         entry_from_store(e, LIB_TYPEFACE, &lib->tl.e[i]);
+        if (!e->pxfm[0]) { e->info.ready = true; continue; }   /* a typeface with no variant: its box has the header only */
         e->fontPresent = store_has_pxfm(c, e->pxfm);
         if (!e->fontPresent) {
             e->info.ready = e->info.failed = true;

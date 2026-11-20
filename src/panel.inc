@@ -167,7 +167,12 @@ static int ButtonRow(float x, float *y, float w, int n, const char *const *lab, 
 }
 
 /* ---- the commands of the Typeface and Font tabs: run at the end of the frame (they may replace the document or rescan the library) ---- */
-enum { LC_NONE, LC_LOCK, LC_DELETE, LC_CLONE, LC_EXPORT };
+/* the typeface-wide fields and the font's own (the Typeface and Font tabs, Add Font) */
+static const PxtfText kTfFields[] = {PXTF_FAMILY, PXTF_VERSION, PXTF_DESIGNER, PXTF_DESIGNERURL, PXTF_COPYRIGHT, PXTF_TRADEMARK, PXTF_LICENSE,
+                                     PXTF_LICENSEURL, PXTF_VENDOR, PXTF_VENDORURL, PXTF_DESCRIPTION, PXTF_CODEPAGE};
+static const PxtfText kFontFields[] = {PXTF_STYLE, PXTF_FULLNAME, PXTF_WEIGHTNAME, PXTF_SLANT};
+
+enum { LC_NONE, LC_LOCK, LC_DELETE, LC_CLONE, LC_EXPORT, LC_ADDFONT };
 static struct { int cmd; bool typeface; char pxtf[33], pxfm[33]; int variant; } libCmd;
 
 static void LibCmd(int cmd, bool typeface, const char *pxtf, const char *pxfm, int variant)
@@ -228,6 +233,263 @@ static void CloneFont(const char *pxtfIn, const char *pxfmIn, int variant)
     Th_Toast(TH_TOAST_OK, "Cloned as variant %04d: edit either of them and it gets a font of its own", num);
 }
 
+/* New Typeface (the "+" after the browser's boxes): a typeface with no variant (FORMAT PXFE, TYPE pxfe, a random HASH), unlocked, selected
+ * with its Typeface tab showing; Add Font gives it fonts. */
+static void NewTypeface(void)
+{
+    char h[33], err[PX_ERR_LEN] = "";
+    if (!store) { Th_Toast(TH_TOAST_ERR, "No database is loaded"); return; }
+    if (!store_new_typeface(store, h, err)) { ShowError("Cannot make a typeface", err); return; }
+    if (fsettings) fs_set_unlocked(fsettings, 1, h, true);
+    if (browser) { Browser_Rescan(browser); Browser_SelectTypeface(browser, h); }
+    Th_Toast(TH_TOAST_OK, "New typeface: Add Font in its Typeface tab gives it fonts");
+}
+
+/* Add Font: a font of the library becomes a new variant of a typeface; it stays in its other typefaces too.  The variant has FORMAT PXFE and
+ * TYPE pxfe and no reading options, the typeface-wide fields of the typeface (of the font's old variant when the typeface has none), and the
+ * style, names, slant and flags of the font's old variant (STYLE Regular when the font had none). */
+static struct {
+    bool open; int frame;
+    char pxtf[33];
+    char filter[120];
+    StoreEntryList fl; int *vis, nvis;
+    int sel; float scroll; double lastClick; int lastRow;
+    bool dirty;
+} af;
+
+static void AddFontClose(void)
+{
+    store_entry_list_free(&af.fl);
+    free(af.vis);
+    af.vis = NULL;
+    af.open = false;
+    Th_TextBlur();
+}
+
+static void AddFontOpen(const char *pxtf)
+{
+    char err[PX_ERR_LEN] = "";
+    if (!store || !pxtf || !pxtf[0]) return;
+    if (LockedOf(true, pxtf)) { Th_Toast(TH_TOAST_ERR, "The typeface is locked: unlock it first"); return; }
+    if (af.open) AddFontClose();
+    memset(&af, 0, sizeof af);
+    if (!store_list_fonts(store_main_conn(store), &af.fl, err)) { ShowError("Cannot list the fonts", err); return; }
+    snprintf(af.pxtf, sizeof af.pxtf, "%s", pxtf);
+    af.vis = (int *)malloc(sizeof(int) * (size_t)(af.fl.count + 1));
+    af.open = true;
+    af.frame = frameNo;
+    af.sel = -1;
+    af.lastRow = -1;
+    af.dirty = true;
+    Th_TextFocus("af.filter", "", false);
+}
+
+static void AddFontToTypeface(const char *pxtfIn, const char *pxfmIn)
+{
+    char tfh[33], fmh[33], err[PX_ERR_LEN] = "";
+    snprintf(tfh, sizeof tfh, "%s", pxtfIn);
+    snprintf(fmh, sizeof fmh, "%s", pxfmIn);
+    if (!store || !tfh[0] || !fmh[0]) return;
+    if (hasFont && docStored && hasCont && Same(tfh, origContHash)) {   /* the open font's typeface: its edits go in first */
+        if (!CommitEdits()) return;
+        snprintf(tfh, sizeof tfh, "%s", origContHash);
+    }
+    if (LockedOf(true, tfh)) { Th_Toast(TH_TOAST_ERR, "The typeface is locked: unlock it first"); return; }
+    StoreConn *c = store_main_conn(store);
+    PxtfTypeface t, old;
+    pxtf_init(&t);
+    pxtf_init(&old);
+    bool haveOld = false;
+    const PxtfVariant *ov = NULL;
+    {   /* the font's old variant: the first typeface variant that names it */
+        StoreEntryList one;
+        uint8_t fb[16];
+        memset(&one, 0, sizeof one);
+        if (store_hex_to_blob(fmh, fb) && store_list_fonts(c, &one, err)) {
+            for (int i = 0; i < one.count; i++)
+                if (Same(one.e[i].pxfm, fmh) && one.e[i].pxtf[0]) {
+                    haveOld = store_load_typeface(c, one.e[i].pxtf, &old, err);
+                    if (haveOld) ov = pxtf_find_variant(&old, one.e[i].variant);
+                    break;
+                }
+            store_entry_list_free(&one);
+        }
+        err[0] = 0;
+    }
+    PxtfVariant *nv = store_load_typeface(c, tfh, &t, err) ? pxtf_add_variant(&t) : NULL;
+    StoreEditResult er;
+    memset(&er, 0, sizeof er);
+    bool ok = nv != NULL;
+    if (ok) {
+        const PxtfVariant *fromTf = t.count > 1 ? &t.v[0] : ov;   /* the typeface-wide fields */
+        nv = &t.v[t.count - 1];
+        memcpy(nv->pxfm, fmh, 33);
+        nv->format = _strdup(PXTF_EDITOR_FORMAT);
+        nv->type = _strdup(PXTF_EDITOR_TYPE);
+        for (int k = 0; fromTf && k < (int)(sizeof kTfFields / sizeof kTfFields[0]); k++) pxtf_set_text(nv, kTfFields[k], fromTf->text[kTfFields[k]]);
+        for (int k = 0; ov && k < (int)(sizeof kFontFields / sizeof kFontFields[0]); k++) pxtf_set_text(nv, kFontFields[k], ov->text[kFontFields[k]]);
+        if (ov) { nv->italic = ov->italic; nv->struckout = ov->struckout; nv->underlined = ov->underlined; }
+        if (!nv->text[PXTF_STYLE]) pxtf_set_text(nv, PXTF_STYLE, "Regular");
+        ok = store_edit_in_place(store, fmh, NULL, tfh, &t, &er, err);
+    }
+    if (haveOld) pxtf_free(&old);
+    if (!ok) {
+        ShowError("Cannot add the font", err[0] ? err : "The typeface could not be read.");
+        pxtf_free(&t);
+        return;
+    }
+    int num = t.v[t.count - 1].number;
+    if (fsettings) fs_rename_typeface(fsettings, tfh, er.pxtf);
+    if (browser) Browser_Follow(browser, tfh, er.pxtf);
+    for (int i = 0; i < er.nMoved; i++) {
+        if (fsettings) fs_rename_typeface(fsettings, er.movedFrom[i], er.movedTo[i]);
+        if (browser) Browser_Follow(browser, er.movedFrom[i], er.movedTo[i]);
+    }
+    if (hasCont && Same(origContHash, tfh)) {   /* the open font's typeface got the new variant */
+        pxtf_free(&cont);
+        pxtf_copy(&cont, &t);
+        snprintf(origContHash, sizeof origContHash, "%s", er.pxtf);
+        needHash = true;
+        EnsureHashes();
+    }
+    pxtf_free(&t);
+    if (browser) {
+        Browser_Rescan(browser);
+        if (inBrowser && !Browser_InTypeface(browser)) Browser_SelectTypeface(browser, er.pxtf);
+    }
+    Th_Toast(TH_TOAST_OK, "Added as variant %04d of the typeface", num);
+}
+
+/* the fonts of the list that match the filter (family, style, full name, hash), in the order of their names */
+static int AfCmp(const void *pa, const void *pb)
+{
+    const StoreEntry *a = &af.fl.e[*(const int *)pa], *b = &af.fl.e[*(const int *)pb];
+    int r = _stricmp(a->family, b->family);
+    if (!r) r = _stricmp(a->style, b->style);
+    return r ? r : strcmp(a->pxfm, b->pxfm);
+}
+
+/* `needle` in `hay`, ASCII letters in either case */
+static bool AfHas(const char *hay, const char *needle)
+{
+    size_t n = strlen(needle);
+    for (; *hay; hay++) if (_strnicmp(hay, needle, n) == 0) return true;
+    return false;
+}
+
+static void AfRefilter(void)
+{
+    af.nvis = 0;
+    for (int i = 0; i < af.fl.count; i++) {
+        const StoreEntry *e = &af.fl.e[i];
+        if (af.filter[0] && !(AfHas(e->family, af.filter) || AfHas(e->style, af.filter) || AfHas(e->fullname, af.filter) || AfHas(e->pxfm, af.filter))) continue;
+        af.vis[af.nvis++] = i;
+    }
+    qsort(af.vis, (size_t)af.nvis, sizeof(int), AfCmp);
+    af.sel = af.nvis > 0 ? 0 : -1;
+    af.scroll = 0;
+    af.dirty = false;
+}
+
+static void DrawAddFontDialog(int W, int H)
+{
+    if (!af.open) return;
+    DrawRectangle(0, 0, W, H, TH_SCRIM);
+    uiBlocked = false;
+    Th_SetInputBlocked(false);
+    bool fresh = af.frame == frameNo;
+    if (af.dirty) AfRefilter();
+    const float pw = 560, pad = 24, rowH = 46;
+    float ph = fminf(620, H - 80.0f);
+    Rectangle pr = {Fl((W - pw) / 2), Fl((H - ph) / 2.5f), pw, ph};
+    Th_Raised(pr, 1);
+    float x = pr.x + pad, w = pr.width - 2 * pad, y = pr.y + pad;
+    Th_TextHead("Add Font to Typeface", x, y, TH_TEXT);
+    y += TH_SIZE_HEAD + 6;
+    Th_TextSmall("The font becomes a new variant of the typeface and stays in its other typefaces too.", x, y, TH_TEXT_DIM);
+    y += TH_LINE_H + TH_PAD / 2;
+    if (Th_TextField((Rectangle){x, y, w, TH_ROW_H}, "af.filter", af.filter, (int)sizeof af.filter, TH_TF_SEARCH, "Filter by name or hash\xE2\x80\xA6") & TH_TF_CHANGED) {
+        snprintf(af.filter, sizeof af.filter, "%s", Th_TextValue());
+        af.dirty = true;
+    }
+    y += TH_ROW_H + TH_GAP;
+    /* the list */
+    float listBot = pr.y + pr.height - pad - TH_ROW_H - TH_PAD;
+    Rectangle L = {x, y, w, listBot - y};
+    Th_RectLines(L, TH_LINE);
+    float content = af.nvis * rowH;
+    Rectangle in = {L.x + 1, L.y + 1, L.width - 2, L.height - 2};
+    bool onBar = Th_ScrollBar(in, &af.scroll, content, rowH, true);
+    if (CheckCollisionPointRec(GetMousePosition(), in)) { float wh = GetMouseWheelMove(); if (wh != 0) af.scroll -= wh * rowH * 2; }
+    float maxS = content > in.height ? content - in.height : 0;
+    if (af.scroll > maxS) af.scroll = maxS;
+    if (af.scroll < 0) af.scroll = 0;
+    bool add = false;
+    /* keys: Up, Down, Enter, Escape */
+    if (!fresh && af.nvis > 0) {
+        int s0 = af.sel;
+        if (IsKeyPressed(KEY_DOWN) || IsKeyPressedRepeat(KEY_DOWN)) af.sel = af.sel + 1 < af.nvis ? af.sel + 1 : af.nvis - 1;
+        if (IsKeyPressed(KEY_UP) || IsKeyPressedRepeat(KEY_UP)) af.sel = af.sel > 0 ? af.sel - 1 : 0;
+        if (af.sel != s0) {
+            float top = af.sel * rowH;
+            if (top < af.scroll) af.scroll = top;
+            if (top + rowH > af.scroll + in.height) af.scroll = top + rowH - in.height;
+        }
+    }
+    BeginScissorMode((int)in.x, (int)in.y, (int)(in.width - TH_SB_W), (int)in.height);
+    int r0 = (int)(af.scroll / rowH);
+    for (int i = r0; i < af.nvis; i++) {
+        float ry = in.y + i * rowH - af.scroll;
+        if (ry > in.y + in.height) break;
+        const StoreEntry *e = &af.fl.e[af.vis[i]];
+        Rectangle rr = {in.x, ry, in.width - TH_SB_W, rowH};
+        bool over = !onBar && CheckCollisionPointRec(GetMousePosition(), rr) && CheckCollisionPointRec(GetMousePosition(), in);
+        Th_Reg(TextFormat("af.row%d", i), rr);
+        Th_ListRow(rr, (i == af.sel ? TH_LR_SELECTED : 0) | (over ? TH_LR_HOVER : 0));
+        if (over && !fresh && IsMouseButtonPressed(MOUSE_BUTTON_LEFT)) {
+            double now = GetTime();
+            if (af.lastRow == i && now - af.lastClick < 0.4) add = true;
+            af.sel = i;
+            af.lastRow = i;
+            af.lastClick = now;
+        }
+        char title[300], fit[300], det[200];
+        if (e->family[0]) snprintf(title, sizeof title, "%s%s%s", e->family, e->style[0] ? " " : "", e->style);
+        else if (e->fullname[0]) snprintf(title, sizeof title, "%s", e->fullname);
+        else snprintf(title, sizeof title, "Font %.8s", e->pxfm);
+        Th_FitText(title, 0, rr.width - 24, fit, sizeof fit);
+        Th_Text(fit, rr.x + 12, ry + 4, TH_TEXT);
+        int nd = 0;
+        det[0] = 0;
+        if (e->hasHeight) nd += snprintf(det + nd, sizeof det - (size_t)nd, "%d px  \xC2\xB7  ", e->height);
+        snprintf(det + nd, sizeof det - (size_t)nd, "%d glyph%s%s", e->glyphCount, e->glyphCount == 1 ? "" : "s", e->monospaced ? "  \xC2\xB7  Mono" : "");
+        Th_TextSmall(det, rr.x + 12, ry + 26, TH_TEXT_DIM);
+        Th_HashShort("Font", e->pxfm, rr.x + rr.width - 12, ry + 26, TH_HASH_RIGHT | TH_HASH_SMALL, NULL);
+    }
+    if (af.nvis == 0) {
+        const char *m = af.fl.count ? "No font matches" : "The library has no fonts";
+        Vector2 ms = Th_Measure(m);
+        Th_Text(m, in.x + (in.width - ms.x) / 2, in.y + in.height / 2 - 10, TH_TEXT_DIM);
+    }
+    EndScissorMode();
+    /* the buttons */
+    y = pr.y + pr.height - pad - TH_ROW_H;
+    float bx = pr.x + pr.width - pad - 96;
+    Th_Reg("af.add", (Rectangle){bx, y, 96, TH_ROW_H});
+    if (Th_Button((Rectangle){bx, y, 96, TH_ROW_H}, "Add", TH_BTN_PRIMARY | TH_BTN_OFF(af.sel >= 0), "Add the selected font to the typeface") && !fresh) add = true;
+    bool cancel = Th_Button((Rectangle){bx - 8 - 96, y, 96, TH_ROW_H}, "Cancel", 0, NULL) && !fresh;
+    if (!fresh && IsKeyPressed(KEY_ESCAPE)) cancel = true;
+    if (!fresh && (IsKeyPressed(KEY_ENTER) || IsKeyPressed(KEY_KP_ENTER))) add = true;
+    if (cancel) { AddFontClose(); return; }
+    if (add && af.sel >= 0 && af.sel < af.nvis) {
+        char tf[33], fm[33];
+        snprintf(tf, sizeof tf, "%s", af.pxtf);
+        snprintf(fm, sizeof fm, "%s", af.fl.e[af.vis[af.sel]].pxfm);
+        AddFontClose();
+        AddFontToTypeface(tf, fm);
+    }
+}
+
 static void ExportPackage(bool typeface, const char *pxtf, const char *pxfm, int variant);   /* below */
 
 static void RunLibCommand(void)
@@ -239,12 +501,10 @@ static void RunLibCommand(void)
     else if (cmd == LC_DELETE) AskDelete(tf, tf ? libCmd.pxtf : libCmd.pxfm, !inBrowser);
     else if (cmd == LC_CLONE) CloneFont(libCmd.pxtf, libCmd.pxfm, libCmd.variant);
     else if (cmd == LC_EXPORT) ExportPackage(tf, libCmd.pxtf, libCmd.pxfm, libCmd.variant);
+    else if (cmd == LC_ADDFONT) AddFontOpen(libCmd.pxtf);
 }
 
 /* ---- the Typeface and Font tabs ---- */
-static const PxtfText kTfFields[] = {PXTF_FAMILY, PXTF_VERSION, PXTF_DESIGNER, PXTF_DESIGNERURL, PXTF_COPYRIGHT, PXTF_TRADEMARK, PXTF_LICENSE,
-                                     PXTF_LICENSEURL, PXTF_VENDOR, PXTF_VENDORURL, PXTF_DESCRIPTION, PXTF_CODEPAGE};
-static const PxtfText kFontFields[] = {PXTF_STYLE, PXTF_FULLNAME, PXTF_WEIGHTNAME, PXTF_SLANT};
 static char tabHash[40];   /* the hash the Typeface tab shows (a test hook) */
 
 /* the text fields `keys` of variant cv; `all`: a typeface-wide field, an edit sets it in every variant of tf */
@@ -289,20 +549,38 @@ static void DrawInfoTab(bool typeface, float px, float pw, float *yp, const Pxtf
     /* the hash, the current one while the open document differs from the database */
     const char *cur = typeface ? (doc ? curContHash : pxtf) : (doc && !readOnly ? curHash : pxfm), *orig = typeface ? (doc ? origContHash : pxtf) : (doc ? origHash : pxfm);
     bool differs = doc && docStored && !Same(cur, orig);
-    if (typeface) snprintf(tabHash, sizeof tabHash, "%s", cur);
-    Th_HashField(px, &y, pw, typeface ? (differs ? "TYPEFACE HASH (CURRENT)" : "TYPEFACE HASH") : (differs ? "FONT HASH (CURRENT)" : "FONT HASH"), cur,
-                 typeface ? "hash_typeface_full" : "hash_font_full", typeface ? "Typeface" : "Font", 0);
-    if (differs) Th_HashField(px, &y, pw, typeface ? "TYPEFACE HASH (IN THE DATABASE)" : "FONT HASH (IN THE DATABASE)", orig,
-                              typeface ? "hash_typeface_orig" : "hash_font_orig", typeface ? "Typeface" : "Font", 0);
-    /* the commands */
     bool stored = !doc || docStored;
     if (typeface) {
-        static const char *lab[2] = {"Export Typeface\xE2\x80\xA6", "Delete Typeface"};
-        const int fl[2] = {TH_BTN_OFF(stored && tf), TH_BTN_DANGER | TH_BTN_OFF(stored && tf)};
-        static const char *tip[2] = {"Write the typeface and every font it names into a .pxtp package", "Delete the typeface from the database"};
-        int c = ButtonRow(x, &y, w, 2, lab, fl, tip);
-        if (c >= 0) LibCmd(c == 0 ? LC_EXPORT : LC_DELETE, true, pxtf, pxfm, variant);
+        snprintf(tabHash, sizeof tabHash, "%s", cur);
+        /* META: the typeface's fields; ACTIONS under it: the hash and the commands */
+        if (cv && Th_Section("META", x, &y, w, TextFormat("%d variant%s%s%s", tf->count, tf->count == 1 ? "" : "s", cv->format && cv->format[0] ? "  \xC2\xB7  " : "", cv->format ? cv->format : ""))) {
+            FieldRows(x, &y, w, (PxtfTypeface *)tf, cv, kTfFields, (int)(sizeof kTfFields / sizeof kTfFields[0]), doc && !contLocked, true);
+            y += 4;
+        }
+        if (Th_Section("ACTIONS", x, &y, w, NULL)) {
+            if (differs) { Th_TextSmall("Typeface hash, current", x, y, TH_TEXT_DIM); y += 20; }
+            Th_HashField(px, &y, pw, NULL, cur, "hash_typeface_full", "Typeface", TH_HASH_NOCAP);
+            if (differs) {
+                Th_TextSmall("In the database", x, y, TH_TEXT_DIM);
+                y += 20;
+                Th_HashField(px, &y, pw, NULL, orig, "hash_typeface_orig", "Typeface", TH_HASH_NOCAP);
+            }
+            bool canAdd = stored && tf && !locked;
+            {   /* Add Font: a row of its own */
+                static const char *lab1[1] = {"Add Font\xE2\x80\xA6"};
+                const int fl1[1] = {TH_BTN_OFF(canAdd)};
+                const char *tip1[1] = {canAdd ? "A font of the library becomes a new variant of the typeface (it stays in its other typefaces too)" : "The typeface is locked: unlock it first"};
+                if (ButtonRow(x, &y, w, 1, lab1, fl1, tip1) == 0) LibCmd(LC_ADDFONT, true, doc ? origContHash : pxtf, pxfm, variant);
+            }
+            static const char *lab[2] = {"Export Typeface\xE2\x80\xA6", "Delete Typeface"};
+            const int fl[2] = {TH_BTN_OFF(stored && tf), TH_BTN_DANGER | TH_BTN_OFF(stored && tf)};
+            static const char *tip[2] = {"Write the typeface and every font it names into a .pxtp package", "Delete the typeface from the database"};
+            int c = ButtonRow(x, &y, w, 2, lab, fl, tip);
+            if (c >= 0) LibCmd(c == 0 ? LC_EXPORT : LC_DELETE, true, pxtf, pxfm, variant);
+        }
     } else {
+        Th_HashField(px, &y, pw, differs ? "FONT HASH (CURRENT)" : "FONT HASH", cur, "hash_font_full", "Font", 0);
+        if (differs) Th_HashField(px, &y, pw, "FONT HASH (IN THE DATABASE)", orig, "hash_font_orig", "Font", 0);
         static const char *lab[3] = {"Clone Font", "Export Font\xE2\x80\xA6", "Delete Font"};
         bool canClone = stored && cv && !LockedOf(true, doc ? origContHash : pxtf);
         const int fl[3] = {TH_BTN_OFF(canClone), TH_BTN_OFF(stored), TH_BTN_DANGER | TH_BTN_OFF(stored)};
@@ -312,11 +590,7 @@ static void DrawInfoTab(bool typeface, float px, float pw, float *yp, const Pxtf
         if (c >= 0) LibCmd(c == 0 ? LC_CLONE : c == 1 ? LC_EXPORT : LC_DELETE, false, doc ? origContHash : pxtf, doc ? origHash : pxfm, variant);
     }
     y += 4;
-    /* the fields */
-    if (typeface && cv && Th_Section("TYPEFACE", x, &y, w, TextFormat("%d variant%s%s%s", tf->count, tf->count == 1 ? "" : "s", cv->format && cv->format[0] ? "  \xC2\xB7  " : "", cv->format ? cv->format : ""))) {
-        FieldRows(x, &y, w, (PxtfTypeface *)tf, cv, kTfFields, (int)(sizeof kTfFields / sizeof kTfFields[0]), doc && !contLocked, true);
-        y += 4;
-    }
+    /* the fields of the font */
     if (!typeface && cv && Th_Section("FONT", x, &y, w, TextFormat("variant %04d", cv->number))) {
         bool en = doc && !readOnly;
         FieldRows(x, &y, w, (PxtfTypeface *)tf, cv, kFontFields, (int)(sizeof kFontFields / sizeof kFontFields[0]), en, false);

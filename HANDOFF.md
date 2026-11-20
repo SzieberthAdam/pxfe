@@ -104,6 +104,9 @@ The files of `handoff/` are old agent reports, kept for history.
 - The Typeface and Font tabs are drawn by main.c through `Browser_SetInfoTab` (`DrawLibraryTab`, `DrawInfoTab`).
   Their commands (lock, Clone Font, Export, Delete) are queued with `LibCmd` and run at the end of the frame (`RunLibCommand`).
 - Clone Font (`CloneFont`, panel.inc; `pxtf_clone_variant`) adds a variant naming the same font, style "<style> copy"; the typeface must be unlocked.
+- New Typeface (the "+" after the boxes, `BROWSER_NEW_TYPEFACE`, `NewTypeface`, `store_new_typeface`) makes a typeface with no variant (FORMAT PXFE, TYPE pxfe, random HASH; spec "A typeface made in an editor"); it is listed as one entry of variant 0 and pxfm "" (`list_empty_typefaces`), drawn as a header-only box.
+- Add Font… (ACTIONS of the Typeface tab, `LC_ADDFONT`, the `af` dialog, `AddFontToTypeface`) adds a font of the library as a new PXFE variant; the font stays in its other typefaces.
+  pixelglyphlib's Python reader (`pxtf.py`) still rejects a pxtf with no variant.
   The two variants share the font until one is edited: `CommitEdits` points only the open variant at the new font and `store_edit_in_place` keeps the old font for the other.
 - The Colours count is of palette entries other than `.`; a font that states no ascent or descent has its info loaded when the list opens or a count is chosen.
 - While a field has the keyboard the browser reads no keys (`extTyping`).
