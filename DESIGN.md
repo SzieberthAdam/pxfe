@@ -174,7 +174,7 @@ Exactly two forms, both in Unifont; nothing else prints a hash.
 
 - `Th_Row(x, &y, w, label, value, flags)`: the dim label in a `TH_ROW_LABEL_W` (108) column, the value right-aligned with an ellipsis; `TH_ROW_UNI` for Unifont.
 - With `value` NULL it returns the rectangle where the caller draws a control (text field, dropdown, segmented control, stepper or number box); a control row is `TH_ROW_H` plus half a gap high.
-- Used by the Font, Typeface and Glyph tabs, the font view's selection block, the browser's Style, Format, Colours, Zoom, Columns and Sort by rows, the Glyphs view's Zoom and Sort by, and the Layers cards (Opacity, Offset X, Offset Y).
+- Used by the Font, Typeface and Glyph tabs, the font view's selection block, the browser's Style, Zoom, Columns and Sort by rows, the Glyphs view's Zoom and Sort by, and the Layers cards (Opacity, Offset X, Offset Y).
 - Not rows: switches and checks, the status line, and the pinned selection block of the browser.
 
 #### List row and card
@@ -210,7 +210,7 @@ Exactly two forms, both in Unifont; nothing else prints a hash.
   `Th_MenuHi` is the highlighted index.
 - `Th_Dropdown` is the closed box of a dropdown.
 - An item registers `.name`, else its label (`@file.save`, `@Edit_Glyph`, `@Ctx_Open`).
-- Used by the top Menu button, the font view's "..." menu, the context menus of the glyph grid and of the library views, and the Style, Format and Colours dropdowns.
+- Used by the top Menu button, the font view's "..." menu, the context menus of the glyph grid and of the library views, and the Style dropdown.
 
 #### Status bar
 
@@ -352,7 +352,7 @@ Each glyph has its own palette, so a font may have any number of colours; a glyp
 
 - `px_font_color_list`: the font's distinct colours in order of first appearance (glyph order, then palette order), no length limit; cached in `PxFont.clist` under a key over `palGen` and the glyphs' indices.
 - `px_font_is_colour` decides whether the sample text draws the font's colours or the theme's ink.
-- `px_font_colors` counts the distinct colours the glyphs use: it is the `COLORS` written, `pxfm.colors` and the Colours filter's count.
+- `px_font_colors` counts the distinct colours the glyphs use: it is the `COLORS` written, `pxfm.colors` and what the Colours switch reads.
 
 ### Reading and writing
 
@@ -445,7 +445,7 @@ The name is only the session's title: an orphaned font has no name in the databa
 
 ### pxfe.ini
 
-Beside the exe: `lastPxfdb`, the sample text, `[app] fontTab` (0 Font, 1 Glyph, 2 Similar, 3 Layers), `pixelPerfect`, `filled`, `pickerMode`, `[browser] sidetab` (0 View, 1 Similar, 2 Typeface), the browser's view settings and filters (`colors=`).
+Beside the exe: `lastPxfdb`, the sample text, `[app] fontTab` (0 Font, 1 Glyph, 2 Similar, 3 Layers), `pixelPerfect`, `filled`, `pickerMode`, `[browser] sidetab` (1 Similar, 2 Typeface, 3 Font), the browser's view settings and filters (`colouronly=`).
 
 ## Locks
 
@@ -520,7 +520,9 @@ The glyph finder (`src/finder.c`): every distinct bitmap drawn for one code poin
 
 ### Samples
 
-- One sample text (`src/sample.h`, kept in `pxfe.ini`) is shared by the library views, the font view and the glyph view; it can have several lines; presets: pangram, alphabet, digits and punctuation, "Hamburgefontsiv".
+- One sample text (`src/sample.h`, kept in `pxfe.ini`) is shared by the library views, the font view and the glyph view; it can have several lines.
+- Presets, one row of letter buttons in the library's View area: A (alphabet), C (custom), D (digits and punctuation), H ("Hamburgefontsiv"), P (pangram); the one of the text is on.
+- Custom is the text as the user edited it last (in any sample field); an edit turns C on, and C brings that text back after a preset (`Sample_Custom`, `[app] sampleCustom`).
 - A missing character is drawn as the font's default glyph, or a hollow box; kerning is applied.
 
 ## Library browser
@@ -529,11 +531,11 @@ The library views are Typefaces, Typeface and Fonts (`src/browser.c`).
 
 ### Lists
 
-- Typefaces: one box per typeface: the family in the header's first row, format, variant count and the typeface hash (small) in its second, and one row per variant: style, size, glyphs, flags, font hash and sample.
-  The hashes stand on the baseline of the text beside them.
+- Typefaces: one box per typeface: the family in the header's first row, format, variant count and the typeface hash (small) in its second, and one row per variant: the style in its first row, size, glyphs and flags in its second with the font hash (small) at the right, and the sample.
+  Every font hash of a card or row is in the details line (size and glyphs), small, at the right, with the unlock mark beside it, as the typeface hash in a box header; the hashes stand on the baseline of the text beside them.
   Filters work on variants: a box shows when any variant matches, with only the matching variants.
   A variant row selects that font, the header the typeface.
-- Fonts: one card per font: family and style (or the hash), details (format, size `ASCENT + DESCENT`, glyph count, Mono, Symbolic, ratio, hash) and the sample, pixel perfect.
+- Fonts: one card per font: family and style (or the hash) in the first row, details (format, size `ASCENT + DESCENT`, glyph count, Mono, Symbolic, ratio) and the font hash in the second, and the sample, pixel perfect.
 - The lists are virtualized; fonts load lazily on worker threads (the pxfm and the glyphs of the sample's characters, cached, reloaded when the sample changes); a 1,200-font library shows its cards within a second.
 - A press selects; a press on the entry that is selected already, or Enter, opens it.
   There is no context menu.
@@ -543,23 +545,24 @@ The library views are Typefaces, Typeface and Fonts (`src/browser.c`).
 ### The side panel
 
 - The View area (see "View area"), then the tabs **Typeface | Font | Similar** in the Typefaces and Typeface views, **Font | Similar** in the Fonts view.
-- View: LIBRARY with the counts and Rescan; FILTER: the name filter (substring over family, full name, style, designer, hash; `Ctrl+F` focuses it), the Style, Format and Colours dropdowns built from the values present, Clear filters; SAMPLE: the sample and its presets; CARDS: the zoom, the columns (1 to 8, or Auto) and the sort (name, size, format, glyph count).
+- View: FILTER: the name filter (substring over family, full name, style, designer, hash; `Ctrl+F` focuses it), the Style dropdown built from the values present, and the switches Monospaced and Colours side by side; SAMPLE: the sample field, as tall as its lines (up to 12, then it scrolls), and the presets (see "Samples"); then, with no caption of their own, Zoom, Columns (a stepper, 1 to 16, showing the count Auto gives while Auto is on; Auto at the right) and Sort by (Name, Size, Glyphs).
   In the Typeface view only the sample and the zoom.
+  The counts are in the status line; the library is rescanned after a commit, a deletion or a load.
 - Typeface and Font: see "The Typeface and Font tabs".
 - Similar: the similar fonts or typefaces of the selection, else "Select a font to see similar ones".
 - Nothing is pinned over the panel: every command is in a tab.
 
-### The Colours filter
+### The Colours switch
 
-- A font's count is its number of ink colours, at least 1: `pxfm.colors` (`StoreEntry.colors`) or `px_font_colors` of a loaded font (`LibInfo.colors`).
-- The values are Any and the counts present, in numeric order; the list follows the info as it arrives (a font with no ascent or descent is loaded for it while the dropdown is open or a count is chosen), and a chosen count is dropped only when every font's info is known.
+- On, only the fonts of more than one ink colour show.
+- A font's count is its number of ink colours, at least 1: `pxfm.colors` (`StoreEntry.colors`) or `px_font_colors` of a loaded font (`LibInfo.colors`); while the switch is on, the info of a font with no ascent or descent is loaded for it.
 - A font whose info is not known does not match.
-- Typefaces: as for Style and Format, a variant matches by its font and a box shows with its matching variants.
-- Kept in `[browser] colors=`, cleared by Clear filters.
+- Typefaces: as for Style, a variant matches by its font and a box shows with its matching variants.
+- Kept in `[browser] colouronly=`, turned off by Clear filters.
 
 ### The Typeface view
 
-- One large card per font: style, details (format, size, glyph count, mono, italic and so on), "Font xxxxxxxx" and the shared multi-line sample at 2x or more.
+- One large card per font: the style, then the details (format, size, glyph count, mono, italic and so on) with "Font xxxxxxxx" at the right, and the shared multi-line sample at 2x or more.
 - The heading carries the family and "Typeface xxxxxxxx".
 - `Enter` and a press on the selected card open its font, `Del` deletes it.
 - After a deletion the view follows the rewritten typeface by family name, and returns to the list when it is gone.
@@ -584,7 +587,7 @@ The library views are Typefaces, Typeface and Fonts (`src/browser.c`).
 
 ### Similar fonts and typefaces
 
-- The 20 best, each with its score and a sample line; a click opens it.
+- The 20 best, each with its score and a sample line in the font's colours (a glyph of the default palette in the text colour); a click opens it.
 - Font similarity, 0 to 100: shape (0.6), over the shared code points of a reference set (U+0021–U+007E, U+00C0–U+017F): 1 for the same pxgl hash at the same offsets, else the intersection over union of the ink placed at the pen and baseline, averaged; shared glyphs (0.25), the Jaccard index of the pxgl hash sets; metrics (0.15), the closeness of the heights and of the space's (or mean) advance, and the same monospacing.
 - Under 10 shared reference code points a pair scores by shared glyphs and metrics only, and is marked so.
 - Typeface similarity: the mean over one typeface's fonts of the best score against the other's.

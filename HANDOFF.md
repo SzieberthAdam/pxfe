@@ -99,7 +99,7 @@ The files of `handoff/` are old agent reports, kept for history.
 
 ## Library browser
 
-- `src/browser.c`: the Typefaces, Typeface and Fonts views; the View area (`view_area`, ini key `viewopen`) and the side tabs Typeface | Font | Similar (Font | Similar in the Fonts view; `SIDE_*`, ini key `sidetab`; `SIDE_VIEW` is read as Font), `sel_typeface`; the Typeface view (`tview_ui`, `Browser_OpenTypeface`, `Browser_CloseTypeface`); the Colours filter (`collect_colors`, ini key `colors`; `StoreEntry.colors`, `LibInfo.colors`).
+- `src/browser.c`: the Typefaces, Typeface and Fonts views; the View area (`view_area`, ini key `viewopen`) and the side tabs Typeface | Font | Similar (Font | Similar in the Fonts view; `SIDE_*`, ini key `sidetab`; `SIDE_VIEW` is read as Font), `sel_typeface`; the Typeface view (`tview_ui`, `Browser_OpenTypeface`, `Browser_CloseTypeface`); the Colours switch (`colorOnly`, ini key `colouronly`; `StoreEntry.colors`, `LibInfo.colors`); the Columns stepper reads `autoCols` from `grid_ui`.
 - A press on the selected entry opens it; there is no context menu, no pinned selection block and no button on cards or rows.
 - The Typeface and Font tabs are drawn by main.c through `Browser_SetInfoTab` (`DrawLibraryTab`, `DrawInfoTab`).
   Their commands (lock, Clone Font, Export, Delete) are queued with `LibCmd` and run at the end of the frame (`RunLibCommand`).

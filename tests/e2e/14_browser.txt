@@ -65,7 +65,14 @@ assert bzoom 8
 repeat 3 click @bzoom-
 wait 3
 assert bzoom 5
-click @Cols_3
+# Columns: Auto off keeps the count Auto gave (3 at this size), the stepper changes it
+click @Cols_Auto
+wait 3
+assert bcols 3
+click @bcols+
+wait 3
+assert bcols 4
+click @bcols-
 wait 3
 assert bcols 3
 click @Hamburgefontsiv

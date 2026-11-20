@@ -35,7 +35,8 @@ click @Filter_Clear
 click @Filter
 type Dina
 wait 4
-click @Cols_2
+click @Cols_Auto
+click @bcols-
 wait 1
 wait 120
 shot tests/shots/v4_typefaces_dina.png

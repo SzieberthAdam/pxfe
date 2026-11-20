@@ -1,16 +1,19 @@
 # 50. The shared multi-line sample in the browser (copy of testdata/lib, Typefaces tab): the box, Enter and Ctrl+Enter,
-# caret up and down, Ctrl+V with several lines, the two-line preset, cards that draw every line, the setting in pxfe.ini.
+# caret up and down, Ctrl+V with several lines, the presets A C D H P (C: the text as edited last), cards that draw every line, the setting in pxfe.ini.
 wait 8
 assert inbrowser 1
 assert btab 0
 assert samplelines 1
 
-# ---- the two-line preset
-click @Two_lines
+# ---- the presets: one row of letters, the one of the text is on
+click @Hamburgefontsiv
 wait 4
-assert samplelines 2
-assert sample The quick brown fox jumps over the lazy dog\n0123456789
-assert bsample The quick brown fox jumps over the lazy dog\n0123456789
+assert samplelines 1
+assert sample Hamburgefontsiv
+assert bsample Hamburgefontsiv
+click @Pangram
+wait 4
+assert sample The quick brown fox jumps over the lazy dog
 
 # ---- typing: Enter makes a new line, Ctrl+Enter applies
 click @Sample
@@ -74,12 +77,17 @@ assert sample HMH
 sleep 700
 wait 2
 assert file tests/tmp/e2e.ini contains sample=HMH
-click @Two_lines
+click @Sample
+key a ctrl
+type The quick brown fox
+key enter
+type 0123
+click @Filter
 sleep 700
 wait 2
 # one line in pxfe.ini: the new line is written escaped
 assert file tests/tmp/e2e.ini contains sample=The quick brown fox
-assert file tests/tmp/e2e.ini lines 3
+assert file tests/tmp/e2e.ini lines 4
 
 # ---- the filter field still works next to the multi-line box
 click @Filter
@@ -103,3 +111,21 @@ shot tests/tmp/shots/50_blank_line.png
 click @Pangram
 wait 3
 assert samplelines 1
+
+# ---- Custom (C): an edit made the text the custom one; after a preset C brings it back (sampleCustom in pxfe.ini)
+click @Sample
+key a ctrl
+type HM
+key enter
+type MH
+key enter ctrl
+wait 2
+click @Digits
+wait 3
+assert samplelines 1
+click @Custom
+wait 3
+assert sample HM\nMH
+sleep 700
+wait 2
+assert file tests/tmp/e2e.ini contains sampleCustom=HM

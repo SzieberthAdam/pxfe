@@ -27,6 +27,7 @@
 
 const char *Sample_Get(void);                 /* never NULL; lines are separated by '\n' */
 void        Sample_Set(const char *utf8);     /* normalises (\r\n -> \n, control characters dropped, length limits) */
+const char *Sample_Custom(void);              /* the text as the user edited it last (the Custom preset; [app] sampleCustom) */
 unsigned    Sample_Counter(void);             /* increments on every change: callers re-layout when it differs */
 int         Sample_LineCount(const char *text);
 void        Sample_LoadIni(const char *iniPath);   /* also remembers the path for saving */

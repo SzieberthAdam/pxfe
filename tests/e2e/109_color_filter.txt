@@ -1,4 +1,4 @@
-# 109. The Colours filter of the library views (version 15; version 21: pxfm.colors, NULL counting as 1).
+# 109. The Colours switch of the library views: on, only the fonts of more than one colour show (pxfm.colors, NULL counting as 1).
 # Database testdata/lib_colors.pxfdb (made by tests\make_testdata.exe): typeface 84fafa1d holds font 3cfdd2b1 (3 colours); typeface 866c4acc
 # holds 3b52125b (1 colour) and, italic, c735a3cf (2 colours, no ASCENT); font 894ef821 (2 colours) belongs to no typeface.
 wait 10
@@ -8,72 +8,37 @@ assert bvisible 3
 assert bboxes 2
 assert bcolors 0
 
-# the dropdown lists "Any" and the counts that occur, in numeric order; 4fba4190 states no ascent, so its info is loaded when the list opens
-click @Colours_Dropdown
-waitfor bcolorvals = 3 5000
-assert bcolorvals 3
-assert bcolorval0 1
-assert bcolorval1 2
-assert bcolorval2 3
-shot tests/tmp/shots/109_colours_dropdown.png
-click @2
-wait 6
-assert bcolors 2
-assert bvisible 1
-assert bboxes 1
-assert bboxvars0 1
-shot tests/tmp/shots/109_colours_2.png
-
-# a typeface matches when any of its fonts matches: the box of 8e8c9492 shows for 1 and for 2, with only the variants that match
-click @Colours_Dropdown
-wait 6
-click @1
-wait 6
+# a typeface shows when any of its fonts has colours, with only those variants
+click @Colours
+wait 10
 assert bcolors 1
-assert bvisible 1
-assert bboxes 1
-assert bboxvars0 1
-click @Colours_Dropdown
-wait 6
-click @3
-wait 6
-assert bcolors 3
-assert bvisible 1
-assert bboxes 1
-click @Colours_Dropdown
-wait 6
-click @Any
+assert bvisible 2
+assert bboxes 2
+shot tests/tmp/shots/109_colours_typefaces.png
+click @Colours
 wait 6
 assert bcolors 0
 assert bvisible 3
-assert bboxes 2
 
-# the Fonts tab has the same filter: 4 fonts, 1 with one colour, 2 with two, 1 with three
+# the Fonts tab has the same switch: 4 fonts, 3 of them with colours
 click @Fonts
 wait 10
 assert btab 1
 assert bvisible 4
-assert bcolorvals 3
-click @Colours_Dropdown
-wait 6
-click @2
-wait 6
-assert bvisible 2
+click @Colours
+wait 10
+assert bvisible 3
 shot tests/tmp/shots/109_colours_fonts.png
 # it combines with the other filters
-click @Italic_only
+click @Filter
+type 894ef
 wait 6
 assert bvisible 1
-click @Italic_only
+click @Filter_Clear
 wait 6
-assert bvisible 2
+assert bvisible 3
 
-# Clear filters in the empty state
-click @Colours_Dropdown
-wait 6
-click @3
-wait 6
-assert bvisible 1
+# Clear filters in the empty state turns it off
 click @Filter
 type zzzz
 wait 6
@@ -84,19 +49,15 @@ assert bcolors 0
 assert bvisible 4
 assert bfilter -
 
-# the choice is kept in the settings file
-click @Colours_Dropdown
+# the switch stays when the tab changes (pxfe.ini keeps it as colouronly= in [browser] on quitting)
+click @Colours
 wait 6
-click @2
-wait 6
-assert bcolors 2
+assert bcolors 1
 click @Typefaces
 wait 10
 assert btab 0
-assert bcolors 2
-assert bvisible 1
-click @Colours_Dropdown
-wait 6
-click @Any
+assert bcolors 1
+assert bvisible 2
+click @Colours
 wait 6
 assert bvisible 3

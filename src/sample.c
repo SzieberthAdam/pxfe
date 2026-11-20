@@ -11,6 +11,7 @@
 #define DEFAULT_SAMPLE "The quick brown fox jumps over the lazy dog"
 
 static char g_text[SAMPLE_MAX + 1] = DEFAULT_SAMPLE;
+static char g_custom[SAMPLE_MAX + 1];   /* the Custom preset: the text as edited last */
 static unsigned g_counter = 1;
 static char g_ini[1100];
 static bool g_dirty;
@@ -159,7 +160,11 @@ void Sample_Flush(void)
     char esc[SAMPLE_MAX * 2 + 8];
     escape_into(g_text, esc, sizeof esc);
     SampleIni_Set(g_ini, "app", "sample", esc);
+    escape_into(g_custom, esc, sizeof esc);
+    SampleIni_Set(g_ini, "app", "sampleCustom", esc);
 }
+
+const char *Sample_Custom(void) { return g_custom; }
 
 void Sample_Tick(void)
 {
@@ -182,6 +187,10 @@ void Sample_LoadIni(const char *iniPath)
         g_dirty = true;
         Sample_Flush();
     }
+    if (SampleIni_Get(g_ini, "app", "sampleCustom", v, sizeof v)) {
+        unescape_inplace(v);
+        sanitize(v, g_custom, SAMPLE_MAX, 1);
+    } else snprintf(g_custom, sizeof g_custom, "%s", g_text);   /* none yet: the text as it is */
     SampleStrip_Load(g_ini);
 }
 
@@ -651,6 +660,7 @@ bool SampleEdit_Do(SampleEdit *e, Rectangle r, const char *placeholder, const ch
         ls = le + 1;
     }
     EndScissorMode();
+    if (changed) snprintf(g_custom, sizeof g_custom, "%s", g_text);   /* an edit makes the text the Custom preset */
     if (mouseClip) BeginScissorMode((int)mouseClip->x + 1, (int)mouseClip->y, (int)mouseClip->width - 1, (int)mouseClip->height);
     return changed;
 }

@@ -78,6 +78,7 @@ One command per line, `#` starts a comment.
 - `assert sql "<query>" <expected>` runs a query on the open store (first column of the first row), `assert sqlfile <file> "<query>" <expected>` on a `.pxfdb` file.
 - `assert ctext`, `assert kern`, `assert title`, `assert wtitle <text>` (the window title), `assert statusdb <text>` (file, modified or saved in the status bar), `assert modal`, `assert toast`, `assert hash`, `assert saved pxfm|pxtf`, `assert file <path> exists|contains|notcontains|lines`, `assert samefile`, `assert dirfiles <dir> <op> <N>`, `assert dirhas <dir> <text>`, `assert snapdir unchanged|added N`, `assert pixel`.
 - Browser state: `btab`, `bzoom`, `bcols`, `bsel` (visible index of the selection), `bpending`, `assert bfilter <text>`, `assert bsample <text>`, `assert bselpxfm <hash>`.
+  The View area's widgets: `@Filter`, `@Style_Dropdown`, `@Monospaced`, `@Colours`, `@Sample`, the presets `@Alphabet`, `@Custom`, `@Digits`, `@Hamburgefontsiv`, `@Pangram`, `@bzoom±`, `@bcols±` and `@Cols_Auto` (`bcols` 0 is Auto), `@Sort_Name`, `@Sort_Size`, `@Sort_Glyphs`.
 - Typefaces tab (one box per typeface):
   `bvisible` counts variants, `btypefaces` the typefaces of the library (the badge of the tab), `bboxes` counts boxes, `bboxvars<N>` the variants shown in box N, `bselhdr` is 1 while a box header (the typeface) is selected, not a variant row.
   `@card:N` is the N-th visible variant row (in the Fonts tab the N-th card), `@hdr:N` the header of box N.
@@ -211,9 +212,9 @@ Then it unlocks the font, makes no edit, and asserts that nothing changes in the
 
 The fonts are chosen by hash, so the script depends on those fonts being in the library.
 
-- 109 (version 15, the Colours filter): runs on `testdata/lib_colors.pxfdb` (`run_all.bat` copies it over `e2e.pxfdb`).
+- 109 (version 15, the Colours switch): runs on `testdata/lib_colors.pxfdb` (`run_all.bat` copies it over `e2e.pxfdb`).
   Since version 21 that database is made by `tests\make_testdata.exe` from real colour fonts (1, 2, 2 and 3 colours), and the count is `pxfm.colors`.
-  The Colours dropdown (`@Colours_Dropdown`, items `@1`, `@2`, `@3`, `@Any`) lists the counts that occur; `assert bcolors` is the chosen count (0 is Any), `assert bcolorvals` the number of counts listed and `assert bcolorval<i>` the i-th.
+  The switch is `@Colours` (beside `@Monospaced`); `assert bcolors` is 1 while it is on, and only the fonts of more than one colour show.
   A typeface box is shown when any of its variants matches.
 - 110 and 110b (version 15, typing with the mouse away): a focused field keeps taking keys when the mouse has left its region; `assert tfocus` is 1 while a text field has the keyboard.
 - 111 (version 15, press and release): `mousedown`, `move` and `mouseup` show that a button, a switch or a toggle acts only when the press began on it.

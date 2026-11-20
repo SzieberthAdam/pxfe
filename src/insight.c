@@ -60,7 +60,7 @@ typedef struct SimRow {
     double score, shape, shared, metrics;
     bool shapeUsed;
     int sharedRef, nFonts;
-    unsigned char *mask; int mw, mh;
+    unsigned char *mask; int mw, mh;   /* the sample in its colours: RGBA, 4 bytes a pixel (alpha 0: no ink), until the texture is made */
     Texture2D tex;
     bool hasSample;
 } SimRow;
@@ -300,7 +300,8 @@ static const StoreEntry *names_find(const StoreEntryList *l, const int *ix, cons
     return found < 0 ? NULL : &l->e[ix[found]];
 }
 
-/* A sample of the font: "Hamburg", else "AaBbCc", else its first coded glyphs, composed into one mask (1 = ink). */
+/* A sample of the font: "Hamburg", else "AaBbCc", else its first coded glyphs, composed into one RGBA bitmap: a glyph of a colour font
+ * in its palette's colours, a glyph of the default palette in the text colour. */
 static bool make_sample(StoreConn *c, const char *pxfm, SimRow *r)
 {
     static const char *const kHam = "Hamburg", *const kAa = "AaBbCc";
@@ -349,13 +350,20 @@ static bool make_sample(StoreConn *c, const char *pxfm, SimRow *r)
     bool ok = false;
     if (used > 0 && maxX > minX && maxY > minY && maxX - minX <= 4096 && maxY - minY <= 512) {
         int w = maxX - minX, h = maxY - minY;
-        unsigned char *m = (unsigned char *)calloc((size_t)w * (size_t)h, 1);
+        unsigned char *m = (unsigned char *)calloc((size_t)w * (size_t)h, 4);
         for (int i = 0; i < used; i++) {
             const PxGlyph *g = &f.glyphs[pgi[i]];
+            const PxPalette *pal = g->pi != 0 ? px_glyph_palette(&f, g) : NULL;
             int top = maxY - (g->y + g->h);
             for (int ry = 0; ry < g->h; ry++)
-                for (int rx = 0; rx < g->w; rx++)
-                    if (g->pix[ry * g->w + rx] != '.') m[(top + ry) * w + (px0[i] + g->x - minX + rx)] = 1;
+                for (int rx = 0; rx < g->w; rx++) {
+                    char ch = g->pix[ry * g->w + rx];
+                    if (ch == '.') continue;
+                    int k = px_pixel_index(ch);
+                    Color c = pal && k > 0 ? (Color){pal->draw[k][0], pal->draw[k][1], pal->draw[k][2], pal->draw[k][3]} : TH_TEXT;
+                    unsigned char *d = m + 4 * ((size_t)(top + ry) * w + (px0[i] + g->x - minX + rx));
+                    d[0] = c.r; d[1] = c.g; d[2] = c.b; d[3] = c.a;
+                }
         }
         r->mask = m; r->mw = w; r->mh = h; r->hasSample = true;
         ok = true;
@@ -702,12 +710,14 @@ static void note(Cx *c, float *y, const char *text, bool spinner)
     *y += TH_ROW_H;
 }
 
-static void ensure_tex(Texture2D *t, unsigned char **mask, int w, int h)
+static void ensure_tex(Texture2D *t, unsigned char **rgba, int w, int h)
 {
-    if (!t->id && *mask) {
-        *t = Th_MaskTexture(*mask, w, h, TH_TEXT);
-        free(*mask);
-        *mask = NULL;
+    if (!t->id && *rgba && w > 0 && h > 0) {
+        Image img = { *rgba, w, h, 1, PIXELFORMAT_UNCOMPRESSED_R8G8B8A8 };
+        *t = LoadTextureFromImage(img);
+        if (t->id) SetTextureFilter(*t, TEXTURE_FILTER_POINT);
+        free(*rgba);
+        *rgba = NULL;
     }
 }
 

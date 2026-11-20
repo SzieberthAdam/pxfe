@@ -443,9 +443,7 @@ static bool GetInt(const char *name, long *v)
     else if (!strcmp(name, "btypefaces")) *v = browser ? Browser_TypefaceTotal(browser) : -1;     /* typefaces of the library (badge of the Typefaces tab) */
     else if (!strcmp(name, "bboxes")) *v = browser ? Browser_BoxCount(browser) : -1;               /* typeface boxes of the Typefaces tab */
     else if (!strcmp(name, "tfocus")) *v = Th_TextIs(NULL);                                         /* a text field has the keyboard */
-    else if (!strcmp(name, "bcolors")) *v = browser ? Browser_ColorFilter(browser) : -1;             /* the Colours filter: 0 is Any */
-    else if (!strcmp(name, "bcolorvals")) *v = browser ? Browser_ColorValues(browser) : -1;        /* counts the Colours dropdown lists */
-    else if (!strncmp(name, "bcolorval", 9)) *v = browser ? Browser_ColorValue(browser, atoi(name + 9)) : -1;   /* bcolorval0: the first of them */
+    else if (!strcmp(name, "bcolors")) *v = browser ? Browser_ColorFilter(browser) : -1;             /* the Colours switch: 1 on */
     else if (!strncmp(name, "bboxvars", 8)) *v = browser ? Browser_BoxVariants(browser, atoi(name + 8)) : -1;   /* bboxvars0: variants shown in box 0 */
     else if (!strcmp(name, "bupd10") || !strcmp(name, "bupdmax10") || !strcmp(name, "bfr10") || !strcmp(name, "bfrmax10")) {   /* browser frame times, tenths of ms */
         float ua = 0, um = 0, fa = 0, fm = 0;

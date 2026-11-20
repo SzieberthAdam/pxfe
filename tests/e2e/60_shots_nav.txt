@@ -6,7 +6,7 @@ click @Filter
 type ASI_Mono
 wait 120
 shot tests/tmp/nav/1_typefaces.png
-click @Two_lines
+click @Pangram
 wait 10
 dblclick @hdr:0
 wait 150

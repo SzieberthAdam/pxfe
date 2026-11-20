@@ -15,12 +15,12 @@ click @Style_Dropdown
 wait 10
 shot tests/tmp/p2/c3/typefaces_dropdown_open.png
 key escape
-click @Monospaced_only
-click @Italic_only
+click @Monospaced
+click @Colours
 wait 20
 shot tests/tmp/p2/c3/typefaces_switches_on.png
-click @Monospaced_only
-click @Italic_only
+click @Monospaced
+click @Colours
 click @Fonts
 wait 40
 shot tests/tmp/p2/c3/fonts.png

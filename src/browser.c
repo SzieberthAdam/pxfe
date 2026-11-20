@@ -18,6 +18,8 @@
 #define PAD          16
 #define GAP          12
 #define MIN_CARD_W   300
+#define BROWSER_MAX_COLS 16     /* the most columns the Columns stepper sets */
+#define SAMPLE_EDIT_LINES 12    /* the sample field grows with its text up to this many lines, then scrolls */
 #define SAMPLE_TOP   58          /* card top to the sample box */
 #define CARD_BOTTOM  16
 #define MAX_SAMPLE_H 900
@@ -78,7 +80,8 @@ struct Browser {
     int nTf;                       /* typefaces (boxes) among the entries of the Typefaces tab */
 
     /* view state */
-    int tab, zoom, cols, sortKey; bool sortDesc, mono, italic;
+    int tab, zoom, cols, sortKey; bool sortDesc, mono, colorOnly;   /* cols 0: Auto; colorOnly: only fonts of more than one colour */
+    int autoCols;                  /* the columns Auto gives at the current width (the Columns stepper shows it) */
     int sideTab;                   /* side panel: SIDE_* (shown as Typeface | Font | Similar; SIDE_VIEW is no tab any more) */
     ThViewArea viewArea;           /* the View area above the side panel's tabs (open: kept in the ini) */
     bool tfTabShown;               /* the Typeface or Font tab was drawn this frame */
@@ -347,7 +350,7 @@ static int cmp_entries(const void *pa, const void *pb)
 /* the colour filter needs the info of every font while it is set or its dropdown is open (to list the counts that occur) */
 static bool needs_info(const Browser *b)
 {
-    return b->mono || b->selStr[2][0] || (b->pop.open && b->pop.which == 2) || b->sortKey == SORT_SIZE || b->sortKey == SORT_GLYPHS;
+    return b->mono || b->colorOnly || b->sortKey == SORT_SIZE || b->sortKey == SORT_GLYPHS;
 }
 
 /* the number of ink colours of an entry, 0 while its info is not known */
@@ -529,10 +532,8 @@ static void rebuild_vis(Browser *b)
                 continue;
         }
         if (b->selStr[0][0] && strcmp(e->style, b->selStr[0]) != 0) continue;
-        if (b->selStr[1][0] && strcmp(e->format, b->selStr[1]) != 0) continue;
-        if (b->italic && !e->italic) continue;
         if (b->mono && !(e->info.ready && !e->info.failed && e->info.monospaced)) continue;
-        if (b->selStr[2][0] && entry_colors(e) != atoi(b->selStr[2])) continue;
+        if (b->colorOnly && entry_colors(e) < 2) continue;
         b->vis[b->nvis++] = i;
     }
     g_sort = b;
@@ -709,14 +710,12 @@ void Browser_LoadSettings(Browser *b, const char *iniPath)
         else if (!strcmp(key, "sidetab")) { if (iv >= 0 && iv <= 3) b->sideTab = iv; }
         else if (!strcmp(key, "viewopen")) b->viewArea.open = iv != 0;
         else if (!strcmp(key, "zoom")) { if (iv >= 1 && iv <= 8) b->zoom = iv; }
-        else if (!strcmp(key, "cols")) { if (iv >= 0 && iv <= 8) b->cols = iv; }
-        else if (!strcmp(key, "sort")) { if (iv >= 0 && iv <= 3) b->sortKey = iv; }
+        else if (!strcmp(key, "cols")) { if (iv >= 0 && iv <= BROWSER_MAX_COLS) b->cols = iv; }
+        else if (!strcmp(key, "sort")) { if (iv >= 0 && iv <= 3 && iv != SORT_FORMAT) b->sortKey = iv; }   /* Format is no sort any more */
         else if (!strcmp(key, "desc")) b->sortDesc = iv != 0;
         else if (!strcmp(key, "mono")) b->mono = iv != 0;
-        else if (!strcmp(key, "italic")) b->italic = iv != 0;
         else if (!strcmp(key, "style")) snprintf(b->selStr[0], sizeof b->selStr[0], "%.159s", v);
-        else if (!strcmp(key, "format")) snprintf(b->selStr[1], sizeof b->selStr[1], "%.159s", v);
-        else if (!strcmp(key, "colors")) { if (iv > 0) snprintf(b->selStr[2], sizeof b->selStr[2], "%d", iv); }
+        else if (!strcmp(key, "colouronly")) b->colorOnly = iv != 0;
         /* "sample" moved to [app] (sample.c migrates it) */
     }
     free(raw);
@@ -757,8 +756,8 @@ void Browser_SaveSettings(const Browser *b, const char *iniPath)
     }
     char sec[1200];
     int m = snprintf(sec, sizeof sec,
-                     "[browser]\ntab=%d\nsidetab=%d\nviewopen=%d\nzoom=%d\ncols=%d\nsort=%d\ndesc=%d\nmono=%d\nitalic=%d\nstyle=%s\nformat=%s\ncolors=%s\n",
-                     b->tab, b->sideTab, b->viewArea.open, b->zoom, b->cols, b->sortKey, b->sortDesc, b->mono, b->italic, b->selStr[0], b->selStr[1], b->selStr[2]);
+                     "[browser]\ntab=%d\nsidetab=%d\nviewopen=%d\nzoom=%d\ncols=%d\nsort=%d\ndesc=%d\nmono=%d\ncolouronly=%d\nstyle=%s\n",
+                     b->tab, b->sideTab, b->viewArea.open, b->zoom, b->cols, b->sortKey, b->sortDesc, b->mono, b->colorOnly, b->selStr[0]);
     if (m > 0) { memcpy(out + o, sec, (size_t)m); o += (size_t)m; }
     px_write_file(iniPath, out, o);
     free(out);
@@ -831,7 +830,7 @@ void Browser_TypefaceName(const Browser *b, char *out, size_t n)
 void Browser_SetFilter(Browser *b, const char *t) { snprintf(b->filter, sizeof b->filter, "%s", t ? t : ""); b->dirtyVis = true; b->anchorItem[b->tab] = 0; b->anchorOff[b->tab] = 0; }
 void Browser_SetSample(Browser *b, const char *t) { Sample_Set(t); sample_changed(b); }
 void Browser_SetZoom(Browser *b, int z) { if (z >= 1 && z <= 8) b->zoom = z; }
-void Browser_SetColumns(Browser *b, int c) { if (c >= 0 && c <= 8) b->cols = c; }
+void Browser_SetColumns(Browser *b, int c) { if (c >= 0 && c <= BROWSER_MAX_COLS) b->cols = c; }
 void Browser_ScrollBy(Browser *b, float px) { b->scrollY += px; if (b->scrollY < 0) b->scrollY = 0; b->anchorItem[b->tab] = -1; }
 void Browser_SelectVisible(Browser *b, int vi) { if (b->dirtyVis) rebuild_vis(b); sel_set(b, vi, true); }
 int  Browser_Pending(const Browser *b) { return libloader_pending(b->loader); }
@@ -873,9 +872,7 @@ int  Browser_CardInkLines(const Browser *b, int vi)
 }
 int  Browser_TypefaceTotal(const Browser *b) { return b->nTf; }
 int  Browser_BoxCount(const Browser *b) { return b->tab == TAB_TYPEFACES ? b->nbox : 0; }
-int  Browser_ColorFilter(const Browser *b) { return atoi(b->selStr[2]); }
-int  Browser_ColorValues(const Browser *b) { return b->nvals[2] > 0 ? b->nvals[2] - 1 : 0; }
-int  Browser_ColorValue(const Browser *b, int i) { return i >= 0 && i + 1 < b->nvals[2] ? atoi(b->vals[2][i + 1]) : -1; }
+int  Browser_ColorFilter(const Browser *b) { return b->colorOnly; }
 int  Browser_BoxVariants(const Browser *b, int box) { return b->tab == TAB_TYPEFACES && box >= 0 && box < b->nbox ? b->box[box].n : -1; }
 bool Browser_SelectedIsHeader(const Browser *b) { return b->tab == TAB_TYPEFACES && b->selVis >= 0 && b->selHdr; }
 int  Browser_LastAction(const Browser *b) { return (int)b->lastAction; }
@@ -1201,65 +1198,59 @@ static Rectangle wide_row(float x, float *y, float w, const char *label)
     return r;
 }
 
-/* The View area above the side panel's tabs: LIBRARY (count, Rescan), FILTER, SAMPLE and CARDS (zoom, columns, sort). */
+/* The View area above the side panel's tabs: FILTER (name, Style, Monospaced, Colours), SAMPLE (the text, growing with its lines, and the
+ * presets A C D H P), then the zoom, the columns (a stepper and Auto) and the sort (Name, Size, Glyphs). */
 static void view_area(Browser *b, float x, float w, float *yp, Rectangle clip)
 {
     float y = *yp;
-    {
-        char ct[64];
-        if (b->tfView[0]) snprintf(ct, sizeof ct, "%d font%s", b->nvis, b->nvis == 1 ? "" : "s");
-        else snprintf(ct, sizeof ct, b->tab == TAB_TYPEFACES ? "%d of %d variants" : "%d of %d", b->nvis, tab_count_of(b, b->tab));
-        float rw = Th_ButtonW("Rescan"), hy = y;
-        Th_Section("LIBRARY", x, &y, w - rw - TH_GAP, ct);
-        if (Th_Button(RR(x + w - rw, hy - 2, rw, TH_ROW_H), "Rescan", 0, NULL)) b->wantRescan = true;
-        y += TH_GAP;
-    }
-
     if (!b->tfView[0]) {
     /* ---- filter */
     if (Th_Section("FILTER", x, &y, w, NULL)) {
         if (Th_TextField(RR(x, y, w, TH_ROW_H), "Filter", b->filter, (int)sizeof b->filter, TH_TF_SEARCH, "Filter by name\xE2\x80\xA6") & TH_TF_CHANGED) Browser_SetFilter(b, Th_TextValue());
         y += TH_ROW_H + TH_GAP;
-    ui_dropdown(b, Th_Row(x, &y, w, "Style", NULL, 0), 0, "Style_Dropdown");
-    ui_dropdown(b, Th_Row(x, &y, w, "Format", NULL, 0), 1, "Format_Dropdown");
-    ui_dropdown(b, Th_Row(x, &y, w, "Colours", NULL, 0), 2, "Colours_Dropdown");
-    if (Th_Switch(RR(x, y, w, TH_ROW_H), "Monospaced only", &b->mono, 0, "Monospaced_only")) b->dirtyVis = true;
-    y += TH_ROW_H;
-    if (Th_Switch(RR(x, y, w, TH_ROW_H), "Italic only", &b->italic, 0, "Italic_only")) b->dirtyVis = true;
-    y += TH_ROW_H + TH_GAP;
+        ui_dropdown(b, Th_Row(x, &y, w, "Style", NULL, 0), 0, "Style_Dropdown");
+        float hw = floorf((w - TH_GAP) / 2);
+        if (Th_Switch(RR(x, y, hw, TH_ROW_H), "Monospaced", &b->mono, 0, "Monospaced")) b->dirtyVis = true;
+        if (Th_Switch(RR(x + hw + TH_GAP, y, w - hw - TH_GAP, TH_ROW_H), "Colours", &b->colorOnly, 0, "Colours")) b->dirtyVis = true;
+        y += TH_ROW_H + TH_GAP;
     }
     }
 
     /* ---- sample */
     if (Th_Section("SAMPLE", x, &y, w, NULL)) {
     {
-        float eh = SampleEdit_Height(6);
-        if (eh < 30) eh = 30;
+        float eh = SampleEdit_Height(SAMPLE_EDIT_LINES);   /* as tall as its lines */
         Rectangle clipR = clip;
         SampleEdit_Do(&b->sampleEdit, RR(x, y, w, eh), "Sample text (Enter: new line)", "Sample", b->modalBlocked || b->pop.open, &clipR);
-
         y += eh + 8;
     }
-    {
-        static const char *names[5] = { "Pangram", "Alphabet", "Digits", "Hamburgefontsiv", "Pangram and digits (two lines)" };
+    {   /* the presets in one row: Alphabet, Custom (the text as edited last), Digits, Hamburgefontsiv, Pangram */
+        static const char *letters[5] = { "A", "C", "D", "H", "P" };
+        static const char *names[5] = { "Alphabet", "Custom", "Digits", "Hamburgefontsiv", "Pangram" };
+        static const char *tips[5] = { "Alphabet", "Custom: the text as you edited it last", "Digits", "Hamburgefontsiv", "Pangram" };
         static const char *texts[5] = {
-            "The quick brown fox jumps over the lazy dog",
-            "ABCDEFGHIJKLMNOPQRSTUVWXYZ abcdefghijklmnopqrstuvwxyz",
+            "ABCDEFGHIJKLMNOPQRSTUVWXYZ abcdefghijklmnopqrstuvwxyz", NULL,
             "0123456789 !?.,;:()[]{}+-*/=",
             "Hamburgefontsiv",
-            "The quick brown fox jumps over the lazy dog\n0123456789" };
-        float bw = (w - 8) / 2;
+            "The quick brown fox jumps over the lazy dog" };
+        int cur = 1;
+        for (int i = 0; i < 5; i++) if (texts[i] && strcmp(Sample_Get(), texts[i]) == 0) cur = i;
+        float bw = floorf((w - 4 * 4) / 5);
         for (int i = 0; i < 5; i++) {
-            Rectangle br = i < 4 ? RR(x + (i % 2) * (bw + 8), y + (i / 2) * (TH_ROW_H + 4), bw, TH_ROW_H) : RR(x, y + 2 * (TH_ROW_H + 4), w, TH_ROW_H);
-            bool act = strcmp(Sample_Get(), texts[i]) == 0;
-            if (Th_Toggle(br, i < 4 ? names[i] : "Two lines", &act, 0, NULL)) { Sample_Set(texts[i]); SampleEdit_SetFocus(&b->sampleEdit, false); }
+            Rectangle br = RR(x + i * (bw + 4), y, i == 4 ? w - 4 * (bw + 4) : bw, TH_ROW_H);
+            bool act = i == cur;
+            Th_Reg(names[i], br);
+            if (Th_Toggle(br, letters[i], &act, 0, tips[i]) && i != cur) {
+                Sample_Set(texts[i] ? texts[i] : Sample_Custom());
+                SampleEdit_SetFocus(&b->sampleEdit, false);
+            }
         }
-        y += 3 * (TH_ROW_H + 4) + TH_GAP;
+        y += TH_ROW_H + TH_GAP;
     }
     }
 
-    /* ---- view */
-    if (Th_Section("CARDS", x, &y, w, NULL)) {
+    /* ---- the cards: zoom, columns, sort (no caption: the area's VIEW is theirs) */
+    {
         char zt[8];
         int c;
         snprintf(zt, sizeof zt, "%dx", b->zoom);
@@ -1267,23 +1258,36 @@ static void view_area(Browser *b, float x, float w, float *yp, Rectangle clip)
         c = Th_Stepper((Rectangle){ zr.x, zr.y, TH_STEP_W, TH_ROW_H }, zt, "bzoom", (b->zoom <= 1 ? TH_STEP_NO_MINUS : 0) | (b->zoom >= 8 ? TH_STEP_NO_PLUS : 0));
         if (c) b->zoom += c;
         if (!b->tfView[0]) {
-        const char *cl[9] = { "Auto", "1", "2", "3", "4", "5", "6", "7", "8" };
-        const float cw[9] = { 2.2f, 1, 1, 1, 1, 1, 1, 1, 1 };
-        c = Th_Segmented(wide_row(x, &y, w, "Columns"), &(ThSeg){ cl, 9, b->cols, 0u, "Cols", cw });
-        if (c >= 0) b->cols = c;
-        static const char *base[4] = { "Name", "Size", "Format", "Glyphs" };
+        {   /* Columns: [-] n [+], and Auto (the columns from the width; the stepper shows how many that is) */
+            int n = b->cols ? b->cols : b->autoCols;
+            if (n < 1) n = 1;
+            char ct[12];
+            snprintf(ct, sizeof ct, "%d", n);
+            Rectangle cr = Th_Row(x, &y, w, "Columns", NULL, 0);
+            c = Th_Stepper((Rectangle){ cr.x, cr.y, TH_STEP_W, TH_ROW_H }, ct, "bcols", (n <= 1 ? TH_STEP_NO_MINUS : 0) | (n >= BROWSER_MAX_COLS ? TH_STEP_NO_PLUS : 0));
+            if (c) { n += c; b->cols = n < 1 ? 1 : n > BROWSER_MAX_COLS ? BROWSER_MAX_COLS : n; }
+            float aw = Th_ButtonW("Auto");
+            Rectangle ar = RR(x + w - aw, cr.y, aw, TH_ROW_H);
+            bool au = b->cols == 0;
+            Th_Reg("Cols_Auto", ar);
+            if (Th_Toggle(ar, "Auto", &au, 0, "Columns from the width of the window")) b->cols = au ? 0 : n;
+        }
+        static const char *base[3] = { "Name", "Size", "Glyphs" };
+        static const int sortIds[3] = { SORT_NAME, SORT_SIZE, SORT_GLYPHS };
+        int at = 0;
+        for (int k = 0; k < 3; k++) if (sortIds[k] == b->sortKey) at = k;
         Rectangle sr = wide_row(x, &y, w, "Sort by");
-        static const float sw4[4] = { 1.4f, 1, 1.2f, 1.2f };
-        c = Th_Segmented(sr, &(ThSeg){ base, 4, b->sortKey, 0u, "Sort", sw4 });
+        static const float sw3[3] = { 1.4f, 1, 1.2f };
+        c = Th_Segmented(sr, &(ThSeg){ base, 3, at, 0u, "Sort", sw3 });
         {   /* direction arrow after the label of the active sort */
-            float acc = 0, tot = 4.8f; for (int k = 0; k < b->sortKey; k++) acc += sw4[k];
-            float sw = sr.width * sw4[b->sortKey] / tot, ax = sr.x + sr.width * acc / tot + sw / 2 + Th_Measure(base[b->sortKey]).x / 2 + 9, ay = sr.y + TH_ROW_H / 2;
+            float acc = 0, tot = 3.6f; for (int k = 0; k < at; k++) acc += sw3[k];
+            float sw = sr.width * sw3[at] / tot, ax = sr.x + sr.width * acc / tot + sw / 2 + Th_Measure(base[at]).x / 2 + 9, ay = sr.y + TH_ROW_H / 2;
             float d = b->sortDesc ? 1.0f : -1.0f;
             DrawLineEx((Vector2){ ax - 3, ay - 1.5f * d }, (Vector2){ ax, ay + 1.5f * d }, 1.2f, TH_ACCENT);
             DrawLineEx((Vector2){ ax, ay + 1.5f * d }, (Vector2){ ax + 3, ay - 1.5f * d }, 1.2f, TH_ACCENT);
         }
         if (c >= 0) {
-            if (c == b->sortKey) b->sortDesc = !b->sortDesc; else { b->sortKey = c; b->sortDesc = false; }
+            if (sortIds[c] == b->sortKey) b->sortDesc = !b->sortDesc; else { b->sortKey = sortIds[c]; b->sortDesc = false; }
             b->dirtyVis = true;
         }
         }
@@ -1505,13 +1509,15 @@ static void draw_boxes(Browser *b, const TfCtx *c)
                 float tx = cx + 14, tw = c->cardW - 28;
                 char nm[200], det[200], clipd[260];
                 const char *st = e->style[0] ? e->style : (e->fullname[0] ? e->fullname : "Regular");
-                Th_FitText(st, 0, tw * 0.55f, nm, sizeof nm);
+                Th_FitText(st, 0, tw, nm, sizeof nm);
                 Th_Text(nm, tx, ry + 6, TH_TEXT);
+                /* row 2: size and glyphs, and at the right the font hash (small) and the lock, as in the box header */
+                float mk = unlock_mark(tx + tw, ry + 30, false, e->pxfm);
+                float hw = e->pxfm[0] ? Th_HashShort("Font", e->pxfm, 0, 0, TH_HASH_MEASURE | TH_HASH_SMALL, NULL) + 12 : 0;
                 variant_details(e, det, sizeof det);
-                Th_FitText(det, 1, tw, clipd, sizeof clipd);
+                Th_FitText(det, 1, tw - mk - hw, clipd, sizeof clipd);
                 Th_TextSmall(clipd, tx, ry + 32, e->info.failed ? TH_TEXT_ERR : TH_TEXT_DIM);
-                float mk = unlock_mark(tx + tw, ry + 6, false, e->pxfm);
-                if (e->pxfm[0]) Th_HashShort("Font", e->pxfm, tx + tw - mk, ry + 6, TH_HASH_RIGHT, NULL);   /* on the style's baseline */
+                if (e->pxfm[0]) Th_HashShort("Font", e->pxfm, tx + tw - mk, ry + 32, TH_HASH_RIGHT | TH_HASH_SMALL, NULL);
                 /* the sample */
                 int ab, bt;
                 sample_extent(b, e, &ab, &bt);
@@ -1534,8 +1540,9 @@ static void grid_ui(Browser *b, Rectangle G, BrowserChoice *choice, bool *chosen
     float innerX = G.x + PAD;
     float availW = G.width - 2 * PAD - TH_SB_W;
     int cols = b->cols;
-    if (cols == 0) cols = (int)((availW + GAP) / (MIN_CARD_W + GAP));
-    if (cols < 1) cols = 1;
+    b->autoCols = (int)((availW + GAP) / (MIN_CARD_W + GAP));
+    if (b->autoCols < 1) b->autoCols = 1;
+    if (cols == 0) cols = b->autoCols;
     float cardW = floorf((availW - GAP * (cols - 1)) / cols);
     int z = b->zoom;
     int n = b->nvis;
@@ -1797,21 +1804,24 @@ static void grid_ui(Browser *b, Rectangle G, BrowserChoice *choice, bool *chosen
             if (c->hW != (int)cardW || c->hState != hstate || c->hW == 0) {
                 char fam[300], sty[300];
                 entry_names(e, fam, sizeof fam, sty, sizeof sty, &c->hHashOnly);
-                float hw = e->pxfm[0] ? Th_HashShort("Font", e->pxfm, 0, 0, TH_HASH_MEASURE, NULL) + 10 : 0;
-                float titleW = tw - hw;
+                float hw = e->pxfm[0] && !c->hHashOnly ? Th_HashShort("Font", e->pxfm, 0, 0, TH_HASH_MEASURE | TH_HASH_SMALL, NULL) + 12 + 22 : 0;   /* row 2: the hash and room for the lock */
+                float titleW = tw;
                 float famW = Th_Measure(fam).x;
                 Th_FitText(fam, 0, titleW, c->hFam, sizeof c->hFam);
                 c->hSty[0] = 0;
                 if (sty[0] && famW + 12 < titleW) Th_FitText(sty, 0, titleW - famW - 8, c->hSty, sizeof c->hSty);
                 c->hStyX = famW + 8;
                 if (e->info.failed) snprintf(c->hDet, sizeof c->hDet, "failed to load");
-                else { char det[300]; details_string(e, det, sizeof det); Th_FitText(det, 1, tw, c->hDet, sizeof c->hDet); }
+                else { char det[300]; details_string(e, det, sizeof det); Th_FitText(det, 1, tw - hw, c->hDet, sizeof c->hDet); }
                 c->hW = (int)cardW; c->hState = hstate;
             }
             if (c->hHashOnly) Th_HashShort("Font", e->pxfm, tx, cy + 9, 0, NULL); else Th_Text(c->hFam, tx, cy + 9, TH_TEXT);
             if (c->hSty[0]) Th_Text(c->hSty, tx + c->hStyX, cy + 9, TH_TEXT_DIM);
-            if (e->pxfm[0] && !c->hHashOnly && !(sel || hv)) Th_HashShort("Font", e->pxfm, tx + tw, cy + 9, TH_HASH_RIGHT, NULL);
             Th_TextSmall(c->hDet, tx, cy + 33, e->info.failed ? TH_TEXT_ERR : TH_TEXT_DIM);
+            {   /* row 2, at the right: the lock and the font hash (small), as in a typeface box */
+                float mk = unlock_mark(tx + tw, cy + 31, false, e->pxfm);
+                if (e->pxfm[0] && !c->hHashOnly) Th_HashShort("Font", e->pxfm, tx + tw - mk, cy + 33, TH_HASH_RIGHT | TH_HASH_SMALL, NULL);
+            }
             }
 
             /* sample */
@@ -1821,7 +1831,6 @@ static void grid_ui(Browser *b, Rectangle G, BrowserChoice *choice, bool *chosen
             clip.x = sbox.x; clip.width = sbox.width;
             entry_sample(b, abs, sbox, clip, (int)(cy + baseOff), rowSampleH, z, bg, t, vi);
 
-            unlock_mark(cx + cardW - 8, cy + 9, false, e->pxfm);
             }
         }
     }
@@ -1883,9 +1892,9 @@ static void grid_ui(Browser *b, Rectangle G, BrowserChoice *choice, bool *chosen
         Th_Text(h1, cx - m1.x / 2, cy + 36, TH_TEXT);
         Th_TextSmall(h2, cx - m2.x / 2, cy + 60, TH_TEXT_DIM);
         if (total > 0) {
-            bool anyFilter = b->filter[0] || b->selStr[0][0] || b->selStr[1][0] || b->selStr[2][0] || b->mono || b->italic;
+            bool anyFilter = b->filter[0] || b->selStr[0][0] || b->mono || b->colorOnly;
             if (anyFilter && Th_Button(RR(cx - Th_ButtonW("Clear filters") / 2, cy + 86, Th_ButtonW("Clear filters"), TH_ROW_H), "Clear filters", 0, NULL)) {
-                b->filter[0] = 0; b->selStr[0][0] = b->selStr[1][0] = b->selStr[2][0] = 0; b->mono = b->italic = false;
+                b->filter[0] = 0; b->selStr[0][0] = 0; b->mono = b->colorOnly = false;
                 b->dirtyVis = true;
             }
         }
@@ -1985,16 +1994,17 @@ static void tview_ui(Browser *b, Rectangle G, BrowserChoice *choice, bool *chose
         bool sel = vi == b->selVis, hv = vi == hoverVi;
         Color bg = Th_Card(RR(innerX, ry, w, rh), (sel ? TH_LR_SELECTED : 0) | (hv ? TH_LR_HOVER : 0));
         float tx = innerX + 16, tw = w - 32;
-        float bx = innerX + w - 12 - unlock_mark(innerX + w - 12, ry + 11, false, e->pxfm);
         char nm[200], det[260], clipd[260];
         const char *st = e->style[0] ? e->style : (e->fullname[0] ? e->fullname : "Regular");
-        Th_FitText(st, 0, bx - tx, nm, sizeof nm);
+        Th_FitText(st, 0, tw, nm, sizeof nm);
         Th_Text(nm, tx, ry + 11, TH_TEXT);
+        /* row 2: size and glyphs, and at the right the font hash (small) and the lock, as in the cards */
+        float mk = unlock_mark(tx + tw, ry + 38, false, e->pxfm);
+        float hw = e->pxfm[0] ? Th_HashShort("Font", e->pxfm, 0, 0, TH_HASH_MEASURE | TH_HASH_SMALL, NULL) + 12 : 0;
         variant_details(e, det, sizeof det);
-        float hw = Th_HashShort("Font", e->pxfm, 0, 0, TH_HASH_MEASURE, NULL);
-        Th_FitText(det, 1, tw - hw - 16, clipd, sizeof clipd);
+        Th_FitText(det, 1, tw - mk - hw, clipd, sizeof clipd);
         Th_TextSmall(clipd, tx, ry + 40, e->info.failed ? TH_TEXT_ERR : TH_TEXT_DIM);
-        if (e->pxfm[0]) Th_HashShort("Font", e->pxfm, tx + tw, ry + 38, TH_HASH_RIGHT, NULL);
+        if (e->pxfm[0]) Th_HashShort("Font", e->pxfm, tx + tw - mk, ry + 40, TH_HASH_RIGHT | TH_HASH_SMALL, NULL);
         Th_HLine(tx, tx + tw, ry + TV_TOP - 8, TH_LINE_SOFT);
         /* the sample */
         int ab, bt;
@@ -2048,7 +2058,6 @@ bool Browser_UpdateDraw(Browser *b, Rectangle area, BrowserChoice *choice)
 
     if (Sample_Counter() != b->sampleCtr) sample_changed(b);
     poll_results(b);
-    if (b->pop.open && b->pop.which == 2) collect_colors(b);   /* the list follows the info that arrives while it is open */
     if (b->infoPending && GetTime() - b->lastRefilter > 0.25) { b->infoPending = false; b->dirtyVis = true; b->keepAnchor = true; }
     if (b->dirtyVis) rebuild_vis(b);
     pop_input(b);
