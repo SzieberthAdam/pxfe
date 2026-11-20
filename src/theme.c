@@ -222,6 +222,7 @@ void Th_TextHead(const char *text, float x, float y, Color c) { th_draw(&theme.h
 void Th_TextSmall(const char *text, float x, float y, Color c) { th_draw(&theme.small, text, x, y, c); }
 Vector2 Th_Measure(const char *text) { return th_measure(&theme.ui, text); }
 Vector2 Th_MeasureHead(const char *text) { return th_measure(&theme.head, text); }
+float Th_BesideHead(float headY) { return headY + roundf(TH_NOTO_ASC * TH_SIZE_HEAD) - roundf(TH_NOTO_ASC * TH_SIZE_BODY); }
 Vector2 Th_MeasureSmall(const char *text) { return th_measure(&theme.small, text); }
 
 /* Unifont text and glyph captions */

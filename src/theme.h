@@ -83,6 +83,8 @@ Vector2 Th_Measure(const char *text);
 Vector2 Th_MeasureHead(const char *text);
 Vector2 Th_MeasureCap(const char *text);
 Vector2 Th_MeasureSmall(const char *text);
+/* The y of body text (Th_Text, Th_HashShort) that stands on the baseline of a heading drawn at headY (a title with its hash beside it). */
+float   Th_BesideHead(float headY);
 
 /* GNU Unifont: any code point of the BMP (unifont.otf) and the planes 1-16 (unifont_upper.otf), rasterised at exactly 16 px when first needed into a point-filtered
  * atlas on whole pixels (an atlas that is full is flushed and refilled: a glyph evicted is rasterised again when needed).

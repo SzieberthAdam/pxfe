@@ -1462,8 +1462,9 @@ static void draw_boxes(Browser *b, const TfCtx *c)
                 float tx = cx + 14, tw = c->cardW - 28;
                 Th_FitText(fam, ho ? 2 : 3, tw - hw, buf, sizeof buf);
                 if (ho) Th_HashShort("Typeface", e0->pxtf[0] ? e0->pxtf : e0->pxfm, tx, cy + 12, 0, NULL); else Th_TextHead(buf, tx, cy + 6, TH_TEXT);
-                float mk = unlock_mark(tx + tw, cy + 12, true, e0->pxtf);
-                if (e0->pxtf[0] && !ho) Th_HashShort("Typeface", e0->pxtf, tx + tw - mk, cy + 12, TH_HASH_RIGHT, NULL);
+                float hy = Th_BesideHead(cy + 6);   /* the hash stands on the family name's baseline */
+                float mk = unlock_mark(tx + tw, hy, true, e0->pxtf);
+                if (e0->pxtf[0] && !ho) Th_HashShort("Typeface", e0->pxtf, tx + tw - mk, hy, TH_HASH_RIGHT, NULL);
                 char det[160];
                 snprintf(det, sizeof det, "%s%s%d variant%s", e0->format[0] ? e0->format : "", e0->format[0] ? "  \xC2\xB7  " : "", bx->n, bx->n == 1 ? "" : "s");
                 Th_TextSmall(det, tx, cy + 36, TH_TEXT_DIM);
@@ -1489,8 +1490,8 @@ static void draw_boxes(Browser *b, const TfCtx *c)
                 variant_details(e, det, sizeof det);
                 Th_FitText(det, 1, tw, clipd, sizeof clipd);
                 Th_TextSmall(clipd, tx, ry + 32, e->info.failed ? TH_TEXT_ERR : TH_TEXT_DIM);
-                float mk = unlock_mark(tx + tw, ry + 9, false, e->pxfm);
-                if (e->pxfm[0]) Th_HashShort("Font", e->pxfm, tx + tw - mk, ry + 9, TH_HASH_RIGHT, NULL);
+                float mk = unlock_mark(tx + tw, ry + 6, false, e->pxfm);
+                if (e->pxfm[0]) Th_HashShort("Font", e->pxfm, tx + tw - mk, ry + 6, TH_HASH_RIGHT, NULL);   /* on the style's baseline */
                 /* the sample */
                 int ab, bt;
                 sample_extent(b, e, &ab, &bt);
@@ -1944,7 +1945,7 @@ static void tview_ui(Browser *b, Rectangle G, BrowserChoice *choice, bool *chose
         float hy = snapf(G.y + PAD - b->scrollY);
         if (nm[0]) {
             Th_TextHead(fit, innerX + 2, hy + 4, TH_TEXT);
-            Th_HashShort("Typeface", b->tfView, innerX + w - 2, hy + 6, TH_HASH_RIGHT, NULL);
+            Th_HashShort("Typeface", b->tfView, innerX + w - 2, Th_BesideHead(hy + 4), TH_HASH_RIGHT, NULL);
         } else Th_HashShort("Typeface", b->tfView, innerX + 2, hy + 6, 0, NULL);
         const char *fmt = b->tfHas && b->tfCont.count && b->tfCont.v[0].format ? b->tfCont.v[0].format : "";
         snprintf(sub, sizeof sub, "%d font%s%s%s", n, n == 1 ? "" : "s", fmt[0] ? "  \xC2\xB7  " : "", fmt);
