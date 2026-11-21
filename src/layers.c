@@ -832,9 +832,9 @@ static bool ci_has(const char *hay, const char *needle)
 
 static void entry_name(const StoreEntry *e, char *out, size_t cap)
 {
-    if (e->family[0] && e->style[0]) snprintf(out, cap, "%s %s", e->family, e->style);
-    else if (e->family[0]) snprintf(out, cap, "%s", e->family);
-    else if (e->fullname[0]) snprintf(out, cap, "%s", e->fullname);
+    if (e->typefaceName[0] && e->style[0]) snprintf(out, cap, "%s %s", e->typefaceName, e->style);
+    else if (e->typefaceName[0]) snprintf(out, cap, "%s", e->typefaceName);
+    else if (e->fontName[0]) snprintf(out, cap, "%s", e->fontName);
     else out[0] = 0;   /* the row shows the hash */
 }
 

@@ -28,7 +28,7 @@ typedef struct Layer {
     bool sameCode;               /* follows the code of the edited glyph */
     PxCode code;                /* the fixed code when !sameCode */
     char pxfm[33];               /* the font of the library, "" = this font */
-    char fontName[96];           /* "Family Style" of that font (for the row) */
+    char fontName[96];           /* "Typeface-name Style" of that font (for the row) */
     FlLayer *fl;                 /* a layer of a file or a font layer of the database (flayers.h); NULL for a plain session layer */
     bool fontLevel;              /* a FONT layer: fl belongs to the FlDoc of the font (saved in the sidecar), else to this entry */
 } Layer;

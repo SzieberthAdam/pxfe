@@ -41,8 +41,8 @@ wait 3
 assert bside 2
 assert w.hash_typeface_full 1
 # the hash shown is the typeface as stored (the pxtf of the library entry), as in the box header
-assert tabhash 8e8c94921267d3c2c72ec93d3b0cf63d
-assert w.c.family 1
+assert tabhash ff6354ce745de4d0170855e161a491be
+assert w.c.typeface 1
 assert w.c.copyright 1
 assert w.c.italic 0
 assert w.Typeface_hash 0
@@ -66,7 +66,7 @@ assert w.bside_Typeface 1
 assert w.bside_Similar 1
 assert bside 2
 assert w.hash_typeface_full 1
-assert w.c.family 1
+assert w.c.typeface 1
 shot tests/tmp/p1/td_3_typeface.png
 wait 3
 assert w.bzoom+ 1
@@ -83,7 +83,7 @@ assert w.ptab_Font 1
 assert w.ptab_Glyph 1
 assert w.ptab_Similar 1
 assert w.ptab_Typeface 0
-assert w.c.family 0
+assert w.c.typeface 0
 assert w.zoom- 1
 assert w.zoom+ 1
 assert w.sz- 1

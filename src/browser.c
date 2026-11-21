@@ -89,7 +89,7 @@ struct Browser {
     char scHash[33]; PxtfTypeface scCont; bool scHas;   /* the typeface of the selected entry, for the Typeface tab */
     /* the Typeface view: the Typefaces tab narrowed to the variants of one typeface, drawn as large rows */
     char tfView[33];               /* its pxtf hash, "" in the lists */
-    char tfFamily[200];            /* its family (to follow a rewrite of the typeface after a deletion) */
+    char tfName[200];              /* its NAME (to follow a rewrite of the typeface after a deletion) */
     PxtfTypeface tfCont; bool tfHas;
     char tfSaveKey[1100]; int tfSaveAnchor; float tfSaveOff;
     char pendingTf[33];            /* a typeface to open at the end of the frame */
@@ -260,8 +260,8 @@ static void entry_names(const LibEntry *e, char *fam, size_t fn, char *sty, size
 {
     fam[0] = sty[0] = 0;
     *hashOnly = false;
-    if (e->family[0]) { snprintf(fam, fn, "%s", e->family); snprintf(sty, sn, "%s", e->style); }
-    else if (e->fullname[0]) snprintf(fam, fn, "%s", e->fullname);
+    if (e->typefaceName[0]) { snprintf(fam, fn, "%s", e->typefaceName); snprintf(sty, sn, "%s", e->style); }
+    else if (e->fontName[0]) snprintf(fam, fn, "%s", e->fontName);
     else { snprintf(fam, fn, "%.8s", e->pxfm); *hashOnly = true; }
 }
 
@@ -531,7 +531,7 @@ static void rebuild_vis(Browser *b)
             continue;
         }
         if (q[0]) {
-            if (!(ci_contains(e->family, q) || ci_contains(e->fullname, q) || ci_contains(e->style, q) ||
+            if (!(ci_contains(e->typefaceName, q) || ci_contains(e->fontName, q) || ci_contains(e->style, q) ||
                   ci_contains(e->designer, q) || ci_contains(e->pxfm, q) || ci_contains(e->pxtf, q)))
                 continue;
         }
@@ -662,13 +662,13 @@ void Browser_Rescan(Browser *b)
     b->nTf = count_typefaces(&b->lib);
     b->scanT = b->lib.scanSeconds;
     scan_all(b);
-    if (b->tfView[0]) {   /* the typeface may be gone or rewritten (a deleted font): follow its family, else leave the view */
+    if (b->tfView[0]) {   /* the typeface may be gone or rewritten (a deleted font): follow its NAME, else leave the view */
         bool found = false;
         for (int i = 0; i < b->lib.nTypefaceEntries && !found; i++) found = strcmp(b->lib.e[i].pxtf, b->tfView) == 0;
         if (!found) {
             const char *np = NULL;
             for (int i = 0; i < b->lib.nTypefaceEntries && !np; i++)
-                if (b->tfFamily[0] && strcmp(b->lib.e[i].family, b->tfFamily) == 0) np = b->lib.e[i].pxtf;
+                if (b->tfName[0] && strcmp(b->lib.e[i].typefaceName, b->tfName) == 0) np = b->lib.e[i].pxtf;
             if (np) { char h[33]; snprintf(h, sizeof h, "%s", np); snprintf(b->tfView, sizeof b->tfView, "%s", h); tf_load(b); }
             else Browser_CloseTypeface(b);
         }
@@ -792,7 +792,7 @@ bool Browser_OpenTypeface(Browser *b, const char *pxtf, const char *selPxfm)
     snprintf(b->tfSaveKey, sizeof b->tfSaveKey, "%s", b->selKey[TAB_TYPEFACES]);
     b->tfSaveAnchor = b->anchorItem[TAB_TYPEFACES]; b->tfSaveOff = b->anchorOff[TAB_TYPEFACES];
     snprintf(b->tfView, sizeof b->tfView, "%s", pxtf);
-    snprintf(b->tfFamily, sizeof b->tfFamily, "%s", b->lib.e[first].family);
+    snprintf(b->tfName, sizeof b->tfName, "%s", b->lib.e[first].typefaceName);
     tf_load(b);
     b->selKey[TAB_TYPEFACES][0] = 0;
     b->scrollY = 0;
@@ -809,7 +809,7 @@ void Browser_CloseTypeface(Browser *b)
 {
     if (!b->tfView[0]) return;
     b->tfView[0] = 0;
-    b->tfFamily[0] = 0;
+    b->tfName[0] = 0;
     if (b->tfHas) { pxtf_free(&b->tfCont); b->tfHas = false; }
     snprintf(b->selKey[TAB_TYPEFACES], sizeof b->selKey[0], "%s", b->tfSaveKey);
     b->anchorItem[TAB_TYPEFACES] = b->tfSaveAnchor; b->anchorOff[TAB_TYPEFACES] = b->tfSaveOff;
@@ -825,10 +825,8 @@ void Browser_TypefaceName(const Browser *b, char *out, size_t n)
 {
     out[0] = 0;
     if (!b->tfView[0]) return;
-    const PxtfVariant *v = b->tfHas && b->tfCont.count ? &b->tfCont.v[0] : NULL;
-    for (int i = 0; b->tfHas && i < b->tfCont.count; i++) if (b->tfCont.v[i].text[PXTF_FAMILY] && b->tfCont.v[i].text[PXTF_FAMILY][0]) { v = &b->tfCont.v[i]; break; }
-    if (v && v->text[PXTF_FAMILY] && v->text[PXTF_FAMILY][0]) snprintf(out, n, "%s", v->text[PXTF_FAMILY]);
-    else if (b->tfFamily[0]) snprintf(out, n, "%s", b->tfFamily);
+    if (b->tfHas && b->tfCont.name && b->tfCont.name[0]) snprintf(out, n, "%s", b->tfCont.name);   /* the typeface's NAME */
+    else if (b->tfName[0]) snprintf(out, n, "%s", b->tfName);
 }
 
 void Browser_SelectTypeface(Browser *b, const char *pxtf)
@@ -1135,8 +1133,7 @@ static void details_string(const LibEntry *e, char *out, size_t n)
     size_t left = n;
     out[0] = 0;
     #define ADD(...) do { int w_ = snprintf(p, left, __VA_ARGS__); if (w_ > 0 && (size_t)w_ < left) { p += w_; left -= (size_t)w_; } } while (0)
-    char sep[16] = "";
-    if (e->format[0]) { ADD("%s", e->format); strcpy(sep, "  \xC2\xB7  "); }
+    char sep[16] = "";   /* the source format is not shown */
     if (e->info.ready && !e->info.failed) {
         ADD("%s%d px", sep, e->info.above + e->info.below); strcpy(sep, "  \xC2\xB7  ");
         ADD("%s%d glyph%s", sep, e->info.glyphCount, e->info.glyphCount == 1 ? "" : "s");
@@ -1489,13 +1486,13 @@ static void draw_boxes(Browser *b, const TfCtx *c)
             Rectangle hr = RR(cx + 1, cy + 1, c->cardW - 2, HDR_H - 1);
             Th_Card(br, (hvBox ? TH_LR_HOVER : 0) | (inBox ? TH_LR_WITHIN : 0));
             Th_ListRow(hr, (hdrSel ? TH_LR_SELECTED : 0) | (hvBox && c->hoverHdr ? TH_LR_HOVER : 0));
-            /* header: family, typeface hash, format and variant count */
+            /* header: the typeface's name, its hash and the variant count */
             {
                 char fam[300], sty[300], buf[320];
                 bool ho;
                 entry_names(e0, fam, sizeof fam, sty, sizeof sty, &ho);
                 float tx = cx + 14, tw = c->cardW - 28;
-                /* row 1: the family name, the whole width; row 2: format and variants, and at the right the typeface hash and the lock */
+                /* row 1: the name, the whole width; row 2: the variant count, and at the right the typeface hash and the lock */
                 float mk = unlock_mark(tx + tw, cy + 34, true, e0->pxtf);
                 float hw = e0->pxtf[0] && !ho ? Th_HashShort("Typeface", e0->pxtf, 0, 0, TH_HASH_MEASURE | TH_HASH_SMALL, NULL) + 12 : 0;
                 Th_FitText(fam, ho ? 2 : 3, tw, buf, sizeof buf);
@@ -1503,7 +1500,7 @@ static void draw_boxes(Browser *b, const TfCtx *c)
                 if (e0->pxtf[0] && !ho) Th_HashShort("Typeface", e0->pxtf, tx + tw - mk, cy + 36, TH_HASH_RIGHT | TH_HASH_SMALL, NULL);
                 char det[160], detf[200];
                 int nv = box_empty(b, bi) ? 0 : bx->n;
-                snprintf(det, sizeof det, "%s%s%d variant%s", e0->format[0] ? e0->format : "", e0->format[0] ? "  \xC2\xB7  " : "", nv, nv == 1 ? "" : "s");
+                snprintf(det, sizeof det, "%d variant%s", nv, nv == 1 ? "" : "s");
                 Th_FitText(det, 1, tw - mk - hw, detf, sizeof detf);
                 Th_TextSmall(detf, tx, cy + 36, TH_TEXT_DIM);
             }
@@ -1523,7 +1520,7 @@ static void draw_boxes(Browser *b, const TfCtx *c)
                 if (v > 0) Th_HLine(cx + 14, cx + c->cardW - 14, ry, TH_LINE_SOFT);
                 float tx = cx + 14, tw = c->cardW - 28;
                 char nm[200], det[200], clipd[260];
-                const char *st = e->style[0] ? e->style : (e->fullname[0] ? e->fullname : "Regular");
+                const char *st = e->style[0] ? e->style : (e->fontName[0] ? e->fontName : "Regular");
                 Th_FitText(st, 0, tw, nm, sizeof nm);
                 Th_Text(nm, tx, ry + 6, TH_TEXT);
                 /* row 2: size and glyphs, and at the right the font hash (small) and the lock, as in the box header */
@@ -1924,7 +1921,7 @@ static void grid_ui(Browser *b, Rectangle G, BrowserChoice *choice, bool *chosen
         const char *h1, *h2;
         if (total == 0) {
             h1 = "This library is empty"; h2 = "The database has no fonts. Import a folder of pxtf, pxfm and pxgl files (File, Import Folder).";
-        } else { h1 = "No fonts match"; h2 = "Nothing fits the current filters. Loosen the name, style, format or colour filter."; }
+        } else { h1 = "No fonts match"; h2 = "Nothing fits the current filters. Loosen the name, style or colour filter."; }
         Vector2 m1 = Th_Measure(h1), m2 = Th_MeasureSmall(h2);
         Th_Text(h1, cx - m1.x / 2, cy + 36, TH_TEXT);
         Th_TextSmall(h2, cx - m2.x / 2, cy + 60, TH_TEXT_DIM);
@@ -2013,8 +2010,7 @@ static void tview_ui(Browser *b, Rectangle G, BrowserChoice *choice, bool *chose
             Th_TextHead(fit, innerX + 2, hy + 4, TH_TEXT);
             Th_HashShort("Typeface", b->tfView, innerX + w - 2, Th_BesideHead(hy + 4), TH_HASH_RIGHT, NULL);
         } else Th_HashShort("Typeface", b->tfView, innerX + 2, hy + 6, 0, NULL);
-        const char *fmt = b->tfHas && b->tfCont.count && b->tfCont.v[0].format ? b->tfCont.v[0].format : "";
-        snprintf(sub, sizeof sub, "%d font%s%s%s", n, n == 1 ? "" : "s", fmt[0] ? "  \xC2\xB7  " : "", fmt);
+        snprintf(sub, sizeof sub, "%d font%s", n, n == 1 ? "" : "s");
         Th_TextSmall(sub, innerX + 2, hy + 34, TH_TEXT_DIM);
         unlock_mark(innerX + w - 2, hy + 34, true, b->tfView);
     }
@@ -2032,7 +2028,7 @@ static void tview_ui(Browser *b, Rectangle G, BrowserChoice *choice, bool *chose
         Color bg = Th_Card(RR(innerX, ry, w, rh), (sel ? TH_LR_SELECTED : 0) | (hv ? TH_LR_HOVER : 0));
         float tx = innerX + 16, tw = w - 32;
         char nm[200], det[260], clipd[260];
-        const char *st = e->style[0] ? e->style : (e->fullname[0] ? e->fullname : "Regular");
+        const char *st = e->style[0] ? e->style : (e->fontName[0] ? e->fontName : "Regular");
         Th_FitText(st, 0, tw, nm, sizeof nm);
         Th_Text(nm, tx, ry + 11, TH_TEXT);
         /* row 2: size and glyphs, and at the right the font hash (small) and the lock, as in the cards */

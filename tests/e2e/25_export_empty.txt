@@ -24,7 +24,7 @@ assert modal none
 assert file tests/tmp/xout/pxfm/3b/3b52125b2e5f6466823baa4fa3186fa0.pxfm exists
 assert samefile tests/tmp/xout/pxfm/3b/3b52125b2e5f6466823baa4fa3186fa0.pxfm tests/tmp/e2elib/pxfm/3b/3b52125b2e5f6466823baa4fa3186fa0.pxfm
 assert samefile tests/tmp/xout/pxfm/4f/4fba4190f6ba7e10b296c7070234e1ce.pxfm tests/tmp/e2elib/pxfm/4f/4fba4190f6ba7e10b296c7070234e1ce.pxfm
-assert samefile tests/tmp/xout/pxtf/8e/8e8c94921267d3c2c72ec93d3b0cf63d.pxtf tests/tmp/e2elib/pxtf/8e/8e8c94921267d3c2c72ec93d3b0cf63d.pxtf
+assert samefile tests/tmp/xout/pxtf/ff/ff6354ce745de4d0170855e161a491be.pxtf tests/tmp/e2elib/pxtf/ff/ff6354ce745de4d0170855e161a491be.pxtf
 # nothing was changed in the database or the source folder
 assert unsaved 0
 assert snapdir unchanged

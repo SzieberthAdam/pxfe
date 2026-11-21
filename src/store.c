@@ -200,14 +200,15 @@ static const char SCHEMA[] =
 "    PRIMARY KEY (pxfm, first, second)\n"
 ") WITHOUT ROWID;\n"
 "CREATE TABLE pxtf (\n"
-"    hash   BLOB PRIMARY KEY,\n"
-"    source BLOB NOT NULL,\n"
-"    CHECK (length(hash) = 16 AND length(source) = 16)\n"
+"    hash BLOB PRIMARY KEY,\n"
+"    name TEXT,\n"
+"    CHECK (length(hash) = 16)\n"
 ") WITHOUT ROWID;\n"
 "CREATE TABLE pxtf_variant (\n"
 "    pxtf   BLOB NOT NULL REFERENCES pxtf,\n"
 "    number INTEGER NOT NULL CHECK (number > 0),\n"
 "    pxfm   BLOB NOT NULL REFERENCES pxfm,\n"
+"    source BLOB NOT NULL CHECK (length(source) = 16),\n"
 "    format TEXT NOT NULL,\n"
 "    type   TEXT NOT NULL,\n"
 "    PRIMARY KEY (pxtf, number)\n"
@@ -411,7 +412,7 @@ static bool ins_prepare(sqlite3 *db, InsStmts *s, bool orIgnore, char err[PX_ERR
         {&s->pg, "pxfm_glyph VALUES (?,?,?,?,?,?,?)"},
         {&s->kern, "pxfm_kerning VALUES (?,?,?,?)"},
         {&s->tf, "pxtf VALUES (?,?)"},
-        {&s->var, "pxtf_variant VALUES (?,?,?,?,?)"},
+        {&s->var, "pxtf_variant VALUES (?,?,?,?,?,?)"},
         {&s->fld, "pxtf_field VALUES (?,?,?,?)"}};
     for (size_t i = 0; i < sizeof q / sizeof *q; i++) {
         snprintf(sql, sizeof sql, "%s%s", ins, q[i].tail);
@@ -515,10 +516,9 @@ static bool ins_field(sqlite3 *db, InsStmts *s, const uint8_t th[16], int number
 }
 
 static bool ins_typeface(sqlite3 *db, InsStmts *s, const PxtfTypeface *tf, const uint8_t th[16], char err[PX_ERR_LEN]) {
-    uint8_t src[16];
-    if (!store_hex_to_blob(tf->hash, src)) return fail(err, "typeface without a source hash");
     sqlite3_bind_blob(s->tf, 1, th, 16, SQLITE_STATIC);
-    sqlite3_bind_blob(s->tf, 2, src, 16, SQLITE_STATIC);
+    if (tf->name && tf->name[0]) { if (!bind_dbtext(s->tf, 2, tf->name)) return fail(err, "out of memory"); }
+    else sqlite3_bind_null(s->tf, 2);
     if (!step_done(s->tf, db, err, "pxtf")) return false;
     if (sqlite3_changes(db) == 0) return true;
     for (int vi = 0; vi < tf->count; vi++) {
@@ -526,7 +526,10 @@ static bool ins_typeface(sqlite3 *db, InsStmts *s, const PxtfTypeface *tf, const
         sqlite3_bind_blob(s->var, 1, th, 16, SQLITE_STATIC);
         sqlite3_bind_int(s->var, 2, v->number);
         bind_hex(s->var, 3, v->pxfm);
-        if (!bind_dbtext(s->var, 4, v->format ? v->format : "") || !bind_dbtext(s->var, 5, v->type ? v->type : "")) return fail(err, "out of memory");
+        uint8_t src[16];
+        if (!store_hex_to_blob(v->source, src)) return fail(err, "variant %04d without a source hash", v->number);
+        sqlite3_bind_blob(s->var, 4, src, 16, SQLITE_TRANSIENT);
+        if (!bind_dbtext(s->var, 5, v->format ? v->format : "") || !bind_dbtext(s->var, 6, v->type ? v->type : "")) return fail(err, "out of memory");
         if (!step_done(s->var, db, err, "pxtf_variant")) return false;
         for (int t = 0; t < PXTF_TEXT_COUNT; t++)
             if (v->text[t] && v->text[t][0] && !ins_field(db, s, th, v->number, pxtf_text_key((PxtfText)t), v->text[t], err)) return false;
@@ -629,7 +632,9 @@ static bool check_meta(sqlite3 *db, char err[PX_ERR_LEN], const char *path) {
         if (k && v && strcmp(k, "format_version") == 0) snprintf(ver, sizeof ver, "%s", v);
     }
     sqlite3_finalize(st);
-    if (strcmp(fmt, "PXFDB") != 0 || strcmp(ver, "1") != 0) return fail(err, "%s: not a PXFDB database of format version 1", path);
+    if (strcmp(fmt, "PXFDB") == 0 && strcmp(ver, "1") == 0)
+        return fail(err, "%s: a PXFDB database of format version 1 (pxtf version 1); this pxfe reads version 2: import the library folder again", path);
+    if (strcmp(fmt, "PXFDB") != 0 || strcmp(ver, "2") != 0) return fail(err, "%s: not a PXFDB database of format version 2", path);
     return true;
 }
 
@@ -956,7 +961,7 @@ static bool build_from_files(Store *s, const char *root, HashList lists[4], bool
     if (fresh) {
         if (!exec_sql(db, "PRAGMA synchronous = OFF; PRAGMA journal_mode = OFF;", err)) goto done;
         if (!exec_sql(db, SCHEMA, err)) goto done;
-        if (!exec_sql(db, "INSERT INTO meta VALUES ('format', 'PXFDB'); INSERT INTO meta VALUES ('format_version', '1');", err)) goto done;
+        if (!exec_sql(db, "INSERT INTO meta VALUES ('format', 'PXFDB'); INSERT INTO meta VALUES ('format_version', '2');", err)) goto done;
     }
     if (!exec_sql(db, "BEGIN", err)) goto done;
     if (!ins_prepare(db, &ins, false, err)) goto done;
@@ -1057,9 +1062,9 @@ bool store_modified(const Store *s) { return s->gen != s->savedGen; }
 
 static const char VARIANT_SQL[] =
     "SELECT v.pxtf, v.number, v.pxfm, v.format,"
-    " (SELECT value FROM pxtf_field f WHERE f.pxtf = v.pxtf AND f.number = v.number AND f.key = 'FAMILY'),"
+    " (SELECT name FROM pxtf t WHERE t.hash = v.pxtf),"
     " (SELECT value FROM pxtf_field f WHERE f.pxtf = v.pxtf AND f.number = v.number AND f.key = 'STYLE'),"
-    " (SELECT value FROM pxtf_field f WHERE f.pxtf = v.pxtf AND f.number = v.number AND f.key = 'FULLNAME'),"
+    " (SELECT value FROM pxtf_field f WHERE f.pxtf = v.pxtf AND f.number = v.number AND f.key = 'NAME'),"
     " (SELECT value FROM pxtf_field f WHERE f.pxtf = v.pxtf AND f.number = v.number AND f.key = 'DESIGNER'),"
     " EXISTS (SELECT 1 FROM pxtf_field f WHERE f.pxtf = v.pxtf AND f.number = v.number AND f.key = 'ITALIC'),"
     " EXISTS (SELECT 1 FROM pxtf_field f WHERE f.pxtf = v.pxtf AND f.number = v.number AND f.key = 'STRUCKOUT'),"
@@ -1147,9 +1152,9 @@ static bool list_variants(sqlite3 *db, StoreEntryList *out, FontFacts *facts, in
         const uint8_t *pb = (const uint8_t *)sqlite3_column_blob(st, 2);
         store_blob_to_hex(pb, e->pxfm);
         e->format = col_text(st, 3, &a);
-        e->family = col_text(st, 4, &a);
+        e->typefaceName = col_text(st, 4, &a);
         e->style = col_text(st, 5, &a);
-        e->fullname = col_text(st, 6, &a);
+        e->fontName = col_text(st, 6, &a);
         e->designer = col_text(st, 7, &a);
         e->italic = sqlite3_column_int(st, 8) != 0;
         e->struckout = sqlite3_column_int(st, 9) != 0;
@@ -1180,9 +1185,10 @@ static int cmp_entry_pxtf(const void *a, const void *b) {
 /* the typefaces with no variant (made in an editor, spec "A typeface made in an editor"): one entry each, variant 0 and pxfm "" */
 static bool list_empty_typefaces(sqlite3 *db, StoreEntryList *out, char err[PX_ERR_LEN]) {
     sqlite3_stmt *st;
-    if (sqlite3_prepare_v2(db, "SELECT hash FROM pxtf t WHERE NOT EXISTS (SELECT 1 FROM pxtf_variant v WHERE v.pxtf = t.hash)", -1, &st, NULL) != SQLITE_OK)
+    if (sqlite3_prepare_v2(db, "SELECT hash, name FROM pxtf t WHERE NOT EXISTS (SELECT 1 FROM pxtf_variant v WHERE v.pxtf = t.hash)", -1, &st, NULL) != SQLITE_OK)
         return fail(err, "sqlite: %s", sqlite3_errmsg(db));
     int added = 0;
+    Arena *a = (Arena *)out->arena;
     while (sqlite3_step(st) == SQLITE_ROW) {
         StoreEntry *nv = (StoreEntry *)realloc(out->e, sizeof(StoreEntry) * (size_t)(out->count + 1));
         if (!nv) { sqlite3_finalize(st); return fail(err, "out of memory"); }
@@ -1190,12 +1196,13 @@ static bool list_empty_typefaces(sqlite3 *db, StoreEntryList *out, char err[PX_E
         StoreEntry *e = &out->e[out->count++];
         memset(e, 0, sizeof *e);
         store_blob_to_hex((const uint8_t *)sqlite3_column_blob(st, 0), e->pxtf);
-        e->family = e->style = e->fullname = e->designer = "";
-        e->format = PXTF_EDITOR_FORMAT;
+        e->style = e->fontName = e->designer = e->format = "";
+        e->typefaceName = col_text(st, 1, &a);
         e->colors = 1;
         added++;
     }
     sqlite3_finalize(st);
+    out->arena = a;
     if (added) qsort(out->e, (size_t)out->count, sizeof(StoreEntry), cmp_entry_pxtf);   /* by pxtf hash, then number, as before */
     return true;
 }
@@ -1237,7 +1244,7 @@ static bool list_fonts_nolock(StoreConn *c, const uint8_t (*only)[16], int nonly
         StoreEntry *e = &res[n++];
         store_blob_to_hex(f->hash, e->pxfm);
         apply_facts(e, f);
-        e->family = e->style = e->fullname = e->designer = e->format = "";
+        e->typefaceName = e->style = e->fontName = e->designer = e->format = "";
         int lo = 0, hi = vars.count;
         while (lo < hi) {
             int mid = (lo + hi) / 2;
@@ -1247,7 +1254,7 @@ static bool list_fonts_nolock(StoreConn *c, const uint8_t (*only)[16], int nonly
             const StoreEntry *v = &vars.e[lo];
             memcpy(e->pxtf, v->pxtf, 33);
             e->variant = v->variant;
-            e->family = v->family; e->style = v->style; e->fullname = v->fullname; e->designer = v->designer; e->format = v->format;
+            e->typefaceName = v->typefaceName; e->style = v->style; e->fontName = v->fontName; e->designer = v->designer; e->format = v->format;
             e->italic = v->italic; e->struckout = v->struckout; e->underlined = v->underlined;
         }
     }
@@ -1299,13 +1306,13 @@ static bool tf_add_opt(PxtfVariant *v, const char *line) {
 
 static bool load_typeface_nolock(StoreConn *c, const uint8_t th[16], PxtfTypeface *out, char err[PX_ERR_LEN]) {
     pxtf_init(out);
-    sqlite3_stmt *st = store_stmt(c, ST_TF_ROW, "SELECT source FROM pxtf WHERE hash = ?");
+    sqlite3_stmt *st = store_stmt(c, ST_TF_ROW, "SELECT name FROM pxtf WHERE hash = ?");
     if (!st) return fail(err, "sqlite: %s", sqlite3_errmsg(c->db));
     sqlite3_bind_blob(st, 1, th, 16, SQLITE_STATIC);
     if (sqlite3_step(st) != SQLITE_ROW) { sqlite3_reset(st); return fail(err, "no such typeface"); }
-    store_blob_to_hex((const uint8_t *)sqlite3_column_blob(st, 0), out->hash);
+    if (sqlite3_column_type(st, 0) != SQLITE_NULL) out->name = from_db_text(sqlite3_column_blob(st, 0), sqlite3_column_bytes(st, 0));
     sqlite3_reset(st);
-    st = store_stmt(c, ST_TF_VARIANTS, "SELECT number, pxfm, format, type FROM pxtf_variant WHERE pxtf = ? ORDER BY number");
+    st = store_stmt(c, ST_TF_VARIANTS, "SELECT number, pxfm, format, type, source FROM pxtf_variant WHERE pxtf = ? ORDER BY number");
     sqlite3_bind_blob(st, 1, th, 16, SQLITE_STATIC);
     while (sqlite3_step(st) == SQLITE_ROW) {
         if (out->count == out->cap) {
@@ -1321,6 +1328,7 @@ static bool load_typeface_nolock(StoreConn *c, const uint8_t th[16], PxtfTypefac
         store_blob_to_hex((const uint8_t *)sqlite3_column_blob(st, 1), v->pxfm);
         v->format = from_db_text(sqlite3_column_blob(st, 2), sqlite3_column_bytes(st, 2));
         v->type = from_db_text(sqlite3_column_blob(st, 3), sqlite3_column_bytes(st, 3));
+        store_blob_to_hex((const uint8_t *)sqlite3_column_blob(st, 4), v->source);
     }
     sqlite3_reset(st);
     st = store_stmt(c, ST_TF_FIELDS, "SELECT number, key, value FROM pxtf_field WHERE pxtf = ? ORDER BY number, key, value");
@@ -1693,18 +1701,22 @@ char *store_pxtf_text(StoreConn *c, const char *hex, size_t *len, char hashOut[3
     uint8_t th[16];
     if (!store_hex_to_blob(hex, th)) return NULL;
     RLOCK(c);
-    sqlite3_stmt *st = store_stmt(c, ST_TF_ROW, "SELECT source FROM pxtf WHERE hash = ?");
-    char source[33] = "";
+    sqlite3_stmt *st = store_stmt(c, ST_TF_ROW, "SELECT name FROM pxtf WHERE hash = ?");
+    bool have = false;
+    char *name = NULL;
     if (st) {
         sqlite3_bind_blob(st, 1, th, 16, SQLITE_STATIC);
-        if (sqlite3_step(st) == SQLITE_ROW) store_blob_to_hex((const uint8_t *)sqlite3_column_blob(st, 0), source);
+        if (sqlite3_step(st) == SQLITE_ROW) {
+            have = true;
+            if (sqlite3_column_type(st, 0) != SQLITE_NULL) name = from_db_text(sqlite3_column_blob(st, 0), sqlite3_column_bytes(st, 0));
+        }
         sqlite3_reset(st);
     }
-    if (!source[0]) { RUNLOCK(c); return NULL; }
-    typedef struct V { int number; char pxfm[33]; char *format, *type; LineSet fields; } V;
+    if (!have) { RUNLOCK(c); return NULL; }
+    typedef struct V { int number; char pxfm[33], source[33]; char *format, *type; LineSet fields; } V;
     V *vs = NULL;
     int nv = 0;
-    st = store_stmt(c, ST_TF_VARIANTS, "SELECT number, pxfm, format, type FROM pxtf_variant WHERE pxtf = ? ORDER BY number");
+    st = store_stmt(c, ST_TF_VARIANTS, "SELECT number, pxfm, format, type, source FROM pxtf_variant WHERE pxtf = ? ORDER BY number");
     sqlite3_bind_blob(st, 1, th, 16, SQLITE_STATIC);
     while (sqlite3_step(st) == SQLITE_ROW) {
         vs = (V *)realloc(vs, sizeof(V) * (size_t)(nv + 1));
@@ -1714,6 +1726,7 @@ char *store_pxtf_text(StoreConn *c, const char *hex, size_t *len, char hashOut[3
         store_blob_to_hex((const uint8_t *)sqlite3_column_blob(st, 1), v->pxfm);
         v->format = from_db_text(sqlite3_column_blob(st, 2), sqlite3_column_bytes(st, 2));
         v->type = from_db_text(sqlite3_column_blob(st, 3), sqlite3_column_bytes(st, 3));
+        store_blob_to_hex((const uint8_t *)sqlite3_column_blob(st, 4), v->source);
     }
     sqlite3_reset(st);
     st = store_stmt(c, ST_TF_FIELDS, "SELECT number, key, value FROM pxtf_field WHERE pxtf = ? ORDER BY number, key, value");
@@ -1732,28 +1745,23 @@ char *store_pxtf_text(StoreConn *c, const char *hex, size_t *len, char hashOut[3
     }
     sqlite3_reset(st);
     RUNLOCK(c);
-    bool sameF = true, sameT = true;
-    for (int i = 1; i < nv; i++) { if (strcmp(vs[i].format, vs[0].format) != 0) sameF = false; if (strcmp(vs[i].type, vs[0].type) != 0) sameT = false; }
     SBuf b = {0};
-    LineSet top;
-    memset(&top, 0, sizeof top);
-    char up[33];
-    for (int i = 0; i < 33; i++) up[i] = (char)toupper((unsigned char)source[i]);
-    ls_addf(&top, "HASH\t%s", up);
-    if (nv > 0 && sameF) ls_addf(&top, "FORMAT\t%s", vs[0].format);
-    if (nv > 0 && sameT) { char *e = pxtf_escape(vs[0].type); ls_addf(&top, "TYPE\t%s", e); free(e); }
-    if (nv == 0) { ls_addf(&top, "FORMAT\t%s", PXTF_EDITOR_FORMAT); ls_addf(&top, "TYPE\t%s", PXTF_EDITOR_TYPE); }   /* a typeface made in an editor, no variant yet */
-    ls_emit(&top, &b, NULL);
-    ls_free(&top);
+    if (name) {   /* the top line */
+        char *e = pxtf_escape(name);
+        if (e && e[0]) { sb_add(&b, "NAME\t", 5); sb_add(&b, e, strlen(e)); sb_add(&b, "\n", 1); }
+        free(e);
+        free(name);
+    }
     for (int i = 0; i < nv; i++) {
         V *v = &vs[i];
-        char num[16], pu[33];
+        char num[16], pu[33], su[33];
         snprintf(num, sizeof num, "%04d\n", v->number);
         sb_add(&b, num, strlen(num));
-        for (int k = 0; k < 33; k++) pu[k] = (char)toupper((unsigned char)v->pxfm[k]);
+        for (int k = 0; k < 33; k++) { pu[k] = (char)toupper((unsigned char)v->pxfm[k]); su[k] = (char)toupper((unsigned char)v->source[k]); }
         ls_addf(&v->fields, "PXFM\t%s", pu);
-        if (!sameF) ls_addf(&v->fields, "FORMAT\t%s", v->format);
-        if (!sameT) { char *e = pxtf_escape(v->type); ls_addf(&v->fields, "TYPE\t%s", e); free(e); }
+        ls_addf(&v->fields, "SOURCE-FORMAT\t%s", v->format);
+        ls_addf(&v->fields, "SOURCE-HASH\t%s", su);
+        { char *e = pxtf_escape(v->type); ls_addf(&v->fields, "SOURCE-TYPE\t%s", e); free(e); }
         ls_emit(&v->fields, &b, "\t");
         ls_free(&v->fields);
         free(v->format); free(v->type);
@@ -1821,7 +1829,7 @@ bool store_glyph_usage(StoreConn *c, const char *hex, StoreUsageList *out, int *
             r->code = code;
             memcpy(r->pxtf, vars.e[k].pxtf, 33);
             r->variant = vars.e[k].variant;
-            r->family = arena_str(&a, vars.e[k].family, -1);
+            r->typefaceName = arena_str(&a, vars.e[k].typefaceName, -1);
             r->style = arena_str(&a, vars.e[k].style, -1);
             if (ntfs == tcap) { tcap *= 2; tfs = (char (*)[33])realloc(tfs, 33 * (size_t)tcap); }
             memcpy(tfs[ntfs++], vars.e[k].pxtf, 33);
@@ -1833,7 +1841,7 @@ bool store_glyph_usage(StoreConn *c, const char *hex, StoreUsageList *out, int *
             r->code = code;
             r->pxtf[0] = 0;
             r->variant = 0;
-            r->family = r->style = "";
+            r->typefaceName = r->style = "";
         }
     }
     sqlite3_reset(st);
@@ -2226,7 +2234,7 @@ bool store_create(Store **out, char err[PX_ERR_LEN]) {
     if (!s) return false;
     sqlite3 *db = s->main->db;
     if (!exec_sql(db, "PRAGMA synchronous = OFF; PRAGMA journal_mode = OFF;", err) || !exec_sql(db, SCHEMA, err) ||
-        !exec_sql(db, "INSERT INTO meta VALUES ('format', 'PXFDB'); INSERT INTO meta VALUES ('format_version', '1');", err) || !exec_sql(db, INDEXES, err)) {
+        !exec_sql(db, "INSERT INTO meta VALUES ('format', 'PXFDB'); INSERT INTO meta VALUES ('format_version', '2');", err) || !exec_sql(db, INDEXES, err)) {
         store_close(s);
         return false;
     }
@@ -2717,19 +2725,9 @@ done:
     return ok;
 }
 
-/* A new typeface with no variant, as an editor makes it: FORMAT PXFE, TYPE pxfe and a random HASH (there is no source file). */
-bool store_new_typeface(Store *s, char hashOut[33], char err[PX_ERR_LEN]) {
-    static volatile LONG serial = 0;
-    struct { LARGE_INTEGER qpc; FILETIME ft; DWORD pid, tid; LONG n; void *p; } seed;
-    memset(&seed, 0, sizeof seed);
-    QueryPerformanceCounter(&seed.qpc);
-    GetSystemTimeAsFileTime(&seed.ft);
-    seed.pid = GetCurrentProcessId();
-    seed.tid = GetCurrentThreadId();
-    seed.n = InterlockedIncrement(&serial);
-    seed.p = (void *)&seed;
-    uint8_t d[32];
-    px_sha256(&seed, sizeof seed, d);
+/* A new typeface with no variant, as an editor makes it (pxtf "A font made in an editor"): only its NAME. */
+bool store_new_typeface(Store *s, const char *name, char hashOut[33], char err[PX_ERR_LEN]) {
+    if (!name || !name[0]) return fail(err, "a typeface with no variant needs a name");
     StoreDeletePlan p;
     memset(&p, 0, sizeof p);
     p.rw = (StoreRewrite *)calloc(1, sizeof(StoreRewrite));
@@ -2737,9 +2735,10 @@ bool store_new_typeface(Store *s, char hashOut[33], char err[PX_ERR_LEN]) {
     if (!p.rw || !p.newTf) { store_plan_free(&p); return fail(err, "out of memory"); }
     p.nRw = 1;
     pxtf_init(&p.newTf[0]);
-    store_blob_to_hex(d, p.newTf[0].hash);
+    if (!pxtf_set_name(&p.newTf[0], name)) { store_plan_free(&p); return fail(err, "out of memory"); }
     pxtf_hash(&p.newTf[0], p.rw[0].newPxtf);
     snprintf(hashOut, 33, "%s", p.rw[0].newPxtf);
+    if (has_hash(s->main, ST_HAS_PXTF, "SELECT 1 FROM pxtf WHERE hash = ?", hashOut)) { store_plan_free(&p); return fail(err, "a typeface named '%s' with no variant is there already", name); }
     bool ok = store_apply_delete(s, &p, err);
     store_plan_free(&p);
     return ok;

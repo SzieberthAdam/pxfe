@@ -1,4 +1,4 @@
-# 54. The Typefaces tab: one box per typeface (testdata/lib: typeface 8e8c9492 "Test Sans" with two variants, b7ed69ab "Uncoded Mono" with one).
+# 54. The Typefaces tab: one box per typeface (testdata/lib: typeface ff6354ce "Test Sans" with two variants, 0021a99d "Uncoded Mono" with one).
 wait 8
 assert inbrowser 1
 assert btab 0

@@ -747,7 +747,7 @@ static void DoAssert(char **t, int n)
         RecountSel();
         ok = gi >= 0 && gi < selN && sel[gi] == (n < 4 || atoi(t[3]) != 0);
     } else if (!strcmp(k, "ctext")) {
-        /* assert ctext KEY text...   (the text of the typeface variant; KEY is FAMILY, STYLE, ...; "-" = not stated) */
+        /* assert ctext KEY text...   (the text of the typeface variant; KEY is NAME, STYLE, ...; "-" = not stated) */
         PxtfVariant *cv = hasCont ? pxtf_find_variant(&cont, contVariant) : NULL;
         char want[300] = "";
         for (int i = 3; i < n; i++) { if (i > 3) strcat(want, " "); strncat(want, t[i], 200); }
@@ -755,6 +755,13 @@ static void DoAssert(char **t, int n)
         for (int q = 0; cv && q < PXTF_TEXT_COUNT; q++) if (!strcmp(pxtf_text_key((PxtfText)q), t[2])) have = cv->text[q] ? cv->text[q] : "-";
         ok = have && !strcmp(have, want);
         if (!ok) PlayLog("  actual text '%s'", have ? have : "(none)");
+    } else if (!strcmp(k, "tfname")) {
+        /* assert tfname text...   (the NAME top line of the open document's typeface; "-" = none) */
+        char want[300] = "";
+        for (int i = 2; i < n; i++) { if (i > 2) strcat(want, " "); strncat(want, t[i], 200); }
+        const char *have = hasCont ? (cont.name ? cont.name : "-") : NULL;
+        ok = have && !strcmp(have, want);
+        if (!ok) PlayLog("  actual name '%s'", have ? have : "(no typeface)");
     } else if (!strcmp(k, "navseg")) {
         /* assert navseg <0|1|2> <text>: the full text of a segment of the navigation bar */
         char want[300] = "";

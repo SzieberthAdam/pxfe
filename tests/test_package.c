@@ -30,8 +30,8 @@ static int g_pass = 0, g_fail = 0, g_skip = 0;
 #define H_NOASC "4fba4190f6ba7e10b296c7070234e1ce"     /* test-sans-italic */
 #define H_GREY "894ef821e147533c34b39e2131016133"      /* a colour font of no typeface */
 #define H_UNC "54caf68fe9ec18634701a55bfc87b5c0"
-#define T_SANS "8e8c94921267d3c2c72ec93d3b0cf63d"      /* test sans: H_EXAMPLE and H_NOASC */
-#define T_UNC "b7ed69ab357b00edcb64d1160fbf71b4"
+#define T_SANS "ff6354ce745de4d0170855e161a491be"      /* test sans: H_EXAMPLE and H_NOASC */
+#define T_UNC "0021a99dbbf1ae9dc9c27c685f581c17"
 
 static const char *const TABLES[] = {"glyph", "pxfm", "palette", "pxfm_glyph", "pxfm_kerning", "pxtf", "pxtf_variant", "pxtf_field"};
 
@@ -277,7 +277,7 @@ static void find_reference(void) {
 }
 
 /* runs tests/pkg_reference.py; the first line of its output names the deflate */
-static bool run_reference(const char *root, const char *out, bool withDll, char *deflateLine, size_t cap) {
+static bool run_reference(const char *root, const char *out, bool withDll, char *deflateLine, size_t cap, bool *oldPxtf) {
     char cmd[1600], log[500];
     snprintf(log, sizeof log, "%s/reference.log", out);
     px_mkdir_p(out);
@@ -287,6 +287,7 @@ static bool run_reference(const char *root, const char *out, bool withDll, char 
     size_t n;
     char *t = px_read_file(log, &n);
     deflateLine[0] = 0;
+    *oldPxtf = t && strstr(t, "top line 'NAME");   /* a reader of pxtf version 1 refuses the NAME top line of version 2 */
     if (t) { snprintf(deflateLine, cap, "%.*s", (int)strcspn(t, "\r\n"), t); free(t); }
     return rc == 0;
 }
@@ -402,7 +403,9 @@ static void test_library(const char *name) {
             if (mode == 0 && !g_dll[0]) { SKIP("byte identity with the reference under zlib: no zlib DLL (PXFE_ZLIB_DLL)"); continue; }
             char ref[300], line[200];
             snprintf(ref, sizeof ref, "%s/reference-%s", dir, mode == 0 ? "zlib" : "python");
-            bool ran = run_reference(folder, ref, mode == 0, line, sizeof line);
+            bool oldPxtf = false;
+            bool ran = run_reference(folder, ref, mode == 0, line, sizeof line, &oldPxtf);
+            if (!ran && oldPxtf) { SKIP("byte identity with the reference: its pixelglyphlib reads pxtf version 1 only"); continue; }
             snprintf(label, sizeof label, "%s: the reference wrote its packages (%s)", name, line);
             CHECK(ran, label);
             if (!ran) continue;

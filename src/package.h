@@ -48,10 +48,10 @@ unsigned char *pkg_font_bytes(StoreConn *c, const char *pxfmHash, size_t *len, c
 unsigned char *pkg_typeface_bytes(StoreConn *c, const char *pxtfHash, size_t *len, char err[PX_ERR_LEN]);
 
 /* The recommended file name, without a folder:
- *   font:     `<family>-<style>.pxfp` of the first typeface variant that names the font (pxtf hashes ascending, then variant
+ *   font:     `<typeface name>-<style>.pxfp` of the first typeface variant that names the font (pxtf hashes ascending, then variant
  *             numbers), each part the slug of the value (lower case, every run of characters other than a-z 0-9 one hyphen,
  *             none at the ends; an empty part is left out with its hyphen), else `<pxfm hash>.pxfp`;
- *   typeface: `<family>.pxtp`, the FAMILY of its lowest variant, else `typeface.pxtp`.
+ *   typeface: `<typeface name>.pxtp`, its NAME top line, else `typeface.pxtp`.
  * The rule for a name taken in the folder (`-<first 8 hex digits>` before the extension) needs the folder: pkg_export_*. */
 void pkg_default_name_font(StoreConn *c, const char *pxfmHash, char *out, size_t cap);
 void pkg_default_name_typeface(StoreConn *c, const char *pxtfHash, char *out, size_t cap);

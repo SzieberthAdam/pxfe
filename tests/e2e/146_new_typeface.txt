@@ -1,5 +1,5 @@
 # 146. New Typeface (the "+" after the boxes) and Add Font (the library view).
-# The "+" makes a typeface with no variant (FORMAT PXFE, TYPE pxfe), unlocked, its header selected and its Typeface tab showing; its box has the header only.
+# The "+" makes a typeface with no variant (a NAME line alone: New Typeface), unlocked, its header selected and its Typeface tab showing; its box has the header only.
 # Add Font lists the fonts of the library; the chosen one becomes variant 0001 and stays in its other typeface too.
 # A locked typeface has Add Font off.
 wait 10

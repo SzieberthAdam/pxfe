@@ -26,8 +26,8 @@ static int g_pass = 0, g_fail = 0;
 #define P_GREY "ebbba94934da6897d86c5e8ea2ac5409"
 #define H_NOASC "4fba4190f6ba7e10b296c7070234e1ce"
 #define H_UNC "54caf68fe9ec18634701a55bfc87b5c0"
-#define T_SANS "8e8c94921267d3c2c72ec93d3b0cf63d"
-#define T_UNC "b7ed69ab357b00edcb64d1160fbf71b4"
+#define T_SANS "ff6354ce745de4d0170855e161a491be"
+#define T_UNC "0021a99dbbf1ae9dc9c27c685f581c17"
 #define G_A "c0fc54c2ec60cb8617b041d991da1622"
 #define G_H "abe675527c81c31d04cda5e2aed7623a"
 
@@ -248,8 +248,8 @@ static void test_model(void) {
     CHECK(store_list_fonts(c, &fl, err) && fl.count == 4, "font list: 4 fonts");
     int iu = -1, ig = -1;
     for (int i = 0; i < fl.count; i++) { if (strcmp(fl.e[i].pxfm, H_UNC) == 0) iu = i; if (strcmp(fl.e[i].pxfm, H_GREY) == 0) ig = i; }
-    CHECK(iu >= 0 && ig >= 0 && strcmp(fl.e[iu].family, "Uncoded Mono") == 0 && fl.e[iu].glyphCount == 5 && fl.e[iu].hasDefault && fl.e[iu].monospaced && fl.e[iu].hasRatio && fl.e[iu].hasHeight && fl.e[iu].height == 8, "font entry facts");
-    CHECK(fl.e[ig].pxtf[0] == 0 && fl.e[ig].family[0] == 0 && fl.e[ig].nVariants == 0, "a font no typeface names has no metadata");
+    CHECK(iu >= 0 && ig >= 0 && strcmp(fl.e[iu].typefaceName, "Uncoded Mono") == 0 && fl.e[iu].glyphCount == 5 && fl.e[iu].hasDefault && fl.e[iu].monospaced && fl.e[iu].hasRatio && fl.e[iu].hasHeight && fl.e[iu].height == 8, "font entry facts");
+    CHECK(fl.e[ig].pxtf[0] == 0 && fl.e[ig].typefaceName[0] == 0 && fl.e[ig].nVariants == 0, "a font no typeface names has no metadata");
     store_entry_list_free(&tl);
     store_entry_list_free(&fl);
     store_conn_close(c);
@@ -543,14 +543,14 @@ static void test_save(void) {
         cc = store_conn_open(s);
         CHECK(store_load_typeface(cc, e2.pxtf, &c2, err), "edit: load the typeface");
         store_conn_close(cc);
-        pxtf_set_text(pxtf_find_variant(&c2, 1), PXTF_FAMILY, "Edited Sans");
+        pxtf_set_name(&c2, "Edited Sans");
         StoreEditResult e3;
         CHECK(store_edit_in_place(s, e2.pxfm, NULL, e2.pxtf, &c2, &e3, err) && strcmp(e3.pxfm, e2.pxfm) == 0 && strcmp(e3.pxtf, e2.pxtf) != 0 && count_rows(s, "pxtf") == t0 && store_has_pxfm(store_main_conn(s), e2.pxfm), "edit: a typeface field edit: a new typeface hash, the font stays");
         /* two typefaces name the font: both follow */
         PxtfTypeface c3;
         pxtf_init(&c3);
         CHECK(pxtf_copy(&c3, &c2), "edit: copy the typeface");
-        pxtf_set_text(pxtf_find_variant(&c3, 1), PXTF_FAMILY, "Twin Sans");
+        pxtf_set_name(&c3, "Twin Sans");
         StoreSaveResult dummy;
         PxFont fe;
         px_font_init(&fe);
@@ -637,13 +637,16 @@ static void test_editor_typeface(void) {
     CHECK(store_open_pxfdb(DB, NULL, &s, err), "editor tf: load");
     if (!s) return;
     char h[33];
-    CHECK(store_new_typeface(s, h, err) && count_rows(s, "pxtf") == 3 && store_modified(s), "editor tf: a new typeface with no variant");
+    CHECK(store_new_typeface(s, "Editor Face", h, err) && count_rows(s, "pxtf") == 3 && store_modified(s), "editor tf: a new typeface with no variant");
+    char h2[33];
+    CHECK(!store_new_typeface(s, "Editor Face", h2, err) && strstr(err, "already") && count_rows(s, "pxtf") == 3, "editor tf: a second empty one of the same name is refused");
+    CHECK(!store_new_typeface(s, "", h2, err) && count_rows(s, "pxtf") == 3, "editor tf: an empty typeface needs a name");
     StoreConn *c = store_conn_open(s);
     StoreEntryList l;
     int found = -1;
     if (store_list_typefaces(c, &l, err)) {
         for (int i = 0; i < l.count; i++) if (strcmp(l.e[i].pxtf, h) == 0) found = i;
-        CHECK(found >= 0 && l.e[found].variant == 0 && l.e[found].pxfm[0] == 0 && strcmp(l.e[found].format, "PXFE") == 0 && l.count == 4, "editor tf: listed as one entry of variant 0, no font");
+        CHECK(found >= 0 && l.e[found].variant == 0 && l.e[found].pxfm[0] == 0 && strcmp(l.e[found].typefaceName, "Editor Face") == 0 && l.count == 4, "editor tf: listed as one entry of variant 0, no font, with its name");
         bool sorted = true;
         for (int i = 1; i < l.count; i++) if (strcmp(l.e[i - 1].pxtf, l.e[i].pxtf) > 0) sorted = false;
         CHECK(sorted, "editor tf: the list stays in pxtf order");
@@ -655,27 +658,25 @@ static void test_editor_typeface(void) {
     size_t n;
     char back[33];
     char *txt = store_pxtf_text(c, h, &n, back);
-    CHECK(txt && strncmp(txt, "FORMAT\tPXFE\nHASH\t", 17) == 0 && strstr(txt, "\nTYPE\tpxfe\n") && strcmp(back, h) == 0, "editor tf: its text has FORMAT PXFE and TYPE pxfe at the top and hashes to its key");
+    CHECK(txt && strcmp(txt, "NAME\tEditor Face\n") == 0 && strcmp(back, h) == 0, "editor tf: its text is the NAME line alone and hashes to its key");
     free(txt);
     store_conn_close(c);
     /* Add Font: a font of another typeface becomes variant 0001 */
     PxtfVariant *v = pxtf_add_variant(&t);
     memcpy(v->pxfm, H_EXAMPLE, 33);
-    v->format = _strdup("PXFE");
-    v->type = _strdup("pxfe");
+    pxtf_set_editor_source(v);
     pxtf_set_text(v, PXTF_STYLE, "Regular");
     StoreEditResult er;
     CHECK(store_edit_in_place(s, H_EXAMPLE, NULL, h, &t, &er, err) && strcmp(er.pxtf, h) != 0 && count_rows(s, "pxtf") == 3 && count_rows(s, "pxfm") == 4, "editor tf: a font added (the typeface gets a new hash; the font stays where it was)");
     pxtf_free(&t);
-    /* and a PXFE variant in a FON-less typeface of another FORMAT: per-variant FORMAT and TYPE lines */
+    /* and a PXFE variant in a typeface of another SOURCE-FORMAT */
     c = store_conn_open(s);
     pxtf_init(&t);
     CHECK(store_load_typeface(c, T_UNC, &t, err), "editor tf: load Uncoded Mono");
     store_conn_close(c);
     v = pxtf_add_variant(&t);
     memcpy(v->pxfm, H_NOASC, 33);
-    v->format = _strdup("PXFE");
-    v->type = _strdup("pxfe");
+    pxtf_set_editor_source(v);
     CHECK(store_edit_in_place(s, H_NOASC, NULL, T_UNC, &t, &er, err), "editor tf: a PXFE variant added to a RAW typeface");
     pxtf_free(&t);
     rm_rf(TMP "/ex_ed");
@@ -693,7 +694,7 @@ static void test_editor_typeface(void) {
     store_close(s);
     /* an empty typeface alone: exported and imported */
     s = NULL;
-    CHECK(store_open_pxfdb(DB, NULL, &s, err) && store_new_typeface(s, h, err), "editor tf: a second, empty one");
+    CHECK(store_open_pxfdb(DB, NULL, &s, err) && store_new_typeface(s, "Editor Face", h, err), "editor tf: a second, empty one");
     rm_rf(TMP "/ex_ed2");
     CHECK(store_export_folder(s, TMP "/ex_ed2", STORE_EXPORT_APPEND, NULL, &res, err) && res.written.typefaces == 3, "editor tf: the empty one exported");
     b2 = NULL;
@@ -776,9 +777,7 @@ static void test_deletions(void) {
         StoreConn *c = store_conn_open(s);
         CHECK(store_load_typeface(c, T_UNC, &t2, err), "del 3: load Uncoded Mono");
         store_conn_close(c);
-        free(t2.v[0].text[PXTF_FAMILY]);
-        t2.v[0].text[PXTF_FAMILY] = (char *)malloc(8);
-        strcpy(t2.v[0].text[PXTF_FAMILY], "Twin");
+        pxtf_set_name(&t2, "Twin");
         PxFont fu;
         px_font_init(&fu);
         c = store_conn_open(s);
@@ -820,7 +819,7 @@ static void test_deletions(void) {
         StoreExportResult er;
         rm_rf(TMP "/del_root");
         CHECK(store_export_folder(s2, TMP "/del_root", STORE_EXPORT_APPEND, NULL, &er, err) && er.written.fonts == 3 && er.written.typefaces == 1, "del 4: Export writes only what is left");
-        CHECK(!px_file_exists(TMP "/del_root/pxfm/54/" H_UNC ".pxfm") && !px_file_exists(TMP "/del_root/pxtf/b7/" T_UNC ".pxtf"), "del 4: the deleted font and typeface have no file");
+        CHECK(!px_file_exists(TMP "/del_root/pxfm/54/" H_UNC ".pxfm") && !px_file_exists(TMP "/del_root/pxtf/00/" T_UNC ".pxtf"), "del 4: the deleted font and typeface have no file");
         store_close(s2);
     }
 }
@@ -1118,13 +1117,23 @@ static void test_palettes(void) {
     sqlite3 *odb;
     if (sqlite3_open(TMP "/old.pxfdb", &odb) == SQLITE_OK) {
         sqlite3_exec(odb, "CREATE TABLE meta (key TEXT PRIMARY KEY, value TEXT NOT NULL) WITHOUT ROWID;"
-                          "INSERT INTO meta VALUES ('format', 'PXFDB'), ('format_version', '1');"
+                          "INSERT INTO meta VALUES ('format', 'PXFDB'), ('format_version', '2');"
                           "CREATE TABLE pxfm (hash BLOB PRIMARY KEY, monospaced INTEGER) WITHOUT ROWID;"
                           "CREATE TABLE pxfm_color (pxfm BLOB, pixel TEXT, color INTEGER, PRIMARY KEY (pxfm, pixel)) WITHOUT ROWID;", NULL, NULL, NULL);
         sqlite3_close(odb);
     }
     s = NULL;
     CHECK(!store_open_pxfdb(TMP "/old.pxfdb", NULL, &s, err) && strstr(err, "older pixelglyphlib") && strstr(err, "rebuild"), "a pxfdb made before hex palettes: refused, rebuild it");
+    printf("      error was: %s\n", err);
+    /* a pxfdb of format version 1 (pxtf version 1) is refused: import the folder again */
+    DeleteFileA(TMP "/v1.pxfdb");
+    if (sqlite3_open(TMP "/v1.pxfdb", &odb) == SQLITE_OK) {
+        sqlite3_exec(odb, "CREATE TABLE meta (key TEXT PRIMARY KEY, value TEXT NOT NULL) WITHOUT ROWID;"
+                          "INSERT INTO meta VALUES ('format', 'PXFDB'), ('format_version', '1');", NULL, NULL, NULL);
+        sqlite3_close(odb);
+    }
+    s = NULL;
+    CHECK(!store_open_pxfdb(TMP "/v1.pxfdb", NULL, &s, err) && strstr(err, "again"), "a pxfdb of format version 1: refused, import the folder again");
     printf("      error was: %s\n", err);
 }
 

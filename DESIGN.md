@@ -305,14 +305,18 @@ This file and `HANDOFF.md` follow the author's Markdown protocol: a heading has 
 - Files are named by their hashes; storage is content-addressed, so an edit changes the hash of what it touches, and a glyph's pxgl is never changed in place.
 - A font is modified exactly when the canonical hash of its current state differs from the hash the store holds, so an undone edit leaves it unmodified.
 - Reader and writer round-trip: every pxfm, pxtf, pxgl and palette, read and written unchanged, gives the bytes and hash of its name; the text writer and the converter from rows agree byte for byte.
-- A short hash (8 digits) is shown where space is tight, the full hash in the panels' info blocks; every label names its owner: "Font 3b52125b", "Typeface 8e8c9492", "Glyph c0fc54c2".
+- A short hash (8 digits) is shown where space is tight, the full hash in the panels' info blocks; every label names its owner: "Font 3b52125b", "Typeface ff6354ce", "Glyph c0fc54c2".
 
 ### Typefaces
 
-- A pxtf (`pxtf/xx/<hash>.pxtf`) is the fonts of one source file, as variants with text fields (family, style, full name, weight name, slant, copyright, designer, licence…) and the italic, underlined and struck-out flags; `CODEPAGE` is a text key.
+- A pxtf (`pxtf/xx/<hash>.pxtf`, version 2) is a typeface: an optional `NAME` top line (its name; `PxtfTypeface.name`) and its variants.
+  Each variant has `PXFM`, `SOURCE-FORMAT`, `SOURCE-HASH` and `SOURCE-TYPE` (`PxtfVariant.format`, `.source`, `.type`), text fields (style, `NAME` the font's name, weight name, slant, copyright, designer, licence…) and the italic, underlined and struck-out flags; `CODEPAGE` is a text key.
+- In the code the names follow the keys: `PXTF_NAME` is the variant's `NAME`; a library entry has `typefaceName` (the typeface's `NAME`) and `fontName` (the variant's).
+- The UI shows no source format, neither at a typeface nor on a font card.
 - A font that no typeface names is "Orphaned".
-- A typeface made in pxfe (New Typeface, Add Font) follows the spec's "A typeface made in an editor": `FORMAT PXFE`, `TYPE pxfe` (`PXTF_EDITOR_FORMAT`, `PXTF_EDITOR_TYPE`) and a random `HASH`; it may have no variant, and then the two are top lines.
-  The store has no `pxtf_variant` row for it; `store_list_typefaces` lists it as one entry of variant 0 and pxfm "", and `store_pxtf_text` and `pxtf_text` write the two top lines.
+- A typeface with no variant must have a `NAME`; New Typeface makes one ("New Typeface", "New Typeface 2"…, since two of one name would be one file).
+  The store has no `pxtf_variant` row for it; `store_list_typefaces` lists it as one entry of variant 0 and pxfm "", and its text is the `NAME` line alone.
+- A font made in pxfe follows the spec's "A font made in an editor": `SOURCE-FORMAT PXFE`, `SOURCE-TYPE pxfe` (`PXTF_EDITOR_FORMAT`, `PXTF_EDITOR_TYPE`), a random `SOURCE-HASH` (`pxtf_set_editor_source`), no reading options.
 
 ### Drafts
 
@@ -328,7 +332,8 @@ A draft of version 2 or 3 (the codes of pxfm version 2) is refused with a messag
 - A colour font's pxfm has `COLORS n` (n ≥ 2) and the palette's hash as a fifth field on every glyph line with a glyph file; a font of one colour has neither.
   `COLORS` is the number of distinct colours over the first k lines of each glyph's palette, k being the colours the glyph uses.
 - A `COLOR` line is refused: "a COLOR line: the colours of a pxfm file before hex palettes (the file was made by an older pixelglyphlib)".
-- The pxfdb (format_version 1) has the table `palette` (`hash`, `colors`, `colorset`) with the index `palette_by_colorset`, and the columns `pxfm.symbolic`, `pxfm.colors` (NULL for one colour) and `pxfm_glyph.palette`; the schema in `src/store.c` is copied verbatim from `pxfdb.md`.
+- The pxfdb (format_version 2) has the tables `pxtf` (`hash`, `name`) and `pxtf_variant` (with `source`, `format`, `type`); a version 1 database is refused ("import the library folder again").
+  It has the table `palette` (`hash`, `colors`, `colorset`) with the index `palette_by_colorset`, and the columns `pxfm.symbolic`, `pxfm.colors` (NULL for one colour) and `pxfm_glyph.palette`; the schema in `src/store.c` is copied verbatim from `pxfdb.md`.
 
 ### In memory: shared palettes
 
@@ -385,7 +390,7 @@ The text folders (`pxtf/`, `pxfm/`, `pxgl/`, `palette/`) are reached only throug
 
 ### Load, Save, Save As
 
-- Load (`Ctrl+O`) asks for a `*.pxfdb`, checks `meta` (`PXFDB`, version 1) and copies it into memory (`sqlite3_backup`); with unsaved changes it asks first: Save, Discard or Cancel.
+- Load (`Ctrl+O`) asks for a `*.pxfdb`, checks `meta` (`PXFDB`, version 2) and copies it into memory (`sqlite3_backup`); with unsaved changes it asks first: Save, Discard or Cancel.
 - Edits of the open font are committed into the store in place (see "Locks") when its view is left, before Save, Export and Load, and at quit.
 - The title bar and status bar show the file and whether memory has unsaved changes: "pixelglyphlib.pxfdb — modified".
 - Save (`Ctrl+S`) does `VACUUM INTO` a temporary file next to the database, which then replaces it, so a failure never leaves a broken file; it also writes the settings sidecar.
@@ -414,7 +419,7 @@ Both are plain zip files of library files named by their hashes: the pxfm or pxt
 
 - Writing takes the text of every file from the rows, as Export does, and gives the bytes pixelglyphlib's `package export` gives: entries in byte order of their names, deflate at level 9, 1980-01-01 00:00:00, Unix mode 0644, no extra field, no comment.
 - The deflate is zlib's own, vendored unchanged in `vendor/zlib/` (zlib 1.4, zlib licence), since another deflate (zlib-ng, sdefl) gives other bytes.
-- The recommended file name is `<family>-<style>.pxfp` after the first typeface variant that names the font (else `<hash>.pxfp`) and `<family>.pxtp` (else `typeface.pxtp`); a name taken in the folder by other bytes gets `-<first 8 hex digits of the hash>`.
+- The recommended file name is `<typeface name>-<style>.pxfp` after the first typeface variant that names the font (else `<hash>.pxfp`) and `<typeface name>.pxtp` (else `typeface.pxtp`); a name taken in the folder by other bytes gets `-<first 8 hex digits of the hash>`.
 - Reading decides the kind by the file at the root, never by the file name or extension, and checks the whole package before anything is used: the zip itself, the shape of the kind, every name against the hash of the canonical form of its content, that the files name each other exactly, and every file with the strict readers of Import.
 - Each file is kept in its canonical form: a package whose files have CR LF line ends or trailing blanks reads as the same files.
 - Importing adds the files to memory, all or nothing: a file memory has already with the same text is skipped; one memory has under the same hash with another text stops the import, and nothing is added.
@@ -427,7 +432,7 @@ Both are plain zip files of library files named by their hashes: the pxfm or pxt
 - A deleted font's typefaces lose that variant and are rewritten under new hashes; a typeface left with no variant goes.
 - Deleting a typeface deletes its pxtf and every font of it that no other typeface names.
 - Glyphs and palettes that the deletion leaves unnamed go too; earlier orphans are left alone.
-- The confirmation names exactly what goes: "Delete 1 font, 1 typeface (Typeface 8e8c9492 loses variant 0002 and is rewritten), 14 glyphs, 2 palettes?".
+- The confirmation names exactly what goes: "Delete 1 font, 1 typeface (Typeface ff6354ce loses variant 0002 and is rewritten), 14 glyphs, 2 palettes?".
 - A deletion is made in memory; Save writes it.
 
 ### New Font
@@ -533,13 +538,13 @@ The library views are Typefaces, Typeface and Fonts (`src/browser.c`).
 
 ### Lists
 
-- Typefaces: one box per typeface: the family in the header's first row, format, variant count and the typeface hash (small) in its second, and one row per variant: the style in its first row, size, glyphs and flags in its second with the font hash (small) at the right, and the sample.
+- Typefaces: one box per typeface: its name in the header's first row, the variant count and the typeface hash (small) in its second, and one row per variant: the style in its first row, size, glyphs and flags in its second with the font hash (small) at the right, and the sample.
   Every font hash of a card or row is in the details line (size and glyphs), small, at the right, with the unlock mark beside it, as the typeface hash in a box header; the hashes stand on the baseline of the text beside them.
   Filters work on variants: a box shows when any variant matches, with only the matching variants.
   A variant row selects that font, the header the typeface.
   A typeface with no variant is a box with its header only ("0 variants"); its header is selected and it cannot be opened.
   After the boxes, a square "+" as tall as such a box makes a new, empty typeface (see "New Typeface and Add Font").
-- Fonts: one card per font: family and style (or the hash) in the first row, details (format, size `ASCENT + DESCENT`, glyph count, Mono, Symbolic, ratio) and the font hash in the second, and the sample, pixel perfect.
+- Fonts: one card per font: typeface name and style (or the hash) in the first row, details (size `ASCENT + DESCENT`, glyph count, Mono, Symbolic, ratio) and the font hash in the second, and the sample, pixel perfect.
 - The lists are virtualized; fonts load lazily on worker threads (the pxfm and the glyphs of the sample's characters, cached, reloaded when the sample changes); a 1,200-font library shows its cards within a second.
 - A press selects; a press on the entry that is selected already, or Enter, opens it.
   There is no context menu.
@@ -549,7 +554,7 @@ The library views are Typefaces, Typeface and Fonts (`src/browser.c`).
 ### The side panel
 
 - The View area (see "View area"), then the tabs **Typeface | Font | Similar** in the Typefaces and Typeface views, **Font | Similar** in the Fonts view.
-- View, with no captions of its own: the name filter (substring over family, full name, style, designer, hash; `Ctrl+F` focuses it), the Style dropdown built from the values present, the switches Monospaced and Colours side by side; Zoom, Columns (a stepper, 1 to 16, showing the count Auto gives while Auto is on; Auto at the right) and Sort by (Name, Size, Glyphs, beside its label); then the sample field, as tall as its lines (up to 12, then it scrolls), and the presets (see "Samples").
+- View, with no captions of its own: the name filter (substring over typeface name, font name, style, designer, hash; `Ctrl+F` focuses it), the Style dropdown built from the values present, the switches Monospaced and Colours side by side; Zoom, Columns (a stepper, 1 to 16, showing the count Auto gives while Auto is on; Auto at the right) and Sort by (Name, Size, Glyphs, beside its label); then the sample field, as tall as its lines (up to 12, then it scrolls), and the presets (see "Samples").
   In the Typeface view only the sample and the zoom.
   The counts are in the status line; the library is rescanned after a commit, a deletion or a load.
 - Typeface and Font: see "The Typeface and Font tabs".
@@ -566,20 +571,21 @@ The library views are Typefaces, Typeface and Fonts (`src/browser.c`).
 
 ### The Typeface view
 
-- One large card per font: the style, then the details (format, size, glyph count, mono, italic and so on) with "Font xxxxxxxx" at the right, and the shared multi-line sample at 2x or more.
-- The heading carries the family and "Typeface xxxxxxxx".
+- One large card per font: the style, then the details (size, glyph count, mono, italic and so on) with "Font xxxxxxxx" at the right, and the shared multi-line sample at 2x or more.
+- The heading carries the typeface's name and "Typeface xxxxxxxx"; the subtitle is the font count.
 - `Enter` and a press on the selected card open its font, `Del` deletes it.
-- After a deletion the view follows the rewritten typeface by family name, and returns to the list when it is gone.
+- After a deletion the view follows the rewritten typeface by its name, and returns to the list when it is gone.
 
 ### The Typeface and Font tabs
 
 `DrawInfoTab` (`src/panel.inc`) draws both, for the library views (through `Browser_SetInfoTab`) and for the font view's Font tab.
 
 - The padlock and "Locked" or "Unlocked: edits change it in place".
-- Typeface: META (the variant count and format at the right): the typeface-wide fields (family, version, designer, URLs, copyright, trademark, licence, vendor, description, code page); an edit sets the field in every variant.
-  A typeface with no variant has no META.
+- Typeface: META (the variant count at the right): first Name (`@c.typeface`, the `NAME` top line), then the typeface-wide fields of the variants (version, designer, URLs, copyright, trademark, licence, vendor, description, code page); an edit of those sets the field in every variant.
+  Name edits the open document's typeface (committed with the font); for another unlocked typeface of the library (an empty one, say) `LC_RENAME` (`RenameTypeface`) rewrites it at once under a new hash with `store_edit_in_place`.
+  A typeface with no variant has the Name only.
   Then ACTIONS: the boxed hash (the current one and the stored one while they differ, each with a small label), Add Font… (off while locked), and Export Typeface… and Delete Typeface.
-- Font: the boxed hash; Clone Font, Export Font… and Delete Font; then FONT (its variant number at the right): style, full name, weight name, slant and the italic, underlined and struck-out switches of its variant.
+- Font: the boxed hash; Clone Font, Export Font… and Delete Font; then FONT (its variant number at the right): style, name, weight name, slant and the italic, underlined and struck-out switches of its variant.
 - The commands are queued (`LibCmd`) and run at the end of the frame (`RunLibCommand`), because they may replace the document or rescan the library.
 - Read-only fields can be selected and copied; they are editable only for the open document's font and typeface while unlocked (Enter or a click elsewhere keeps, Escape reverts); the first navigation segment shows "*" while it differs from the database.
 - Leaving the view, opening a font, Save, Export, Load and quit commit the edit in place; it has no undo.
@@ -595,7 +601,7 @@ The library views are Typefaces, Typeface and Fonts (`src/browser.c`).
 - The "+" after the boxes returns `BROWSER_NEW_TYPEFACE`; `NewTypeface` (panel.inc) makes it with `store_new_typeface`, unlocks it, rescans, and selects its header with the Typeface tab showing (`Browser_SelectTypeface`).
 - Add Font… opens a dialog (`af`, `DrawAddFontDialog`): the fonts of the library with a name or hash filter, by name; a click selects, a double click, Enter or Add adds, Escape cancels.
 - `AddFontToTypeface`: the font becomes a new variant under the next number (`pxtf_add_variant`), and stays in its other typefaces.
-  The variant has `FORMAT PXFE`, `TYPE pxfe`, no reading options, the typeface-wide fields of the typeface's first variant (of the font's old variant when the typeface has none), and the style, names, slant and flags of the font's old variant (the first that names it; `STYLE Regular` when there is none).
+  The variant keeps the source lines and reading options of the font's old variant (spec: "a variant copied from another typeface keeps its source lines"), or, with none, gets the editor's (`pxtf_set_editor_source`); a typeface with no name takes the old typeface's; it has the typeface-wide fields of the typeface's first variant (of the font's old variant when the typeface has none), and the style, names, slant and flags of the font's old variant (the first that names it; `STYLE Regular` when there is none).
 - The typeface must be unlocked; it is rewritten under a new hash with `store_edit_in_place`, as Clone Font does.
 
 ### Similar fonts and typefaces
@@ -650,7 +656,7 @@ The Baseline row (under Descent) has up and down buttons (`@Baseline_up`, `@Base
 
 - With one glyph selected (font view, glyph view, Glyphs view): the bitmap in the selected glyph's colours, the pxgl hash, the size, and "In N fonts · M typeface variants": the fonts that hold the bitmap under any code, and the typeface variants that name them, which can be more than the fonts.
 - With a code point a second line, "K use it for U+0065", counts the fonts that draw the bitmap for that code; it is the number the Glyphs view shows under the bitmap.
-- One row per font and variant (family and style, font hash) with every code the font uses the bitmap for.
+- One row per font and variant (typeface name and style, font hash) with every code the font uses the bitmap for.
 - With several glyphs: the fonts that hold all of them.
 - A click opens that font with that glyph selected.
 
@@ -1016,14 +1022,14 @@ A size set by hand (in the dialog, or "Optimize for This Size") gets its positio
 
 ### The dialog
 
-- Family and Style (editable), the face of a collection or the strike of a bitmap font.
+- Typeface and Style (editable), the face of a collection or the strike of a bitmap font.
 - "This is a pixel font": on when a sure grid was found; it cannot be switched on without a grid; always on for a bitmap font.
 - What the search found, and a preview drawn as the import will draw.
 - For a smooth font, the size in half pixels and "Best Size".
 - "Make a typeface with these names".
 
-Import makes a new document not yet in the store: the font, the typeface (one variant with the file's family, style, full name, version, copyright, designer, licence…; HASH is the hash of the file) and the font layer.
-A typeface the strict reader would refuse is cut to family and style, or left out.
+Import makes a new document not yet in the store: the font, the typeface (its `NAME` the file's family; one variant with the style, name, version, copyright, designer, licence…; `SOURCE-HASH` is the hash of the file) and the font layer.
+A typeface the strict reader would refuse is cut to its name and the style, or left out.
 It is committed like any document, and Save writes the layer under the committed font's hash.
 
 ## Importing a picture of a font
@@ -1074,7 +1080,7 @@ On the 49 test pictures the layout is found for all, and 97.4 % of the 3843 know
 
 ### The dialog
 
-Family and Style, the layout (Auto, Grid, Rows, Marker row, with what was found), the grid's cell, the scale, the copy of a multi-copy sheet, the first character, "One colour", the findings in words, and a preview of every glyph in its colours over its character (amber when the match is weak); every change runs the analysis again.
+Typeface and Style, the layout (Auto, Grid, Rows, Marker row, with what was found), the grid's cell, the scale, the copy of a multi-copy sheet, the first character, "One colour", the findings in words, and a preview of every glyph in its colours over its character (amber when the match is weak); every change runs the analysis again.
 
 ## Input rules
 

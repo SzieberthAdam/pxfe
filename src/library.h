@@ -54,7 +54,7 @@ typedef struct LibEntry {
     const PxtfTypeface *typeface;     /* DRAFT only: its typeface (owned by the Library), else NULL */
     const PxtfVariant *tvariant;      /* DRAFT only: the variant, else NULL */
     /* metadata, never NULL ("" when not stated): pointers valid until library_free */
-    const char *family, *style, *fullname, *designer, *format;
+    const char *typefaceName, *style, *fontName, *designer, *format;
     bool italic, struckout, underlined;
     bool fontPresent;          /* the pxfm exists in the store */
     char *path;                /* DRAFT: the .pxfd path, malloc'd; otherwise NULL */
@@ -83,7 +83,7 @@ void library_free(Library *lib);
 
 /* Index of the first entry of the given kind with this pxfm hash (FONT or TYPEFACE), or -1. */
 int  library_find_by_pxfm(const Library *lib, LibKind kind, const char *pxfmHash);
-/* "Family Style", else the full name, else the first 8 hash digits (draft: its name) */
+/* "Typeface-name Style", else the font's NAME, else the first 8 hash digits (draft: its name) */
 void library_entry_title(const LibEntry *e, char *buf, size_t size);
 /* Set the info of every entry (TYPEFACE and FONT) with this pxfm hash. */
 void library_apply_info(Library *lib, const char *pxfmHash, const LibInfo *info);

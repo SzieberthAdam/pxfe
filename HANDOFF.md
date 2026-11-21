@@ -50,6 +50,16 @@ The files of `handoff/` are old agent reports, kept for history.
 - `SYMBOLIC`: the Symbolic switch in `src/panel.inc`, the tag in `src/browser.c`, `outline_symbolic` and `BmStrikeInfo.symbolic` set it on import.
 - Tests: `test_pxfont.c`, `104_default_glyph`, `104b_default_reload`, `138_symbolic`.
 
+## Typefaces (pxtf version 2)
+
+- `src/pxtf.c` and `.h` read and write pxtf version 2 (pxfdb spec `pxtf.md`): the `NAME` top line (`PxtfTypeface.name`, `pxtf_set_name`), and in every variant `PXFM`, `SOURCE-FORMAT`, `SOURCE-HASH` and `SOURCE-TYPE` (`format`, `source`, `type`); version 1 top lines and the key `FAMILY` are refused.
+- Code names follow the keys: `PXTF_NAME` (the variant's `NAME`), `LibEntry`/`StoreEntry` `typefaceName` and `fontName`, `Browser.tfName`, `fimp.typefaceName`; the import dialogs label the name "Typeface".
+- A font made in pxfe: `pxtf_set_editor_source` (`SOURCE-FORMAT PXFE`, `SOURCE-TYPE pxfe`, a random `SOURCE-HASH` from `pxtf_random_hash`).
+- The UI shows no source format (cards, box headers, the Typeface view, META).
+- `tests/make_testdata.c` writes the version 2 fixtures; Test Sans is `ff6354ce…`, Uncoded Mono `0021a99d…`.
+- pixelglyphlib is still version 1: `test_package.c` skips its byte-identity check when the reference refuses the `NAME` top line.
+- Tests: `test_pxtf.c`, `test_store.c`, `12_typeface` (`assert tfname`), `146_new_typeface`.
+
 ## Palettes and colours
 
 - `src/pxfont.c`: hex palettes (`px_hex_parse`, `px_hex_text`); the palette table `PxFont.pals` (entry 0 the default black palette), `PxGlyph.pi`, `PxPalette.draw`; copy on write (`px_font_intern_palette`, `px_glyph_add_color`, `px_glyph_set_palette`, `px_glyph_set_colors`); canonical order (`px_glyph_canonicalize`, `px_glyph_used_colors`, `px_glyph_add_slot`, `px_glyph_replace_color`, `px_glyph_trim_palette`); the font's colour list (`px_font_color_list`); `px_font_compact_palettes`.
@@ -62,6 +72,7 @@ The files of `handoff/` are old agent reports, kept for history.
 ## Storage: Load, Save, Import, Export
 
 - `src/store.c`: an in-memory SQLite database that Load fills from a `.pxfdb`; Save writes a temp file with `VACUUM INTO` and replaces the file; a change counter tells whether memory differs from the file; Import and Export work on folders; the `palette` table, `pxfm.symbolic`, `pxfm.colors`, `store_palette_text`.
+- The pxfdb is format version 2 (`pxtf.name`, `pxtf_variant.source`); a version 1 database is refused ("import the library folder again").
 - A pxfdb made before hex palettes is refused on open ("made by an older pixelglyphlib … rebuild it"); in `pixelglyphlib`, `pxfdb.pxfdb` opens and the two `pxfdb-with*-symbols.pxfdb` are refused.
 - New Database (`store_create`, `NewDatabase` in main.c): an empty store with no file (path ""), titled "Untitled"; `SaveDb` turns into Save As for it; script 07f.
 - `src/main.c`: the menu items, the Save button, the title and status bar markers, the Save / Discard / Cancel prompts, the export dialog (Update, Overwrite, backup).
@@ -104,9 +115,9 @@ The files of `handoff/` are old agent reports, kept for history.
 - The Typeface and Font tabs are drawn by main.c through `Browser_SetInfoTab` (`DrawLibraryTab`, `DrawInfoTab`).
   Their commands (lock, Clone Font, Export, Delete) are queued with `LibCmd` and run at the end of the frame (`RunLibCommand`).
 - Clone Font (`CloneFont`, panel.inc; `pxtf_clone_variant`) adds a variant naming the same font, style "<style> copy"; the typeface must be unlocked.
-- New Typeface (the "+" after the boxes, `BROWSER_NEW_TYPEFACE`, `NewTypeface`, `store_new_typeface`) makes a typeface with no variant (FORMAT PXFE, TYPE pxfe, random HASH; spec "A typeface made in an editor"); it is listed as one entry of variant 0 and pxfm "" (`list_empty_typefaces`), drawn as a header-only box.
-- Add Font… (ACTIONS of the Typeface tab, `LC_ADDFONT`, the `af` dialog, `AddFontToTypeface`) adds a font of the library as a new PXFE variant; the font stays in its other typefaces.
-  pixelglyphlib's Python reader (`pxtf.py`) still rejects a pxtf with no variant.
+- New Typeface (the "+" after the boxes, `BROWSER_NEW_TYPEFACE`, `NewTypeface`, `store_new_typeface`) makes a typeface with no variant named "New Typeface" (then "New Typeface 2"…: an empty typeface of a taken name is refused); it is listed as one entry of variant 0 and pxfm "" (`list_empty_typefaces`), drawn as a header-only box.
+- Add Font… (ACTIONS of the Typeface tab, `LC_ADDFONT`, the `af` dialog, `AddFontToTypeface`) adds a font of the library as a new variant with the source lines and reading options of its old variant (the editor's when it has none); the font stays in its other typefaces.
+- META's Name field (`@c.typeface`) edits the open document's typeface, or renames another unlocked one at once (`LC_RENAME`, `RenameTypeface`).
   The two variants share the font until one is edited: `CommitEdits` points only the open variant at the new font and `store_edit_in_place` keeps the old font for the other.
 - The Colours count is of palette entries other than `.`; a font that states no ascent or descent has its info loaded when the list opens or a count is chosen.
 - While a field has the keyboard the browser reads no keys (`extTyping`).

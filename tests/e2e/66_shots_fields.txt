@@ -34,7 +34,7 @@ shot tests/tmp/p2/c3/typeface_tab_readonly.png
 click @Duplicate_Typeface_to_Edit
 wait 80
 shot tests/tmp/p2/c3/typeface_tab_dup.png
-click @c.family
+click @c.typeface
 wait 10
 shot tests/tmp/p2/c3/typeface_tab_field_focused.png
 key escape

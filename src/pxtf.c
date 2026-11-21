@@ -1,4 +1,4 @@
-/* pxtf.c - pixel typeface (pxtf version 1, formerly pxfc) model, reader and writer. See pxtf.h. */
+/* pxtf.c - pixel typeface (pxtf version 2) model, reader and writer. See pxtf.h. */
 #include "pxtf.h"
 
 #include <math.h>
@@ -7,11 +7,14 @@
 #include <stdlib.h>
 #include <string.h>
 
+#define WIN32_LEAN_AND_MEAN
+#include <windows.h>
+
 static const char *const TEXT_KEY[PXTF_TEXT_COUNT] = {
-    "CODEPAGE", "COPYRIGHT", "DESCRIPTION", "DESIGNER", "DESIGNERURL", "FAMILY", "FULLNAME", "LICENSE", "LICENSEURL",
+    "CODEPAGE", "COPYRIGHT", "DESCRIPTION", "DESIGNER", "DESIGNERURL", "LICENSE", "LICENSEURL", "NAME",
     "SLANT", "STYLE", "TRADEMARK", "VENDOR", "VENDORURL", "VERSION", "WEIGHTNAME"};
 static const char *const TEXT_LABEL[PXTF_TEXT_COUNT] = {
-    "Code page", "Copyright", "Description", "Designer", "Designer URL", "Family", "Full name", "License", "License URL",
+    "Code page", "Copyright", "Description", "Designer", "Designer URL", "License", "License URL", "Full name",
     "Slant", "Style", "Trademark", "Vendor", "Vendor URL", "Version", "Weight name"};
 
 const char *pxtf_text_key(PxtfText t) { return (t >= 0 && t < PXTF_TEXT_COUNT) ? TEXT_KEY[t] : ""; }
@@ -48,6 +51,7 @@ static void variant_free(PxtfVariant *v) {
 }
 
 void pxtf_free(PxtfTypeface *c) {
+    free(c->name);
     for (int i = 0; i < c->count; i++) variant_free(&c->v[i]);
     free(c->v);
     memset(c, 0, sizeof *c);
@@ -70,7 +74,7 @@ static bool variant_copy(PxtfVariant *d, const PxtfVariant *s) {
 
 bool pxtf_copy(PxtfTypeface *dst, const PxtfTypeface *src) {
     pxtf_init(dst);
-    memcpy(dst->hash, src->hash, sizeof dst->hash);
+    if (src->name && !(dst->name = dup_str(src->name))) return false;
     if (src->count > 0) {
         dst->v = (PxtfVariant *)calloc((size_t)src->count, sizeof(PxtfVariant));
         if (!dst->v) return false;
@@ -120,6 +124,42 @@ PxtfVariant *pxtf_add_variant(PxtfTypeface *c) {
 PxtfVariant *pxtf_find_variant(PxtfTypeface *c, int number) {
     for (int i = 0; i < c->count; i++) if (c->v[i].number == number) return &c->v[i];
     return NULL;
+}
+
+bool pxtf_set_name(PxtfTypeface *c, const char *utf8) {
+    free(c->name);
+    c->name = NULL;
+    if (utf8 && utf8[0]) {
+        c->name = dup_str(utf8);
+        return c->name != NULL;
+    }
+    return true;
+}
+
+void pxtf_random_hash(char out[33]) {
+    static volatile LONG serial = 0;
+    struct { LARGE_INTEGER qpc; FILETIME ft; DWORD pid, tid; LONG n; void *p; } seed;
+    memset(&seed, 0, sizeof seed);
+    QueryPerformanceCounter(&seed.qpc);
+    GetSystemTimeAsFileTime(&seed.ft);
+    seed.pid = GetCurrentProcessId();
+    seed.tid = GetCurrentThreadId();
+    seed.n = InterlockedIncrement(&serial);
+    seed.p = (void *)&seed;
+    uint8_t d[32];
+    px_sha256(&seed, sizeof seed, d);
+    static const char hx[] = "0123456789abcdef";
+    for (int i = 0; i < 16; i++) { out[2 * i] = hx[d[i] >> 4]; out[2 * i + 1] = hx[d[i] & 15]; }
+    out[32] = 0;
+}
+
+bool pxtf_set_editor_source(PxtfVariant *v) {
+    free(v->format);
+    free(v->type);
+    v->format = dup_str(PXTF_EDITOR_FORMAT);
+    v->type = dup_str(PXTF_EDITOR_TYPE);
+    pxtf_random_hash(v->source);
+    return v->format && v->type;
 }
 
 bool pxtf_set_text(PxtfVariant *v, PxtfText t, const char *utf8) {
@@ -304,7 +344,7 @@ static void lines_free(Lines *L) {
     memset(L, 0, sizeof *L);
 }
 
-static bool variant_lines(const PxtfVariant *v, bool shareFormat, bool shareType, Lines *L) {
+static bool variant_lines(const PxtfVariant *v, Lines *L) {
     for (int t = 0; t < PXTF_TEXT_COUNT; t++) {
         if (!v->text[t]) continue;
         char *e = pxtf_escape(v->text[t]);
@@ -319,11 +359,12 @@ static bool variant_lines(const PxtfVariant *v, bool shareFormat, bool shareType
     upper_hash(v->pxfm, up);
     if (!lines_push(L, join2("PXFM", up))) return false;
     for (int i = 0; i < v->nopts; i++) if (!lines_push(L, dup_str(v->opts[i]))) return false;
-    if (!shareFormat && v->format && !lines_push(L, join2("FORMAT", v->format))) return false;
-    if (!shareType && v->type) {
+    if (v->format && !lines_push(L, join2("SOURCE-FORMAT", v->format))) return false;
+    if (v->source[0]) { upper_hash(v->source, up); if (!lines_push(L, join2("SOURCE-HASH", up))) return false; }
+    if (v->type) {
         char *e = pxtf_escape(v->type);
         if (!e) return false;
-        bool ok = lines_push(L, join2("TYPE", e));
+        bool ok = lines_push(L, join2("SOURCE-TYPE", e));
         free(e);
         if (!ok) return false;
     }
@@ -333,21 +374,10 @@ static bool variant_lines(const PxtfVariant *v, bool shareFormat, bool shareType
 
 char *pxtf_text(const PxtfTypeface *c, size_t *len, char hashOut[33]) {
     Buf b = {0};
-    bool shareFormat = true, shareType = true;
-    for (int i = 1; i < c->count; i++) {
-        if (strcmp(c->v[i].format ? c->v[i].format : "", c->v[0].format ? c->v[0].format : "") != 0) shareFormat = false;
-        if (strcmp(c->v[i].type ? c->v[i].type : "", c->v[0].type ? c->v[0].type : "") != 0) shareType = false;
-    }
-    char up[33];
-    if (c->count == 0) { buf_str(&b, "FORMAT\t" PXTF_EDITOR_FORMAT "\n"); }   /* a typeface made in an editor, with no variant yet */
-    if (c->count > 0 && shareFormat && c->v[0].format) { buf_str(&b, "FORMAT\t"); buf_str(&b, c->v[0].format); buf_str(&b, "\n"); }
-    upper_hash(c->hash, up);
-    buf_str(&b, "HASH\t"); buf_str(&b, up); buf_str(&b, "\n");
-    if (c->count == 0) { buf_str(&b, "TYPE\t" PXTF_EDITOR_TYPE "\n"); }
-    if (c->count > 0 && shareType && c->v[0].type) {
-        char *e = pxtf_escape(c->v[0].type);
-        if (!e) { free(b.p); return NULL; }
-        buf_str(&b, "TYPE\t"); buf_str(&b, e); buf_str(&b, "\n");
+    if (c->name) {   /* the top line */
+        char *e = pxtf_escape(c->name);
+        if (!e) return NULL;
+        if (e[0]) { buf_str(&b, "NAME\t"); buf_str(&b, e); buf_str(&b, "\n"); }
         free(e);
     }
     /* variants in ascending number */
@@ -365,7 +395,7 @@ char *pxtf_text(const PxtfTypeface *c, size_t *len, char hashOut[33]) {
         snprintf(num, sizeof num, "%04d\n", v->number);
         buf_str(&b, num);
         Lines L = {0};
-        if (!variant_lines(v, shareFormat, shareType, &L)) { lines_free(&L); free(order); free(b.p); return NULL; }
+        if (!variant_lines(v, &L)) { lines_free(&L); free(order); free(b.p); return NULL; }
         for (int i = 0; i < L.n; i++) {
             if (i > 0 && strcmp(L.v[i], L.v[i - 1]) == 0) continue;
             buf_str(&b, "\t");
@@ -561,17 +591,17 @@ bool pxtf_parse(const char *data, size_t len, PxtfTypeface *out, char err[PX_ERR
     memcpy(orig, can, cl + 1);
     PxtfTypeface c;
     pxtf_init(&c);
-    char *topFormat = NULL, *topType = NULL;
-    bool haveHash = false;
+    bool haveName = false;
     PxtfVariant *cur = NULL;
     bool seenText[PXTF_TEXT_COUNT] = {false};
-    bool seenFlag[3] = {false}, seenPxfm = false, seenFormat = false, seenType = false;
+    bool seenFlag[3] = {false}, seenPxfm = false, seenFormat = false, seenType = false, seenSource = false;
     int lineNo = 0;
     char msg[2 * PX_ERR_LEN];
     char *p = can;
 
 #define LFAIL(...) do { snprintf(msg, sizeof msg, __VA_ARGS__); fail(err, "line %d: %.400s", lineNo, msg); goto bad; } while (0)
-#define CLOSE_VARIANT() do { if (cur && !seenPxfm) { lineNo = -1; fail(err, "variant %04d has no PXFM", cur->number); goto bad; } } while (0)
+#define CLOSE_VARIANT() do { if (cur && (!seenPxfm || !seenFormat || !seenSource || !seenType)) { lineNo = -1; \
+        fail(err, "variant %04d has no %s line", cur->number, !seenPxfm ? "PXFM" : !seenFormat ? "SOURCE-FORMAT" : !seenSource ? "SOURCE-HASH" : "SOURCE-TYPE"); goto bad; } } while (0)
 
     while (*p) {
         char *line = p;
@@ -590,7 +620,7 @@ bool pxtf_parse(const char *data, size_t len, PxtfTypeface *out, char err[PX_ERR
                 cur = &c.v[c.count - 1];
                 memset(seenText, 0, sizeof seenText);
                 memset(seenFlag, 0, sizeof seenFlag);
-                seenPxfm = seenFormat = seenType = false;
+                seenPxfm = seenFormat = seenType = seenSource = false;
                 continue;
             }
             if (cur) LFAIL("a top line after a variant");
@@ -598,22 +628,13 @@ bool pxtf_parse(const char *data, size_t len, PxtfTypeface *out, char err[PX_ERR
             if (!tab || strchr(tab + 1, '\t') || !tab[1]) LFAIL("top line '%.40s' takes one field", line);
             *tab = 0;
             const char *val = tab + 1;
-            if (strcmp(line, "HASH") == 0) {
-                if (haveHash) LFAIL("two HASH lines");
-                if (!px_is_hash(val, true, false)) LFAIL("HASH is not 32 upper-case hex digits");
-                for (int i = 0; i < 32; i++) c.hash[i] = (char)((val[i] >= 'A' && val[i] <= 'F') ? val[i] + 32 : val[i]);
-                c.hash[32] = 0;
-                haveHash = true;
-            } else if (strcmp(line, "FORMAT") == 0) {
-                if (topFormat) LFAIL("two FORMAT lines");
-                if (!is_format(val)) LFAIL("FORMAT '%s' is not upper-case letters and digits", val);
-                topFormat = dup_str(val);
-            } else if (strcmp(line, "TYPE") == 0) {
-                if (topType) LFAIL("two TYPE lines");
+            if (strcmp(line, "NAME") == 0) {
+                if (haveName) LFAIL("two NAME lines");
                 char e2[PX_ERR_LEN];
-                if (!pxtf_unescape(val, &topType, e2)) LFAIL("TYPE: %s", e2);
+                if (!pxtf_unescape(val, &c.name, e2)) LFAIL("NAME: %s", e2);
+                haveName = true;
             } else {
-                LFAIL("unknown top key '%s'", line);
+                LFAIL("a top line of the key '%s' (only NAME is one; FORMAT, HASH and TYPE are version 1)", line);
             }
             continue;
         }
@@ -652,17 +673,23 @@ bool pxtf_parse(const char *data, size_t len, PxtfTypeface *out, char err[PX_ERR
             seenPxfm = true;
             for (int i = 0; i < 32; i++) cur->pxfm[i] = (char)((fld[1][i] >= 'A' && fld[1][i] <= 'F') ? fld[1][i] + 32 : fld[1][i]);
             cur->pxfm[32] = 0;
-        } else if (strcmp(key, "FORMAT") == 0) {
-            if (na != 1 || !is_format(fld[1])) LFAIL("FORMAT is not upper-case letters and digits");
-            if (seenFormat) LFAIL("two FORMAT lines");
+        } else if (strcmp(key, "SOURCE-FORMAT") == 0) {
+            if (na != 1 || !is_format(fld[1])) LFAIL("SOURCE-FORMAT is not upper-case letters and digits");
+            if (seenFormat) LFAIL("two SOURCE-FORMAT lines");
             seenFormat = true;
             cur->format = dup_str(fld[1]);
-        } else if (strcmp(key, "TYPE") == 0) {
+        } else if (strcmp(key, "SOURCE-HASH") == 0) {
+            if (na != 1 || !px_is_hash(fld[1], true, false)) LFAIL("SOURCE-HASH is not 32 upper-case hex digits");
+            if (seenSource) LFAIL("two SOURCE-HASH lines");
+            seenSource = true;
+            for (int i = 0; i < 32; i++) cur->source[i] = (char)((fld[1][i] >= 'A' && fld[1][i] <= 'F') ? fld[1][i] + 32 : fld[1][i]);
+            cur->source[32] = 0;
+        } else if (strcmp(key, "SOURCE-TYPE") == 0) {
             char e2[PX_ERR_LEN];
-            if (na != 1) LFAIL("TYPE takes one field");
-            if (seenType) LFAIL("two TYPE lines");
+            if (na != 1) LFAIL("SOURCE-TYPE takes one field");
+            if (seenType) LFAIL("two SOURCE-TYPE lines");
             seenType = true;
-            if (!pxtf_unescape(fld[1], &cur->type, e2)) LFAIL("TYPE: %s", e2);
+            if (!pxtf_unescape(fld[1], &cur->type, e2)) LFAIL("SOURCE-TYPE: %s", e2);
         } else {
             char m2[200];
             int r = check_option(key, fld + 1, na, m2, sizeof m2);
@@ -691,36 +718,12 @@ bool pxtf_parse(const char *data, size_t len, PxtfTypeface *out, char err[PX_ERR
             cur->opts = nv;
             cur->opts[cur->nopts++] = raw;
         }
-        /* FORMAT/TYPE in a variant are checked after the loop */
-        (void)seenFormat; (void)seenType;
     }
     CLOSE_VARIANT();
 #undef CLOSE_VARIANT
 #undef LFAIL
 
-    if (!haveHash) { fail(err, "no HASH of 32 upper-case hex digits"); goto bad; }
-    if (c.count == 0 && !(topFormat && strcmp(topFormat, PXTF_EDITOR_FORMAT) == 0 && topType && strcmp(topType, PXTF_EDITOR_TYPE) == 0)) {
-        fail(err, "no variant (only a typeface of FORMAT " PXTF_EDITOR_FORMAT " and TYPE " PXTF_EDITOR_TYPE " can have none)");
-        goto bad;
-    }
-    for (int pass = 0; pass < 2; pass++) {
-        const char *name = pass == 0 ? "FORMAT" : "TYPE";
-        char *top = pass == 0 ? topFormat : topType;
-        int inside = 0;
-        bool same = true;
-        for (int i = 0; i < c.count; i++) {
-            const char *v = pass == 0 ? c.v[i].format : c.v[i].type;
-            if (v) inside++;
-            if (v && strcmp(v, pass == 0 ? (c.v[0].format ? c.v[0].format : "") : (c.v[0].type ? c.v[0].type : "")) != 0) same = false;
-        }
-        if (top && inside > 0) { fail(err, "%s both at the top and in a variant", name); goto bad; }
-        if (!top && inside != c.count) { fail(err, "%s neither at the top nor in every variant", name); goto bad; }
-        if (!top && same) { fail(err, "%s the same in every variant, so it belongs at the top", name); goto bad; }
-        if (top) for (int i = 0; i < c.count; i++) {
-            char *d = dup_str(top);
-            if (pass == 0) c.v[i].format = d; else c.v[i].type = d;
-        }
-    }
+    if (c.count == 0 && !haveName) { fail(err, "no variant and no NAME line"); goto bad; }
     {
         size_t n2;
         char *again = pxtf_text(&c, &n2, NULL);
@@ -731,16 +734,12 @@ bool pxtf_parse(const char *data, size_t len, PxtfTypeface *out, char err[PX_ERR
         }
         free(again);
     }
-    free(topFormat);
-    free(topType);
     free(can);
     free(orig);
     *out = c;
     return true;
 
 bad:
-    free(topFormat);
-    free(topType);
     free(can);
     free(orig);
     pxtf_free(&c);

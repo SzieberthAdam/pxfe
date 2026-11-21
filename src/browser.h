@@ -109,6 +109,6 @@ bool     Browser_OpenTypeface(Browser *b, const char *pxtf, const char *selPxfm)
 void     Browser_CloseTypeface(Browser *b);
 bool     Browser_InTypeface(const Browser *b);
 const char *Browser_TypefaceHash(const Browser *b);
-void     Browser_TypefaceName(const Browser *b, char *out, size_t n);   /* the family ("" outside the view) */
+void     Browser_TypefaceName(const Browser *b, char *out, size_t n);   /* the typeface's NAME ("" outside the view) */
 
 #endif

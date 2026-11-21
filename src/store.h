@@ -93,7 +93,7 @@ typedef struct StoreEntry {
     char pxfm[33];
     char pxtf[33];              /* "" when no variant names the font */
     int  variant;               /* 0 when none */
-    const char *family, *style, *fullname, *designer, *format;   /* never NULL, "" when not stated */
+    const char *typefaceName, *style, *fontName, *designer, *format;   /* never NULL, "" when not stated */
     bool italic, struckout, underlined;
     bool hasAscent, hasDescent; int ascent, descent;
     bool hasHeight; int height;             /* ascent + descent when both are stated */
@@ -161,9 +161,9 @@ typedef struct StoreEditResult {
 } StoreEditResult;
 bool store_edit_in_place(Store *s, const char *oldPxfm, const PxFont *font, const char *oldPxtf, const PxtfTypeface *tf, StoreEditResult *out, char err[PX_ERR_LEN]);
 
-/* A new typeface with no variant (FORMAT PXFE, TYPE pxfe, a random HASH); hashOut is its pxtf hash.  store_list_typefaces lists such a
- * typeface as one entry of variant 0 and pxfm "". */
-bool store_new_typeface(Store *s, char hashOut[33], char err[PX_ERR_LEN]);
+/* A new typeface with no variant: only its NAME (required); hashOut is its pxtf hash.  Two empty typefaces of one name are the same file,
+ * so a second one is refused.  store_list_typefaces lists such a typeface as one entry of variant 0 and pxfm "". */
+bool store_new_typeface(Store *s, const char *name, char hashOut[33], char err[PX_ERR_LEN]);
 
 /* ------------------------------------------------------------------ export to folders */
 
@@ -203,7 +203,7 @@ typedef struct StoreDeletePlan {
     PxtfTypeface *newTf;                    /* the rewritten typefaces (parallel to rw) */
     char (*glyphs)[33]; int nGlyphs;        /* pxgl rows the deletion leaves named by no pxfm */
     char (*palettes)[33]; int nPalettes;    /* palette rows the deletion leaves named by no pxfm_glyph */
-    char summary[900];                       /* "1 font, 1 typeface, 14 glyphs; Typeface 8e8c9492 loses variant 0002 and is rewritten" */
+    char summary[900];                       /* "1 font, 1 typeface, 14 glyphs; Typeface ff6354ce loses variant 0002 and is rewritten" */
 } StoreDeletePlan;
 
 /* The plan of deleting a font / a whole typeface: nothing changes.  The font / typeface must be in memory. */
@@ -222,7 +222,7 @@ typedef struct StoreUsage {
     PxCode code;                /* the code of the glyph line (pxfont.h CODES) */
     char pxtf[33];              /* a typeface variant naming the font, "" when none */
     int  variant;
-    const char *family, *style; /* of that variant, "" when none */
+    const char *typefaceName, *style; /* of that variant, "" when none */
 } StoreUsage;
 typedef struct StoreUsageList { StoreUsage *u; int count; void *arena; } StoreUsageList;
 

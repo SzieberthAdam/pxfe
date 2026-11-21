@@ -607,7 +607,7 @@ void pkg_default_name_font(StoreConn *c, const char *pxfmHash, char *out, size_t
                 PxtfVariant *v = pxtf_find_variant(&t, vl.e[i].variant);
                 if (v) {
                     char fam[300], sty[300];
-                    slug(v->text[PXTF_FAMILY], fam, sizeof fam);
+                    slug(t.name, fam, sizeof fam);
                     slug(v->text[PXTF_STYLE], sty, sizeof sty);
                     snprintf(name, sizeof name, "%s%s%s", fam, fam[0] && sty[0] ? "-" : "", sty);
                 }
@@ -625,7 +625,7 @@ void pkg_default_name_typeface(StoreConn *c, const char *pxtfHash, char *out, si
     if (lower_hash_arg(pxtfHash, h, err)) {
         PxtfTypeface t;
         pxtf_init(&t);
-        if (store_load_typeface(c, h, &t, err) && t.count > 0) slug(t.v[0].text[PXTF_FAMILY], fam, sizeof fam);   /* ascending by number */
+        if (store_load_typeface(c, h, &t, err)) slug(t.name, fam, sizeof fam);   /* the NAME top line */
         pxtf_free(&t);
     }
     snprintf(out, cap, "%s%s", fam[0] ? fam : "typeface", PKG_TYPEFACE_EXT);

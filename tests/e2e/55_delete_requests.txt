@@ -21,7 +21,7 @@ wait 2
 key delete
 wait 3
 assert blast 5
-assert blastpxtf b7ed69ab
+assert blastpxtf 0021a99d
 key escape
 wait 3
 

@@ -164,16 +164,16 @@ int main(void) {
     /* typefaces */
     char text[2048];
     snprintf(text, sizeof text,
-             "FORMAT\tBDF\nHASH\tBCC7A744D44F7F35CBFAA1EFB0048A63\nTYPE\tbdf\n"
-             "0001\n\tCOPYRIGHT\t(c) pxfe tests\n\tDESIGNER\t\xC3\x81" "d\xC3\xA1m Test\n\tFAMILY\tTest Sans\n\tFULLNAME\tTest Sans Regular\n"
-             "\tPXFM\t%s\n\tSLANT\tR\n\tSTYLE\tRegular\n\tWEIGHTNAME\tMedium\n"
-             "0002\n\tFAMILY\tTest Sans\n\tITALIC\n\tPXFM\t%s\n\tSLANT\tI\n\tSTYLE\tItalic\n",
+             "NAME\tTest Sans\n"
+             "0001\n\tCOPYRIGHT\t(c) pxfe tests\n\tDESIGNER\t\xC3\x81" "d\xC3\xA1m Test\n\tNAME\tTest Sans Regular\n"
+             "\tPXFM\t%s\n\tSLANT\tR\n\tSOURCE-FORMAT\tBDF\n\tSOURCE-HASH\tBCC7A744D44F7F35CBFAA1EFB0048A63\n\tSOURCE-TYPE\tbdf\n\tSTYLE\tRegular\n\tWEIGHTNAME\tMedium\n"
+             "0002\n\tITALIC\n\tPXFM\t%s\n\tSLANT\tI\n\tSOURCE-FORMAT\tBDF\n\tSOURCE-HASH\tBCC7A744D44F7F35CBFAA1EFB0048A63\n\tSOURCE-TYPE\tbdf\n\tSTYLE\tItalic\n",
              up[0], up[2]);
     save_typeface(text);
     snprintf(text, sizeof text,
-             "FORMAT\tRAW\nHASH\t0123456789ABCDEF0123456789ABCDEF\nTYPE\traw-msb\n"
-             "0001\n\tCELL\t6x8\n\tCODEPAGE\tcp437-graphic\n\tFAMILY\tUncoded Mono\n\tFULLNAME\tUncoded Mono Regular\n"
-             "\tPXFM\t%s\n\tSTYLE\tRegular\n",
+             "NAME\tUncoded Mono\n"
+             "0001\n\tCELL\t6x8\n\tCODEPAGE\tcp437-graphic\n\tNAME\tUncoded Mono Regular\n"
+             "\tPXFM\t%s\n\tSOURCE-FORMAT\tRAW\n\tSOURCE-HASH\t0123456789ABCDEF0123456789ABCDEF\n\tSOURCE-TYPE\traw-msb\n\tSTYLE\tRegular\n",
              up[3]);
     save_typeface(text);
 
@@ -225,13 +225,13 @@ int main(void) {
     save_font(&f, hc[3]);
     for (int i = 0; i < 4; i++) upper(hc[i], uc[i]);
     snprintf(text, sizeof text,
-             "FORMAT\tRAW\nHASH\t0123456789ABCDEF0123456789ABCDEF\nTYPE\traw-msb\n"
-             "0001\n\tCELL\t6x8\n\tFAMILY\tThree Colours\n\tPXFM\t%s\n\tSTYLE\tRegular\n", uc[3]);
+             "NAME\tThree Colours\n"
+             "0001\n\tCELL\t6x8\n\tPXFM\t%s\n\tSOURCE-FORMAT\tRAW\n\tSOURCE-HASH\t0123456789ABCDEF0123456789ABCDEF\n\tSOURCE-TYPE\traw-msb\n\tSTYLE\tRegular\n", uc[3]);
     save_typeface(text);
     snprintf(text, sizeof text,
-             "FORMAT\tBDF\nHASH\tBCC7A744D44F7F35CBFAA1EFB0048A63\nTYPE\tbdf\n"
-             "0001\n\tFAMILY\tTest Sans\n\tFULLNAME\tTest Sans Regular\n\tPXFM\t%s\n\tSTYLE\tRegular\n"
-             "0002\n\tFAMILY\tTest Sans\n\tITALIC\n\tPXFM\t%s\n\tSTYLE\tItalic\n", uc[0], uc[2]);
+             "NAME\tTest Sans\n"
+             "0001\n\tNAME\tTest Sans Regular\n\tPXFM\t%s\n\tSOURCE-FORMAT\tBDF\n\tSOURCE-HASH\tBCC7A744D44F7F35CBFAA1EFB0048A63\n\tSOURCE-TYPE\tbdf\n\tSTYLE\tRegular\n"
+             "0002\n\tITALIC\n\tPXFM\t%s\n\tSOURCE-FORMAT\tBDF\n\tSOURCE-HASH\tBCC7A744D44F7F35CBFAA1EFB0048A63\n\tSOURCE-TYPE\tbdf\n\tSTYLE\tItalic\n", uc[0], uc[2]);
     save_typeface(text);
     must(store_import_folder(LIBC, "testdata/lib_colors.pxfdb", NULL, &s, err), "import the folder into testdata/lib_colors.pxfdb", err);
     store_close(s);

@@ -17,12 +17,16 @@ static int g_pass = 0, g_fail = 0;
 #define TMP "tests/tmp"
 #define LIB "testdata/lib"
 
-static const char EXAMPLE[] =
-    "FORMAT\tFON\nHASH\t43B49707749923470CDD7F5FCD6A552D\nTYPE\tfnt-v2\n"
-    "0001\n\tCHARSET\t0\n\tCOPYRIGHT\t(c)Copyright Altura Software Inc. 1992. All rights reserved\n\tFAMILY\tASI_Mono\n"
-    "\tPXFM\tFBB120E8372CDFA484F0107DFBA46860\n\tSTYLE\tRegular\n"
-    "0002\n\tCHARSET\t0\n\tCOPYRIGHT\t(c) Copyright Microsoft Corp. 1987. All rights reserved.\n\tFAMILY\tASI_Mono\n"
-    "\tPXFM\t7F3882B4A3788FDE3BC0111426A12C8F\n\tSTYLE\tRegular\n";
+static const char EXAMPLE[] =   /* the example of the pxtf spec (version 2) */
+    "NAME\tASI_Mono\n"
+    "0001\n\tCHARSET\t0\n\tCOPYRIGHT\t(c)Copyright Altura Software Inc. 1992. All rights reserved\n"
+    "\tPXFM\tFBB120E8372CDFA484F0107DFBA46860\n\tSOURCE-FORMAT\tFON\n\tSOURCE-HASH\t43B49707749923470CDD7F5FCD6A552D\n\tSOURCE-TYPE\tfnt-v2\n\tSTYLE\tRegular\n"
+    "0002\n\tCHARSET\t0\n\tCOPYRIGHT\t(c) Copyright Microsoft Corp. 1987. All rights reserved.\n"
+    "\tPXFM\t7F3882B4A3788FDE3BC0111426A12C8F\n\tSOURCE-FORMAT\tFON\n\tSOURCE-HASH\t43B49707749923470CDD7F5FCD6A552D\n\tSOURCE-TYPE\tfnt-v2\n\tSTYLE\tRegular\n";
+
+/* the lines every variant must have but PXFM: SOURCE-FORMAT, SOURCE-HASH and SOURCE-TYPE */
+#define SRC "\tSOURCE-FORMAT\tFON\n\tSOURCE-HASH\t43B49707749923470CDD7F5FCD6A552D\n\tSOURCE-TYPE\tfnt-v2\n"
+#define PXFM_LINE "\tPXFM\tFBB120E8372CDFA484F0107DFBA46860\n"
 
 static bool pfails(const char *text, const char *needle) {
     PxtfTypeface c;
@@ -62,46 +66,55 @@ static void test_example(void) {
     PxtfTypeface c;
     char err[PX_ERR_LEN];
     CHECK(pxtf_parse(EXAMPLE, sizeof EXAMPLE - 1, &c, err), "pxtf example parses");
-    CHECK(c.count == 2 && c.v[0].number == 1 && c.v[1].number == 2 && strcmp(c.hash, "43b49707749923470cdd7f5fcd6a552d") == 0, "example: variants and source hash");
-    CHECK(strcmp(c.v[0].format, "FON") == 0 && strcmp(c.v[1].type, "fnt-v2") == 0, "example: top FORMAT and TYPE reach every variant");
-    CHECK(strcmp(c.v[0].text[PXTF_FAMILY], "ASI_Mono") == 0 && c.v[0].text[PXTF_DESIGNER] == NULL, "example: text fields");
+    if (g_fail) printf("      %s\n", err);
+    CHECK(c.count == 2 && c.v[0].number == 1 && c.v[1].number == 2 && c.name && strcmp(c.name, "ASI_Mono") == 0, "example: variants and the NAME top line");
+    CHECK(strcmp(c.v[0].format, "FON") == 0 && strcmp(c.v[1].type, "fnt-v2") == 0 && strcmp(c.v[1].source, "43b49707749923470cdd7f5fcd6a552d") == 0,
+          "example: SOURCE-FORMAT, SOURCE-TYPE and SOURCE-HASH of each variant");
+    CHECK(c.v[0].text[PXTF_NAME] == NULL && c.v[0].text[PXTF_DESIGNER] == NULL && c.v[0].text[PXTF_COPYRIGHT], "example: text fields");
     CHECK(strcmp(c.v[1].pxfm, "7f3882b4a3788fde3bc0111426a12c8f") == 0 && c.v[0].nopts == 1 && strcmp(c.v[0].opts[0], "CHARSET\t0") == 0, "example: PXFM lower-case, CHARSET kept raw");
     size_t n;
     char hash[33];
     char *t = pxtf_text(&c, &n, hash);
     CHECK(n == sizeof EXAMPLE - 1 && memcmp(t, EXAMPLE, n) == 0, "example: written again is the same bytes");
-    CHECK(strcmp(hash, "97d45d22be0ae656b9e567288f7dbe7b") == 0, "example: hash 97d45d22...");
+    CHECK(strcmp(hash, "201c9ca4b9c357621f90cdf98ac47321") == 0, "example: the hash of the spec, 201c9ca4...");
+    if (strcmp(hash, "201c9ca4b9c357621f90cdf98ac47321")) printf("      hash %s\n", hash);
     free(t);
     pxtf_free(&c);
 }
 
 static void test_roundtrip_variants(void) {
-    /* different FORMAT per variant, options, flags, an escape, UTF-8 */
+    /* different SOURCE- lines per variant, options, flags, an escape, UTF-8 */
     const char *text =
-        "HASH\t0123456789ABCDEF0123456789ABCDEF\nTYPE\ttype\n"
-        "0001\n\tADVANCEGAP\t-1\n\tCELL\t8x16\n\tCODEPAGE\tcp437-graphic\n\tFORMAT\tRAW\n\tGRID\t44.487\t44.487\t0\t0\tPERGLYPH\n"
+        "NAME\tRound \xC3\x81" "d\xC3\xA1m\n"
+        "0001\n\tADVANCEGAP\t-1\n\tCELL\t8x16\n\tCODEPAGE\tcp437-graphic\n\tGRID\t44.487\t44.487\t0\t0\tPERGLYPH\n"
         "\tIGNORE\t000000\t00001F\n\tIGNORE\t0000C0\t0000FF\n\tITALIC\n\tNINTHCOLUMN\t192\t223\n"
         "\tPFM\t0123456789ABCDEF0123456789ABCDEF\n\tPXFM\t0123456789ABCDEF0123456789ABCDEF\n\tRECORDSIZE\t16\n\tSLANT\tI\n"
+        "\tSOURCE-FORMAT\tRAW\n\tSOURCE-HASH\t0123456789ABCDEF0123456789ABCDEF\n\tSOURCE-TYPE\tt\\tx\n"
         "\tSTRUCKOUT\n\tUNDERLINED\n\tWEIGHTNAME\tBold\n"
-        "0010\n\tDESCRIPTION\tline one\\nline two\\ttab \\\\ \\x01 \xC3\xA1\xC5\x91\n\tFORMAT\tFON\n\tPXFM\t0123456789ABCDEF0123456789ABCDE0\n\tSPACEADVANCE\t4\n";
+        "0010\n\tDESCRIPTION\tline one\\nline two\\ttab \\\\ \\x01 \xC3\xA1\xC5\x91\n\tPXFM\t0123456789ABCDEF0123456789ABCDE0\n"
+        "\tSOURCE-FORMAT\tFON\n\tSOURCE-HASH\t43B49707749923470CDD7F5FCD6A552D\n\tSOURCE-TYPE\tfnt-v2\n\tSPACEADVANCE\t4\n";
     PxtfTypeface c;
     char err[PX_ERR_LEN];
-    CHECK(pxtf_parse(text, strlen(text), &c, err), "variants with their own FORMAT, options and flags parse");
+    CHECK(pxtf_parse(text, strlen(text), &c, err), "variants with their own source, options and flags parse");
     if (g_fail) printf("      %s\n", err);
-    CHECK(c.count == 2 && c.v[1].number == 10 && strcmp(c.v[0].format, "RAW") == 0 && strcmp(c.v[1].format, "FON") == 0, "own FORMAT per variant");
+    CHECK(c.count == 2 && c.v[1].number == 10 && strcmp(c.v[0].format, "RAW") == 0 && strcmp(c.v[1].format, "FON") == 0, "own SOURCE-FORMAT per variant");
+    CHECK(strcmp(c.v[0].type, "t\tx") == 0 && strcmp(c.v[0].source, "0123456789abcdef0123456789abcdef") == 0, "SOURCE-TYPE unescaped, SOURCE-HASH lower-case");
     CHECK(c.v[0].italic && c.v[0].struckout && c.v[0].underlined && !c.v[1].italic, "flags");
-    CHECK(c.v[0].nopts == 8 && strcmp(c.v[0].opts[2], "GRID\t44.487\t44.487\t0\t0\tPERGLYPH") == 0, "options kept as raw lines");
+    CHECK(c.v[0].nopts == 8 && strcmp(c.v[0].opts[2], "GRID\t44.487\t44.487\t0\t0\tPERGLYPH") == 0 && strcmp(c.v[0].text[PXTF_CODEPAGE], "cp437-graphic") == 0,
+          "options kept as raw lines, CODEPAGE a text");
     CHECK(strcmp(c.v[1].text[PXTF_DESCRIPTION], "line one\nline two\ttab \\ \x01 \xC3\xA1\xC5\x91") == 0, "text unescaped");
     size_t n;
     char *t = pxtf_text(&c, &n, NULL);
     CHECK(n == strlen(text) && memcmp(t, text, n) == 0, "round trip: same bytes");
     free(t);
     /* editing text */
-    pxtf_set_text(&c.v[0], PXTF_FAMILY, "New  ");
+    pxtf_set_text(&c.v[0], PXTF_NAME, "New  ");
     pxtf_set_text(&c.v[0], PXTF_WEIGHTNAME, "");
+    pxtf_set_name(&c, "Renamed  ");
     t = pxtf_text(&c, &n, NULL);
-    CHECK(strstr(t, "\tFAMILY\tNew\n") != NULL && strstr(t, "WEIGHTNAME") == NULL, "set text, trailing spaces cut, empty clears");
-    CHECK(strstr(t, "\n\tFAMILY") < strstr(t, "\n\tFORMAT"), "set text lands in sorted place");
+    CHECK(strstr(t, "\tNAME\tNew\n") != NULL && strstr(t, "WEIGHTNAME") == NULL, "set text, trailing spaces cut, empty clears");
+    CHECK(strstr(t, "\n\tNAME") < strstr(t, "\n\tNINTHCOLUMN"), "set text lands in sorted place");
+    CHECK(strncmp(t, "NAME\tRenamed\n0001\n", 18) == 0, "pxtf_set_name: the NAME top line");
     free(t);
     PxtfTypeface d;
     CHECK(pxtf_copy(&d, &c), "copy");
@@ -117,60 +130,67 @@ static void test_roundtrip_variants(void) {
 }
 
 static void test_errors(void) {
-    const char *top = "FORMAT\tFON\nHASH\t43B49707749923470CDD7F5FCD6A552D\nTYPE\tfnt-v2\n";
-    const char *v1 = "0001\n\tPXFM\tFBB120E8372CDFA484F0107DFBA46860\n";
+    const char *top = "NAME\tA\n";
+    const char *v1 = "0001\n" PXFM_LINE SRC;
     char t[2048];
 #define TRY(fmt, ...) (snprintf(t, sizeof t, fmt, __VA_ARGS__), t)
-    CHECK(pfails("\xEF\xBB\xBF" "HASH\t43B49707749923470CDD7F5FCD6A552D\n", "byte order mark"), "BOM rejected");
-    CHECK(pfails(TRY("%s0001\n\tFAMILY\t\xC3(\n\tPXFM\tFBB120E8372CDFA484F0107DFBA46860\n", top), "UTF-8"), "invalid UTF-8 rejected");
-    CHECK(pfails(TRY("%s0001\n\tFAMILY\te\xCC\x81\n\tPXFM\tFBB120E8372CDFA484F0107DFBA46860\n", top), "NFC"), "decomposed e + acute rejected");
-    CHECK(pfails(TRY("%s0001\n\tFAMILY\t\xC3\xA9\n\tPXFM\tFBB120E8372CDFA484F0107DFBA46860\n", top), NULL) == false, "precomposed accepted");
-    CHECK(pfails(TRY("%s0001\n\tFAMILY\ta\\qb\n\tPXFM\tFBB120E8372CDFA484F0107DFBA46860\n", top), "escape"), "bad escape rejected");
-    CHECK(pfails(TRY("%s0001\n\tITALIC\tx\n\tPXFM\tFBB120E8372CDFA484F0107DFBA46860\n", top), "no field"), "ITALIC with a field rejected");
-    CHECK(pfails(TRY("%s0001\n\tFAMILY\tA\n", top), "no PXFM"), "variant without PXFM rejected");
-    CHECK(pfails(TRY("%s0001\n\tPXFM\tfbb120e8372cdfa484f0107dfba46860\n", top), "PXFM"), "lower-case PXFM rejected");
-    CHECK(pfails("FORMAT\tFON\nTYPE\tx\n0001\n\tPXFM\tFBB120E8372CDFA484F0107DFBA46860\n", "HASH"), "no HASH rejected");
-    CHECK(pfails(TRY("%s", top), "no variant"), "no variant rejected");
-    {   /* a typeface made in an editor: FORMAT PXFE and TYPE pxfe at the top, and it may have no variant */
-        const char *ed = "FORMAT\tPXFE\nHASH\t43B49707749923470CDD7F5FCD6A552D\nTYPE\tpxfe\n";
+    CHECK(pfails("\xEF\xBB\xBF" "NAME\tA\n", "byte order mark"), "BOM rejected");
+    CHECK(pfails(TRY("%s0001\n\tNAME\t\xC3(\n" PXFM_LINE SRC, top), "UTF-8"), "invalid UTF-8 rejected");
+    CHECK(pfails(TRY("%s0001\n\tNAME\te\xCC\x81\n" PXFM_LINE SRC, top), "NFC"), "decomposed e + acute rejected");
+    CHECK(pfails(TRY("%s0001\n\tNAME\t\xC3\xA9\n" PXFM_LINE SRC, top), NULL) == false, "precomposed accepted");
+    CHECK(pfails(TRY("%s0001\n\tNAME\ta\\qb\n" PXFM_LINE SRC, top), "escape"), "bad escape rejected");
+    CHECK(pfails(TRY("%s0001\n\tITALIC\tx\n" PXFM_LINE SRC, top), "no field"), "ITALIC with a field rejected");
+    CHECK(pfails(TRY("%s0001\n\tNAME\tA\n" SRC, top), "no PXFM"), "variant without PXFM rejected");
+    CHECK(pfails(TRY("%s0001\n\tPXFM\tfbb120e8372cdfa484f0107dfba46860\n" SRC, top), "PXFM"), "lower-case PXFM rejected");
+    CHECK(pfails(TRY("%s0001\n" PXFM_LINE "\tSOURCE-HASH\t43B49707749923470CDD7F5FCD6A552D\n\tSOURCE-TYPE\tt\n", top), "SOURCE-FORMAT"), "no SOURCE-FORMAT rejected");
+    CHECK(pfails(TRY("%s0001\n" PXFM_LINE "\tSOURCE-FORMAT\tFON\n\tSOURCE-TYPE\tt\n", top), "SOURCE-HASH"), "no SOURCE-HASH rejected");
+    CHECK(pfails(TRY("%s0001\n" PXFM_LINE "\tSOURCE-FORMAT\tFON\n\tSOURCE-HASH\t43B49707749923470CDD7F5FCD6A552D\n", top), "SOURCE-TYPE"), "no SOURCE-TYPE rejected");
+    CHECK(pfails(TRY("%s0001\n" PXFM_LINE "\tSOURCE-FORMAT\tfon\n\tSOURCE-HASH\t43B49707749923470CDD7F5FCD6A552D\n\tSOURCE-TYPE\tt\n", top), "SOURCE-FORMAT"), "lower-case SOURCE-FORMAT rejected");
+    CHECK(pfails(TRY("%s0001\n" PXFM_LINE "\tSOURCE-FORMAT\tFON\n\tSOURCE-HASH\t43b49707749923470cdd7f5fcd6a552d\n\tSOURCE-TYPE\tt\n", top), "SOURCE-HASH"), "lower-case SOURCE-HASH rejected");
+    {   /* a typeface with no variant: it must have a NAME (a typeface made in an editor that has no font yet) */
         PxtfTypeface e;
         char err[PX_ERR_LEN] = "";
-        bool ok = pxtf_parse(ed, strlen(ed), &e, err);
-        CHECK(ok && e.count == 0, "an editor typeface with no variant accepted");
+        bool ok = pxtf_parse(top, strlen(top), &e, err);
+        CHECK(ok && e.count == 0 && e.name && strcmp(e.name, "A") == 0, "a typeface with a NAME and no variant accepted");
         if (ok) {
             size_t n;
             char *again = pxtf_text(&e, &n, NULL);
-            CHECK(again && n == strlen(ed) && memcmp(again, ed, n) == 0, "an editor typeface with no variant written as read");
+            CHECK(again && n == strlen(top) && memcmp(again, top, n) == 0, "a typeface with no variant written as read");
             free(again);
             PxtfVariant *v = pxtf_add_variant(&e);
             CHECK(v && v->number == 1 && e.count == 1, "pxtf_add_variant: variant 0001 in an empty typeface");
+            pxtf_set_editor_source(v);
+            CHECK(strcmp(v->format, PXTF_EDITOR_FORMAT) == 0 && strcmp(v->type, PXTF_EDITOR_TYPE) == 0 && px_is_hash(v->source, false, true),
+                  "pxtf_set_editor_source: SOURCE-FORMAT PXFE, SOURCE-TYPE pxfe, a random SOURCE-HASH");
+            char other[33];
+            pxtf_random_hash(other);
+            CHECK(strcmp(other, v->source) != 0, "two random source hashes differ");
             pxtf_free(&e);
         }
-        CHECK(pfails("FORMAT\tPXFE\nHASH\t43B49707749923470CDD7F5FCD6A552D\nTYPE\tfnt-v2\n", "no variant"), "no variant with another TYPE rejected");
-        CHECK(pfails("HASH\t43B49707749923470CDD7F5FCD6A552D\n", "no variant"), "no variant and no FORMAT rejected");
+        CHECK(pfails("", "no variant"), "no variant and no NAME rejected");
+        CHECK(pfails(TRY("%s", v1), NULL) == false, "variants and no NAME accepted");
     }
+    CHECK(pfails(TRY("FORMAT\tFON\n%s", v1), "version 1"), "a version 1 top line rejected");
     CHECK(pfails(TRY("%s%s%s", top, v1, v1), "ascending"), "variant twice rejected");
-    CHECK(pfails(TRY("%s0002\n\tPXFM\tFBB120E8372CDFA484F0107DFBA46860\n0001\n\tPXFM\tFBB120E8372CDFA484F0107DFBA46860\n", top), "ascending"), "descending variants rejected");
-    CHECK(pfails(TRY("%s0000\n\tPXFM\tFBB120E8372CDFA484F0107DFBA46860\n", top), "out of range"), "variant 0 rejected");
-    CHECK(pfails(TRY("%s%sFORMAT\tFON\n", top, v1), "top line after"), "top line after a variant rejected");
-    CHECK(pfails("FORMAT\tFON\n\tPXFM\tFBB120E8372CDFA484F0107DFBA46860\nHASH\t43B49707749923470CDD7F5FCD6A552D\n", "before any"), "variant line before a variant rejected");
-    CHECK(pfails(TRY("HASH\t43B49707749923470CDD7F5FCD6A552D\nTYPE\tt\n%s", "0001\n\tFORMAT\tFON\n\tPXFM\tFBB120E8372CDFA484F0107DFBA46860\n"), "belongs at the top"), "FORMAT in the only variant rejected");
-    CHECK(pfails(TRY("%s0001\n\tFORMAT\tFON\n\tPXFM\tFBB120E8372CDFA484F0107DFBA46860\n", top), "both"), "FORMAT at top and in a variant rejected");
-    CHECK(pfails("HASH\t43B49707749923470CDD7F5FCD6A552D\nTYPE\tt\n0001\n\tPXFM\tFBB120E8372CDFA484F0107DFBA46860\n", "neither"), "FORMAT nowhere rejected");
-    CHECK(pfails(TRY("%s0001\n\tSTYLE\tB\n\tFAMILY\tA\n\tPXFM\tFBB120E8372CDFA484F0107DFBA46860\n", top), "canonical order"), "unsorted variant lines rejected");
-    CHECK(pfails("HASH\t43B49707749923470CDD7F5FCD6A552D\nFORMAT\tFON\nTYPE\tt\n0001\n\tPXFM\tFBB120E8372CDFA484F0107DFBA46860\n", "canonical order"), "unsorted top lines rejected");
-    CHECK(pfails(TRY("%s0001\n\tFAMILY\tA\n\tFAMILY\tB\n\tPXFM\tFBB120E8372CDFA484F0107DFBA46860\n", top), "two FAMILY"), "two FAMILY rejected");
-    CHECK(pfails(TRY("%s0001\n\tFOO\tA\n\tPXFM\tFBB120E8372CDFA484F0107DFBA46860\n", top), "unknown key"), "unknown variant key rejected");
-    CHECK(pfails(TRY("%s0001\n\tCELL\t8X16\n\tPXFM\tFBB120E8372CDFA484F0107DFBA46860\n", top), "CELL"), "CELL with upper-case X rejected");
-    CHECK(pfails(TRY("%s0001\n\tGRID\t44.50\t1\t0\t0\n\tPXFM\tFBB120E8372CDFA484F0107DFBA46860\n", top), "shortest"), "GRID number not in shortest form rejected");
-    CHECK(pfails(TRY("%s0001\n\tCHARSET\t007\n\tPXFM\tFBB120E8372CDFA484F0107DFBA46860\n", top), "integer"), "CHARSET with leading zero rejected");
-    CHECK(pfails(TRY("%s0001\n\tSTYLE\tB\\\n\tPXFM\tFBB120E8372CDFA484F0107DFBA46860\n", top), "escape"), "trailing backslash rejected");
-    CHECK(pfails("HASH\t43b49707749923470cdd7f5fcd6a552d\n", "HASH"), "lower-case HASH rejected");
+    CHECK(pfails(TRY("%s0002\n" PXFM_LINE SRC "0001\n" PXFM_LINE SRC, top), "ascending"), "descending variants rejected");
+    CHECK(pfails(TRY("%s0000\n" PXFM_LINE SRC, top), "out of range"), "variant 0 rejected");
+    CHECK(pfails(TRY("%s%sNAME\tB\n", top, v1), "top line after"), "top line after a variant rejected");
+    CHECK(pfails("NAME\tA\n" PXFM_LINE, "before any"), "variant line before a variant rejected");
+    CHECK(pfails("NAME\tA\nNAME\tB\n", "two NAME"), "two NAME top lines rejected");
+    CHECK(pfails(TRY("%s0001\n\tSTYLE\tB\n\tNAME\tA\n" PXFM_LINE SRC, top), "canonical order"), "unsorted variant lines rejected");
+    CHECK(pfails(TRY("%s0001\n\tNAME\tA\n\tNAME\tB\n" PXFM_LINE SRC, top), "two NAME"), "two NAME lines in a variant rejected");
+    CHECK(pfails(TRY("%s0001\n\tFAMILY\tA\n" PXFM_LINE SRC, top), "unknown key"), "the version 1 key FAMILY rejected");
+    CHECK(pfails(TRY("%s0001\n\tFOO\tA\n" PXFM_LINE SRC, top), "unknown key"), "unknown variant key rejected");
+    CHECK(pfails(TRY("%s0001\n\tCELL\t8X16\n" PXFM_LINE SRC, top), "CELL"), "CELL with upper-case X rejected");
+    CHECK(pfails(TRY("%s0001\n\tGRID\t44.50\t1\t0\t0\n" PXFM_LINE SRC, top), "shortest"), "GRID number not in shortest form rejected");
+    CHECK(pfails(TRY("%s0001\n\tCHARSET\t007\n" PXFM_LINE SRC, top), "integer"), "CHARSET with leading zero rejected");
+    CHECK(pfails(TRY("%s0001\n" PXFM_LINE SRC "\tSTYLE\tB\\\n", top), "escape"), "trailing backslash rejected");
     /* accepted: CRLF and trailing blanks canonicalise */
     PxtfTypeface c;
     char err[PX_ERR_LEN];
-    snprintf(t, sizeof t, "FORMAT\tFON  \r\nHASH\t43B49707749923470CDD7F5FCD6A552D\r\n\r\nTYPE\tt\r\n0001\r\n\tPXFM\tFBB120E8372CDFA484F0107DFBA46860\t\r\n");
+    snprintf(t, sizeof t, "NAME\tA  \r\n\r\n0001\r\n\tPXFM\tFBB120E8372CDFA484F0107DFBA46860\t\r\n\tSOURCE-FORMAT\tFON\r\n\tSOURCE-HASH\t43B49707749923470CDD7F5FCD6A552D\r\n\tSOURCE-TYPE\tt\r\n");
     CHECK(pxtf_parse(t, strlen(t), &c, err), "CRLF, blank lines and trailing blanks canonicalise");
+    if (g_fail) printf("      %s\n", err);
     pxtf_free(&c);
 #undef TRY
 }
@@ -179,7 +199,7 @@ static void test_save(void) {
     PxtfTypeface c;
     char err[PX_ERR_LEN], hash[33], path[1024];
     CHECK(pxtf_parse(EXAMPLE, sizeof EXAMPLE - 1, &c, err), "parse for save");
-    pxtf_set_text(&c.v[0], PXTF_FAMILY, "Saved");
+    pxtf_set_name(&c, "Saved");
     CHECK(pxtf_save(&c, TMP "/pxtflib", hash, path, sizeof path, err), "pxtf_save");
     PxtfTypeface r;
     CHECK(pxtf_read(path, &r, err), "saved pxtf reads back");
@@ -195,8 +215,8 @@ static void test_save(void) {
 #define H_GREY "894ef821e147533c34b39e2131016133"
 #define H_NOASC "4fba4190f6ba7e10b296c7070234e1ce"
 #define H_UNC "54caf68fe9ec18634701a55bfc87b5c0"
-#define T_SANS "8e8c94921267d3c2c72ec93d3b0cf63d"
-#define T_UNC "b7ed69ab357b00edcb64d1160fbf71b4"
+#define T_SANS "ff6354ce745de4d0170855e161a491be"
+#define T_UNC "0021a99dbbf1ae9dc9c27c685f581c17"
 
 static int find_entry(const Library *lib, LibKind kind, const char *pxtf, int variant) {
     for (int i = 0; i < lib->count; i++)
@@ -217,16 +237,16 @@ static void test_library(void) {
     CHECK(c1 >= 0 && c2 >= 0 && c3 >= 0, "typeface entries found by (pxtf, variant)");
     if (c1 < 0 || c2 < 0 || c3 < 0) { library_free(&lib); store_close(st); return; }
     LibEntry *e1 = &lib.e[c1];
-    CHECK(strcmp(e1->family, "Test Sans") == 0 && strcmp(e1->style, "Regular") == 0 && strcmp(e1->format, "BDF") == 0 &&
+    CHECK(strcmp(e1->typefaceName, "Test Sans") == 0 && strcmp(e1->style, "Regular") == 0 && strcmp(e1->format, "BDF") == 0 &&
           strcmp(e1->designer, "\xC3\x81" "d\xC3\xA1m Test") == 0 && strcmp(e1->pxfm, H_EXAMPLE) == 0, "typeface entry metadata");
     CHECK(strcmp(lib.e[c2].style, "Italic") == 0 && lib.e[c2].italic && lib.e[c2].fontPresent, "second variant: italic");
     CHECK(strcmp(lib.e[c3].format, "RAW") == 0 && strcmp(lib.e[c3].pxfm, H_UNC) == 0, "RAW typeface entry");
     CHECK(e1->info.ready && e1->info.glyphCount == 6 && e1->info.above == 6 && e1->info.below == 2 && e1->info.boxStated, "stated box: info ready from the store at once");
     CHECK(lib.e[c3].info.ready && lib.e[c3].info.monospaced && lib.e[c3].info.hasRatio && lib.e[c3].info.glyphCount == 5, "monospaced, ratio, 5 glyphs (the default line is no glyph)");
     int fi = library_find_by_pxfm(&lib, LIB_FONT, H_EXAMPLE);
-    CHECK(fi >= 0 && strcmp(lib.e[fi].family, "Test Sans") == 0 && lib.e[fi].fontPresent, "font entry takes the metadata of the typeface that names it");
+    CHECK(fi >= 0 && strcmp(lib.e[fi].typefaceName, "Test Sans") == 0 && lib.e[fi].fontPresent, "font entry takes the metadata of the typeface that names it");
     int gi = library_find_by_pxfm(&lib, LIB_FONT, H_GREY);
-    CHECK(gi >= 0 && lib.e[gi].pxtf[0] == 0 && lib.e[gi].family[0] == 0, "font without typeface: empty metadata");
+    CHECK(gi >= 0 && lib.e[gi].pxtf[0] == 0 && lib.e[gi].typefaceName[0] == 0, "font without typeface: empty metadata");
     int ni = library_find_by_pxfm(&lib, LIB_FONT, H_NOASC);
     CHECK(ni >= 0 && !lib.e[ni].info.ready, "no-ascent font: info not ready until loaded");
     char title[128];
@@ -323,7 +343,7 @@ static void test_library(void) {
     CHECK(lib.nerrors == 1 && strstr(lib.errors[0], "version 3 draft") != NULL, "a version 3 draft is skipped with a message that says so");
     if (ia >= 0) {
         LibEntry *e = &lib.e[ia];
-        CHECK(e->kind == LIB_DRAFT && strcmp(e->pxfm, H_EXAMPLE) == 0 && strcmp(e->pxtf, T_SANS) == 0 && strcmp(e->family, "Test Sans") == 0 &&
+        CHECK(e->kind == LIB_DRAFT && strcmp(e->pxfm, H_EXAMPLE) == 0 && strcmp(e->pxtf, T_SANS) == 0 && strcmp(e->typefaceName, "Test Sans") == 0 &&
               e->variant == 1 && e->typeface && e->tvariant && e->info.ready && e->info.glyphCount == 6 && e->info.above == 6 && e->info.below == 2 && e->fileSize > 0,
               "draft entry: name, original, typeface metadata, info");
     }

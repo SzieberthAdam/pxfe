@@ -1,5 +1,5 @@
 # 109. The Colours switch of the library views: on, only the fonts of more than one colour show (pxfm.colors, NULL counting as 1).
-# Database testdata/lib_colors.pxfdb (made by tests\make_testdata.exe): typeface 84fafa1d holds font 3cfdd2b1 (3 colours); typeface 866c4acc
+# Database testdata/lib_colors.pxfdb (made by tests\make_testdata.exe): typeface cb07e9fe holds font 3cfdd2b1 (3 colours); typeface 84c74aea
 # holds 3b52125b (1 colour) and, italic, c735a3cf (2 colours, no ASCENT); font 894ef821 (2 colours) belongs to no typeface.
 wait 10
 assert nav 0

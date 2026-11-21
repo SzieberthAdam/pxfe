@@ -102,9 +102,9 @@ static void code_text(PxCode c, char *out, size_t cap)
     px_code_label(c, out, (int)cap);
 }
 
-static void make_label(const char *family, const char *style, char *out, size_t cap)
+static void make_label(const char *typefaceName, const char *style, char *out, size_t cap)
 {
-    if (family && family[0]) snprintf(out, cap, "%s%s%s", family, style && style[0] ? " " : "", style ? style : "");
+    if (typefaceName && typefaceName[0]) snprintf(out, cap, "%s%s%s", typefaceName, style && style[0] ? " " : "", style ? style : "");
     else if (style && style[0]) snprintf(out, cap, "%s", style);
     else out[0] = 0;   /* the view shows the hash instead */
 }
@@ -181,7 +181,7 @@ static UsageRes *job_usage(StoreConn *c, char (*hashes)[33], int n, unsigned gen
         for (int i = 0; i < ul.count; i++) {
             const StoreUsage *u = &ul.u[i];
             UTmp *t = &tmp[i];
-            make_label(u->pxtf[0] ? u->family : "", u->pxtf[0] ? u->style : "", t->label, sizeof t->label);
+            make_label(u->pxtf[0] ? u->typefaceName : "", u->pxtf[0] ? u->style : "", t->label, sizeof t->label);
             memcpy(t->pxfm, u->pxfm, 33); memcpy(t->pxtf, u->pxtf, 33);
             t->variant = u->variant; t->code = u->code;
         }
@@ -223,7 +223,7 @@ static UsageRes *job_usage(StoreConn *c, char (*hashes)[33], int n, unsigned gen
         int *idx = (int *)malloc((size_t)(el.count + 1) * sizeof *idx);
         for (int i = 0; i < el.count; i++) {
             const StoreEntry *e = &el.e[i];
-            make_label(e->family, e->style, tmp[i].label, sizeof tmp[i].label);
+            make_label(e->typefaceName, e->style, tmp[i].label, sizeof tmp[i].label);
             memcpy(tmp[i].pxfm, e->pxfm, 33); memcpy(tmp[i].pxtf, e->pxtf, 33);
             tmp[i].variant = e->variant; tmp[i].code = e->glyphCount;
             idx[i] = i;
@@ -398,9 +398,9 @@ static SimRes *job_similar(Store *st, StoreConn *c, Names *names, const char *ha
             SimRow *row = &r->rows[i];
             const StoreEntry *e = names->have ? names_find(typefaces ? &names->tfs : &names->fonts, typefaces ? names->ti : names->fi, sim[i].hash, typefaces) : NULL;
             if (!e && pass == 0) { miss = true; continue; }
-            if (e) make_label(e->family, e->style, row->name, sizeof row->name);
+            if (e) make_label(e->typefaceName, e->style, row->name, sizeof row->name);
             else row->name[0] = 0;
-            if (typefaces && e && e->family[0]) snprintf(row->name, sizeof row->name, "%s", e->family);
+            if (typefaces && e && e->typefaceName[0]) snprintf(row->name, sizeof row->name, "%s", e->typefaceName);
             if (e) memcpy(row->openPxfm, e->pxfm, 33);
             else if (!typefaces) memcpy(row->openPxfm, sim[i].hash, 33);
         }

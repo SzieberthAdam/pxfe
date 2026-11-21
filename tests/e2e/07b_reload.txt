@@ -7,6 +7,6 @@ assert storefonts 4
 assert storetypefaces 2
 assert sql "select count(*) from pxfm where ascent = 8" 1
 assert sql "select count(*) from pxfm" 4
-assert sql "select count(*) from pxtf_field where key = 'FAMILY' and value = 'Test Sans Edited'" 2
+assert sql "select count(*) from pxtf where name = 'Test Sans Edited'" 1
 assert statusdb saved
 assert wtitle e2e.pxfdb

@@ -12,12 +12,12 @@ click @bside_Typeface
 wait 3
 assert w.Unlock 1
 # locked: the fields are read-only
-click @c.family
+click @c.typeface
 wait 2
 type X
 wait 3
 assert unsaved 0
-assert tabhash 8e8c94921267d3c2c72ec93d3b0cf63d
+assert tabhash ff6354ce745de4d0170855e161a491be
 click @tf_lock
 wait 12
 assert nav 1
@@ -60,7 +60,7 @@ wait 10
 assert unsaved 1
 # the boxed hash is now the new one, and the one in the database stays shown below it
 assert w.hash_typeface_orig 1
-assert tabhash !8e8c9492
+assert tabhash !ff6354ce
 sleep 500
 wheel 10 1250 400
 wait 12
@@ -73,36 +73,36 @@ assert sqlfile tests/tmp/e2e.pxfdb "select count(*) from pxtf" 2
 assert sqlfile tests/tmp/e2e.pxfdb "select count(*) from pxfm" 4
 assert snapdir unchanged
 # the old typeface is gone, and the new one took its place
-assert sqlfile tests/tmp/e2e.pxfdb "select count(*) from pxtf where lower(hex(hash)) = '8e8c94921267d3c2c72ec93d3b0cf63d'" 0
-assert sqlfile tests/tmp/e2e.pxfdb "select count(*) from pxtf where lower(hex(hash)) <> '8e8c94921267d3c2c72ec93d3b0cf63d' and lower(hex(hash)) <> 'b7ed69ab357b00edcb64d1160fbf71b4'" 1
+assert sqlfile tests/tmp/e2e.pxfdb "select count(*) from pxtf where lower(hex(hash)) = 'ff6354ce745de4d0170855e161a491be'" 0
+assert sqlfile tests/tmp/e2e.pxfdb "select count(*) from pxtf where lower(hex(hash)) <> 'ff6354ce745de4d0170855e161a491be' and lower(hex(hash)) <> '0021a99dbbf1ae9dc9c27c685f581c17'" 1
 # a text field: typing changes the copy, Escape puts the value back, backspacing the typed letter returns to the saved state
 sleep 500
 wheel 10 1250 400
 wait 12
-click @c.family
+click @c.typeface
 type X
 key enter
 wait 3
-assert ctext FAMILY Test SansX
+assert tfname Test SansX
 assert unsaved 1
 assert navseg 0 Test SansX *
 sleep 500
-click @c.family
+click @c.typeface
 key backspace
 key enter
 wait 3
-assert ctext FAMILY Test Sans
+assert tfname Test Sans
 assert unsaved 0
 sleep 500
-click @c.family
+click @c.typeface
 type Y
 key escape
 wait 3
-assert ctext FAMILY Test Sans
+assert tfname Test Sans
 assert unsaved 0
-# leaving the Typeface view commits what is pending: the family Z takes the typeface's place in memory
+# leaving the Typeface view commits what is pending: the name Z takes the typeface's place in memory
 sleep 500
-click @c.family
+click @c.typeface
 type Z
 key enter
 wait 3

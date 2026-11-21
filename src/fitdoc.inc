@@ -454,7 +454,7 @@ static struct {
     FitSizeReport rep;
     bool pixel;                /* the choice: a pixel font (drawn with outlines, or a bitmap font) */
     bool typeface;             /* make a typeface with the names of the file */
-    char family[160], style[96];
+    char typefaceName[160], style[96];
     char err[200];
     double ms;                 /* how long the searches took */
     /* a picture of a font (sheet.h) */
@@ -517,9 +517,9 @@ static void ImpSheetOpen(const char *path)
     fimp.rgba = bm_load_rgba(path, &fimp.iw, &fimp.ih, err, sizeof err);
     if (!fimp.rgba) snprintf(fimp.err, sizeof fimp.err, "%s", err);
     else ImpSheetAnalyze();
-    snprintf(fimp.family, sizeof fimp.family, "%.150s", BaseName(path));
-    char *dot = strrchr(fimp.family, '.');
-    if (dot && dot != fimp.family) *dot = 0;
+    snprintf(fimp.typefaceName, sizeof fimp.typefaceName, "%.150s", BaseName(path));
+    char *dot = strrchr(fimp.typefaceName, '.');
+    if (dot && dot != fimp.typefaceName) *dot = 0;
     snprintf(fimp.style, sizeof fimp.style, "Regular");
 }
 
@@ -548,21 +548,21 @@ static void ImpAnalyze(const char *path, int face)
         fimp.hasSmooth = fit_find_size(fimp.probe->ol, NULL, &fimp.smooth, &fimp.rep, msg, sizeof msg) == 1;
         fimp.pixel = fimp.hasGrid && fimp.grid.sure;
         if (!fimp.hasGrid && !fimp.hasSmooth) snprintf(fimp.err, sizeof fimp.err, "the font has no glyph with ink");
-        snprintf(fimp.family, sizeof fimp.family, "%s", outline_family(fimp.probe->ol));
+        snprintf(fimp.typefaceName, sizeof fimp.typefaceName, "%s", outline_family(fimp.probe->ol));
         snprintf(fimp.style, sizeof fimp.style, "%s", outline_style(fimp.probe->ol));
     } else {
         BmStrikeInfo si;
         fimp.pixel = true;
         if (bm_strike_info(fimp.probe->bm, fimp.probe->strike, &si)) {
-            snprintf(fimp.family, sizeof fimp.family, "%s", si.family[0] ? si.family : si.name);
+            snprintf(fimp.typefaceName, sizeof fimp.typefaceName, "%s", si.family[0] ? si.family : si.name);
             snprintf(fimp.style, sizeof fimp.style, "%s", si.style);
         }
     }
     fimp.ms = (GetTime() - t0) * 1000.0;
-    if (!fimp.family[0]) {
-        snprintf(fimp.family, sizeof fimp.family, "%.150s", BaseName(path));
-        char *dot = strrchr(fimp.family, '.');
-        if (dot && dot != fimp.family) *dot = 0;
+    if (!fimp.typefaceName[0]) {
+        snprintf(fimp.typefaceName, sizeof fimp.typefaceName, "%.150s", BaseName(path));
+        char *dot = strrchr(fimp.typefaceName, '.');
+        if (dot && dot != fimp.typefaceName) *dot = 0;
     }
     if (!fimp.style[0]) snprintf(fimp.style, sizeof fimp.style, "Regular");
 }
@@ -589,19 +589,19 @@ static void ImportFontOpen(void)
 static bool ImpTypeface(PxtfTypeface *c)
 {
     static const struct { int id; PxtfText t; } names[] = {
-        {0, PXTF_COPYRIGHT}, {4, PXTF_FULLNAME}, {5, PXTF_VERSION}, {7, PXTF_TRADEMARK}, {8, PXTF_VENDOR}, {9, PXTF_DESIGNER},
+        {0, PXTF_COPYRIGHT}, {4, PXTF_NAME}, {5, PXTF_VERSION}, {7, PXTF_TRADEMARK}, {8, PXTF_VENDOR}, {9, PXTF_DESIGNER},
         {10, PXTF_DESCRIPTION}, {11, PXTF_VENDORURL}, {12, PXTF_DESIGNERURL}, {13, PXTF_LICENSE}, {14, PXTF_LICENSEURL}};
     pxtf_init(c);
-    size_t n = 0;
-    char *bytes = px_read_file(fimp.path, &n);
-    if (!bytes) return false;
-    px_hash128_hex(bytes, n, c->hash, false);
-    free(bytes);
     c->v = (PxtfVariant *)calloc(1, sizeof(PxtfVariant));
     if (!c->v) return false;
     c->count = c->cap = 1;
     PxtfVariant *v = &c->v[0];
     v->number = 1;
+    size_t n = 0;
+    char *bytes = px_read_file(fimp.path, &n);
+    if (!bytes) { pxtf_free(c); return false; }
+    px_hash128_hex(bytes, n, v->source, false);   /* SOURCE-HASH: the bytes of the file read */
+    free(bytes);
     char fmt[16] = "FONT", type[32];
     if (fimp.outline) snprintf(fmt, sizeof fmt, "%s", outline_format(fimp.probe->ol));
     else { const char *e = strrchr(fimp.path, '.'); if (e && e[1]) snprintf(fmt, sizeof fmt, "%s", e + 1); }
@@ -614,7 +614,7 @@ static bool ImpTypeface(PxtfTypeface *c)
     v->format = strdup(fmt);
     v->type = strdup(type);
     snprintf(v->pxfm, sizeof v->pxfm, "00000000000000000000000000000000");
-    pxtf_set_text(v, PXTF_FAMILY, fimp.family);
+    pxtf_set_name(c, fimp.typefaceName);
     pxtf_set_text(v, PXTF_STYLE, fimp.style);
     for (size_t i = 0; fimp.outline && i < sizeof names / sizeof names[0]; i++) {
         char t[2000];
@@ -634,7 +634,7 @@ static bool ImpTypeface(PxtfTypeface *c)
         free(text);
         if (ok) return true;
         if (pass) break;
-        for (int t = 0; t < PXTF_TEXT_COUNT; t++) if (t != PXTF_FAMILY && t != PXTF_STYLE) pxtf_set_text(v, (PxtfText)t, NULL);   /* the names only */
+        for (int t = 0; t < PXTF_TEXT_COUNT; t++) if (t != PXTF_STYLE) pxtf_set_text(v, (PxtfText)t, NULL);   /* the names only */
     }
     pxtf_free(c);
     pxtf_init(c);
@@ -707,7 +707,7 @@ static bool ImportSheetCreate(void)
     PxtfTypeface tf;
     bool haveTf = fimp.typeface && ImpTypeface(&tf);
     char t[300];
-    snprintf(t, sizeof t, "%s%s%s", fimp.family, fimp.family[0] && fimp.style[0] ? " " : "", fimp.style);
+    snprintf(t, sizeof t, "%s%s%s", fimp.typefaceName, fimp.typefaceName[0] && fimp.style[0] ? " " : "", fimp.style);
     int count = f.count, colours = mono ? 1 : sh->npalette;
     ImpFree();
     AdoptDocument(&f, haveTf ? &tf : NULL, haveTf ? 1 : 0, false, t, t, NULL, NULL, "imported picture", "");
@@ -785,7 +785,7 @@ static bool ImportFontCreate(void)
     PxtfTypeface tf;
     bool haveTf = fimp.typeface && ImpTypeface(&tf);
     char t[300];
-    snprintf(t, sizeof t, "%s%s%s", fimp.family, fimp.family[0] && fimp.style[0] ? " " : "", fimp.style);
+    snprintf(t, sizeof t, "%s%s%s", fimp.typefaceName, fimp.typefaceName[0] && fimp.style[0] ? " " : "", fimp.style);
     FlLayer_Label(l, l->s.label, (int)sizeof l->s.label);
     l->metaChanged = false;
     fimp.probe = NULL;                 /* the layer now belongs to the document */
@@ -871,8 +871,8 @@ static void DrawImportSheetDialog(int W, int H)
     Th_TextSmall(fit, x, y, TH_TEXT_DIM);
     y += 22;
     int nv;
-    Rectangle vr = Th_Row(x, &y, w, "Family", NULL, 0);
-    if (Th_TextField((Rectangle){vr.x, vr.y, vr.width, TH_ROW_H}, "if.family", fimp.family, (int)sizeof fimp.family, 0, "Family") & TH_TF_CHANGED) snprintf(fimp.family, sizeof fimp.family, "%s", Th_TextValue());
+    Rectangle vr = Th_Row(x, &y, w, "Typeface", NULL, 0);
+    if (Th_TextField((Rectangle){vr.x, vr.y, vr.width, TH_ROW_H}, "if.typefacename", fimp.typefaceName, (int)sizeof fimp.typefaceName, 0, "Typeface") & TH_TF_CHANGED) snprintf(fimp.typefaceName, sizeof fimp.typefaceName, "%s", Th_TextValue());
     vr = Th_Row(x, &y, w, "Style", NULL, 0);
     if (Th_TextField((Rectangle){vr.x, vr.y, vr.width, TH_ROW_H}, "if.style", fimp.style, (int)sizeof fimp.style, 0, "Regular") & TH_TF_CHANGED) snprintf(fimp.style, sizeof fimp.style, "%s", Th_TextValue());
     {   /* the layout: found, or chosen */
@@ -989,8 +989,8 @@ static void DrawImportFontDialog(int W, int H)
     Th_TextSmall(fit, x, y, TH_TEXT_DIM);
     y += 22;
     bool can = fimp.probe && !fimp.err[0];
-    Rectangle vr = Th_Row(x, &y, w, "Family", NULL, 0);
-    if (Th_TextField((Rectangle){vr.x, vr.y, vr.width, TH_ROW_H}, "if.family", fimp.family, (int)sizeof fimp.family, can ? 0 : TH_TF_DISABLED, "Family") & TH_TF_CHANGED) snprintf(fimp.family, sizeof fimp.family, "%s", Th_TextValue());
+    Rectangle vr = Th_Row(x, &y, w, "Typeface", NULL, 0);
+    if (Th_TextField((Rectangle){vr.x, vr.y, vr.width, TH_ROW_H}, "if.typefacename", fimp.typefaceName, (int)sizeof fimp.typefaceName, can ? 0 : TH_TF_DISABLED, "Typeface") & TH_TF_CHANGED) snprintf(fimp.typefaceName, sizeof fimp.typefaceName, "%s", Th_TextValue());
     vr = Th_Row(x, &y, w, "Style", NULL, 0);
     if (Th_TextField((Rectangle){vr.x, vr.y, vr.width, TH_ROW_H}, "if.style", fimp.style, (int)sizeof fimp.style, can ? 0 : TH_TF_DISABLED, "Regular") & TH_TF_CHANGED) snprintf(fimp.style, sizeof fimp.style, "%s", Th_TextValue());
     int nfaces = fimp.probe && fimp.probe->state == FL_OK ? fimp.probe->nFaces : 1;

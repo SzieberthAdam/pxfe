@@ -1,14 +1,15 @@
-/* pxtf.h - pixel typeface model, reader and writer (pxtf version 1; formerly pxfc). No raylib.
+/* pxtf.h - pixel typeface model, reader and writer (pxtf version 2). No raylib.
  *
- * Spec: C:/Users/jnsGEzD3/Documents/GitHub/pixelglyphlib/spec/pxtf.md.
+ * Spec: C:/Users/jnsGEzD3/Documents/GitHub/pxfdb/spec/pxtf.md (version 2).
+ * A typeface is its NAME (the top line) and its variants; each variant names its pxfm and its source file
+ * (SOURCE-HASH, SOURCE-FORMAT, SOURCE-TYPE), so the variants can come from several source files.
  * Hashes in the model are 32 LOWER-case hex digits (as file names); the file has them upper case.
  * Text fields are kept UNESCAPED UTF-8 in the model (what a UI shows); the writer escapes them.
  * A C string cannot hold U+0000 (the library has values ending in the escape \x00): it is kept as the two bytes
  * C0 80 ("modified UTF-8") in the model, unescaped from and escaped to \x00 again.
  * The reading options (ADVANCEGAP CELL CHARSET GRID IGNORE NINTHCOLUMN PFM RECORDSIZE SPACEADVANCE) are
- * kept as their raw canonical lines (`KEY\tfield\tfield`, no leading tab) so they round-trip
- * exactly.  FORMAT and TYPE are kept per variant; the writer puts them at the top when every variant has the same
- * (as the spec demands) and the reader fills every variant from the top line.
+ * kept as their raw canonical lines (`KEY\tfield\tfield`, no leading tab) so they round-trip exactly; CODEPAGE, a reading
+ * option with a text field, is kept as a text key.
  *
  * NFC LIMITATION: the reader checks UTF-8 validity strictly, but Unicode Normalization Form C only partially: it
  * rejects nothing that is ASCII, accepts precomposed Latin text, and rejects a decomposed sequence of an ASCII letter
@@ -26,33 +27,34 @@
 
 #include "pxfont.h"
 
-/* The text keys, in alphabetical key order. */
+/* The text keys of a variant, in alphabetical key order.  PXTF_NAME is the variant key NAME (the font's name); the
+ * typeface's NAME top line is PxtfTypeface.name. */
 typedef enum PxtfText {
-    PXTF_CODEPAGE, PXTF_COPYRIGHT, PXTF_DESCRIPTION, PXTF_DESIGNER, PXTF_DESIGNERURL, PXTF_FAMILY, PXTF_FULLNAME,
-    PXTF_LICENSE, PXTF_LICENSEURL, PXTF_SLANT, PXTF_STYLE, PXTF_TRADEMARK, PXTF_VENDOR, PXTF_VENDORURL,
-    PXTF_VERSION, PXTF_WEIGHTNAME,
+    PXTF_CODEPAGE, PXTF_COPYRIGHT, PXTF_DESCRIPTION, PXTF_DESIGNER, PXTF_DESIGNERURL, PXTF_LICENSE, PXTF_LICENSEURL,
+    PXTF_NAME, PXTF_SLANT, PXTF_STYLE, PXTF_TRADEMARK, PXTF_VENDOR, PXTF_VENDORURL, PXTF_VERSION, PXTF_WEIGHTNAME,
     PXTF_TEXT_COUNT
 } PxtfText;
-const char *pxtf_text_key(PxtfText t);     /* "COPYRIGHT", ... */
+const char *pxtf_text_key(PxtfText t);     /* "COPYRIGHT", ..., "NAME" for PXTF_NAME */
 const char *pxtf_text_label(PxtfText t);   /* "Copyright", "Designer URL", ... */
 
-/* A typeface made in an editor (spec "A typeface made in an editor"): FORMAT PXFE, TYPE pxfe, a random HASH; it may have no
- * variant (the writer then puts these two at the top), and a variant added in the editor has them and no reading options. */
+/* A font made in an editor (spec "A font made in an editor"): SOURCE-FORMAT PXFE, SOURCE-TYPE pxfe, a random SOURCE-HASH and no
+ * reading options.  A typeface made in an editor may have no variant; then it must have a NAME. */
 #define PXTF_EDITOR_FORMAT "PXFE"
 #define PXTF_EDITOR_TYPE   "pxfe"
 
 typedef struct PxtfVariant {
     int number;                    /* >= 1 */
     char pxfm[33];                 /* lower-case hash of the variant's pxfm */
-    char *format;                  /* source format "FON", "BDF", ... (malloc'd) */
-    char *type;                    /* how it is read, "fnt-v2", ... (malloc'd, unescaped) */
+    char source[33];               /* lower-case SOURCE-HASH: the hash of the source file (random for a font made in an editor) */
+    char *format;                  /* SOURCE-FORMAT "FON", "BDF", ... (malloc'd) */
+    char *type;                    /* SOURCE-TYPE, how it is read, "fnt-v2", ... (malloc'd, unescaped) */
     char *text[PXTF_TEXT_COUNT];   /* unescaped UTF-8, NULL when not stated */
     bool italic, struckout, underlined;
     char **opts; int nopts;        /* raw reading-option lines, in file order */
 } PxtfVariant;
 
 typedef struct PxtfTypeface {
-    char hash[33];                 /* lower-case hash of the SOURCE file (the HASH top line) */
+    char *name;                    /* the NAME top line (malloc'd, unescaped), NULL when it has none */
     PxtfVariant *v; int count, cap;  /* ascending by number */
 } PxtfTypeface;
 
@@ -63,6 +65,9 @@ PxtfVariant *pxtf_find_variant(PxtfTypeface *c, int number);   /* or NULL */
 PxtfVariant *pxtf_clone_variant(PxtfTypeface *c, int number);  /* a copy of that variant appended under the next number; NULL on failure */
 PxtfVariant *pxtf_add_variant(PxtfTypeface *c);                /* an empty variant appended under the next number (1 in an empty typeface) */
 bool pxtf_set_text(PxtfVariant *v, PxtfText t, const char *utf8); /* NULL or "" clears; copies */
+bool pxtf_set_name(PxtfTypeface *c, const char *utf8);           /* the typeface's NAME; NULL or "" clears; copies */
+bool pxtf_set_editor_source(PxtfVariant *v);                     /* SOURCE-FORMAT PXFE, SOURCE-TYPE pxfe and a random SOURCE-HASH */
+void pxtf_random_hash(char out[33]);                             /* 32 random lower-case hex digits */
 
 /* Text field escapes (spec "Text"): backslash, tab, line end (LF, CR LF, CR -> \n), other controls \xHH, trailing
  * spaces cut.  pxtf_escape(utf8) -> malloc'd escaped text; pxtf_unescape(escaped, &out, err) -> malloc'd UTF-8
@@ -72,7 +77,7 @@ bool pxtf_unescape(const char *escaped, char **out, char err[PX_ERR_LEN]);
 bool pxtf_utf8_valid(const char *s, size_t len);     /* strict: no overlong, no surrogates, <= U+10FFFF */
 bool pxtf_nfc_ok(const char *s, size_t len);         /* partial check, see the limitation above */
 
-/* Strict reader: UTF-8, no BOM, NFC (partial), escapes, order (re-serialised and compared), FORMAT/TYPE placement. */
+/* Strict reader: UTF-8, no BOM, NFC (partial), escapes, order (re-serialised and compared), the four keys every variant has. */
 bool pxtf_parse(const char *data, size_t len, PxtfTypeface *out, char err[PX_ERR_LEN]);
 bool pxtf_read(const char *path, PxtfTypeface *out, char err[PX_ERR_LEN]);
 

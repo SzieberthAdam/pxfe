@@ -572,12 +572,12 @@ static void UpdateTitle(void)
     if (strcmp(t, winTitle) != 0) { SetWindowTitle(t); snprintf(winTitle, sizeof winTitle, "%s", t); }
 }
 
-/* "Family Style" of a typeface variant, else "Unnamed font" */
-static void NameOf(const PxtfVariant *v, char *out, size_t cap)
+/* "Name Style" of a typeface variant (the typeface's NAME and the variant's STYLE), else its full name, else "Unnamed font" */
+static void NameOf(const PxtfTypeface *c, const PxtfVariant *v, char *out, size_t cap)
 {
-    const char *fam = v && v->text[PXTF_FAMILY] ? v->text[PXTF_FAMILY] : "";
+    const char *fam = v && c && c->name ? c->name : "";
     const char *sty = v && v->text[PXTF_STYLE] ? v->text[PXTF_STYLE] : "";
-    const char *full = v && v->text[PXTF_FULLNAME] ? v->text[PXTF_FULLNAME] : "";
+    const char *full = v && v->text[PXTF_NAME] ? v->text[PXTF_NAME] : "";
     if (fam[0] && sty[0]) snprintf(out, cap, "%s %s", fam, sty);
     else if (fam[0]) snprintf(out, cap, "%s", fam);
     else if (full[0]) snprintf(out, cap, "%s", full);
@@ -831,7 +831,7 @@ static bool OpenStoreFont(const char *pxfm, const char *pxtfHash, int variant, P
         } else { pxtf_free(&nc); pxtf_init(&nc); }
     }
     char name[256], dp[64];
-    NameOf(haveC ? pxtf_find_variant(&nc, var) : NULL, name, sizeof name);
+    NameOf(haveC ? &nc : NULL, haveC ? pxtf_find_variant(&nc, var) : NULL, name, sizeof name);
     snprintf(dp, sizeof dp, "%s.pxfm", nf.fileHash);
     AdoptDocument(&nf, haveC ? &nc : NULL, haveC ? var : 0, true, name, name, nf.fileHash, haveC ? tfh : "", dp, dp);
     if (selCode >= 0) {
@@ -2038,14 +2038,14 @@ static int NavView(void)
     return inEditor ? NV_GLYPH : NV_FONT;
 }
 
-/* the names of the open font in the bar: its typeface (family) or "Orphaned", and its style */
+/* the names of the open font in the bar: its typeface (NAME) or "Orphaned", and its style */
 static void FontNavNames(char fam[300], char sty[300])
 {
     const PxtfVariant *v = hasCont ? pxtf_find_variant(&cont, contVariant) : NULL;
     if (!hasCont) { snprintf(fam, 300, "Orphaned"); snprintf(sty, 300, "%s", origTitle[0] ? origTitle : "Regular"); }
     else {
-        const char *f = v && v->text[PXTF_FAMILY] && v->text[PXTF_FAMILY][0] ? v->text[PXTF_FAMILY] : NULL;
-        const char *full = v && v->text[PXTF_FULLNAME] && v->text[PXTF_FULLNAME][0] ? v->text[PXTF_FULLNAME] : NULL;
+        const char *f = cont.name && cont.name[0] ? cont.name : NULL;
+        const char *full = v && v->text[PXTF_NAME] && v->text[PXTF_NAME][0] ? v->text[PXTF_NAME] : NULL;
         const char *s = v && v->text[PXTF_STYLE] && v->text[PXTF_STYLE][0] ? v->text[PXTF_STYLE] : NULL;
         if (f) snprintf(fam, 300, "%s", f);
         else if (full) snprintf(fam, 300, "%s", full);
@@ -2377,7 +2377,7 @@ static void DrawNewFontDialog(int W, int H)
     Th_TextHead("New Font", x, y, TH_TEXT);
     y += TH_SIZE_HEAD + TH_PAD;
     Rectangle vr = Th_Row(x, &y, w, "Name", NULL, 0);
-    if (Th_TextField((Rectangle){vr.x, vr.y, vr.width, TH_ROW_H}, "nf.name", nf.name, (int)sizeof nf.name, 0, "Family") & TH_TF_CHANGED) snprintf(nf.name, sizeof nf.name, "%s", Th_TextValue());
+    if (Th_TextField((Rectangle){vr.x, vr.y, vr.width, TH_ROW_H}, "nf.name", nf.name, (int)sizeof nf.name, 0, "Typeface") & TH_TF_CHANGED) snprintf(nf.name, sizeof nf.name, "%s", Th_TextValue());
     vr = Th_Row(x, &y, w, "Style", NULL, 0);
     if (Th_TextField((Rectangle){vr.x, vr.y, vr.width, TH_ROW_H}, "nf.style", nf.style, (int)sizeof nf.style, 0, "Regular") & TH_TF_CHANGED) snprintf(nf.style, sizeof nf.style, "%s", Th_TextValue());
     int nv;

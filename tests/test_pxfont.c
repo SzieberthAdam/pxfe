@@ -1049,16 +1049,17 @@ static void test_draft_roundtrip(void) {
 
     PxtfTypeface c;
     pxtf_init(&c);
-    snprintf(c.hash, sizeof c.hash, "%s", "bcc7a744d44f7f35cbfaa1efb0048a63");
     c.v = (PxtfVariant *)calloc(2, sizeof(PxtfVariant));
     c.count = c.cap = 2;
     for (int i = 0; i < 2; i++) {
         c.v[i].number = i + 1;
         c.v[i].format = strdup("BDF");
         c.v[i].type = strdup("bdf");
+        snprintf(c.v[i].source, 33, "%s", "bcc7a744d44f7f35cbfaa1efb0048a63");
         snprintf(c.v[i].pxfm, 33, "%s", i == 0 ? H_EXAMPLE : H_NOASC);
     }
-    pxtf_set_text(&c.v[0], PXTF_FAMILY, "Draft \xC3\x81" "dam\ttab\\");
+    pxtf_set_name(&c, "Draft \xC3\x81" "dam\ttab\\");
+    pxtf_set_text(&c.v[0], PXTF_NAME, "Draft \xC3\x81" "dam Regular");
     pxtf_set_text(&c.v[0], PXTF_STYLE, "Regular");
     c.v[1].italic = true;
     PxDraftInfo info;
@@ -1082,8 +1083,8 @@ static void test_draft_roundtrip(void) {
     CHECK(strcmp(h1, h2) == 0, "draft: same font hash");
     CHECK(strcmp(ri.name, info.name) == 0, "draft: name");
     CHECK(strcmp(ri.originalHash, H_EXAMPLE) == 0 && strcmp(ri.originalPxtfHash, info.originalPxtfHash) == 0 && ri.originalVariant == 1, "draft: original hashes and variant");
-    CHECK(ri.typeface && ri.typeface->count == 2 && strcmp(ri.typeface->v[0].text[PXTF_FAMILY], "Draft \xC3\x81" "dam\ttab\\") == 0 &&
-          ri.typeface->v[1].italic && strcmp(ri.typeface->hash, c.hash) == 0, "draft: duplicated typeface survives");
+    CHECK(ri.typeface && ri.typeface->count == 2 && ri.typeface->name && strcmp(ri.typeface->name, "Draft \xC3\x81" "dam\ttab\\") == 0 &&
+          ri.typeface->v[1].italic && strcmp(ri.typeface->v[1].source, c.v[1].source) == 0, "draft: duplicated typeface survives");
     char ch1[33], ch2[33];
     pxtf_hash(&c, ch1);
     pxtf_hash(ri.typeface, ch2);

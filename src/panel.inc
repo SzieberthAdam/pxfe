@@ -168,12 +168,12 @@ static int ButtonRow(float x, float *y, float w, int n, const char *const *lab, 
 
 /* ---- the commands of the Typeface and Font tabs: run at the end of the frame (they may replace the document or rescan the library) ---- */
 /* the typeface-wide fields and the font's own (the Typeface and Font tabs, Add Font) */
-static const PxtfText kTfFields[] = {PXTF_FAMILY, PXTF_VERSION, PXTF_DESIGNER, PXTF_DESIGNERURL, PXTF_COPYRIGHT, PXTF_TRADEMARK, PXTF_LICENSE,
+static const PxtfText kTfFields[] = {PXTF_VERSION, PXTF_DESIGNER, PXTF_DESIGNERURL, PXTF_COPYRIGHT, PXTF_TRADEMARK, PXTF_LICENSE,
                                      PXTF_LICENSEURL, PXTF_VENDOR, PXTF_VENDORURL, PXTF_DESCRIPTION, PXTF_CODEPAGE};
-static const PxtfText kFontFields[] = {PXTF_STYLE, PXTF_FULLNAME, PXTF_WEIGHTNAME, PXTF_SLANT};
+static const PxtfText kFontFields[] = {PXTF_STYLE, PXTF_NAME, PXTF_WEIGHTNAME, PXTF_SLANT};
 
-enum { LC_NONE, LC_LOCK, LC_DELETE, LC_CLONE, LC_EXPORT, LC_ADDFONT };
-static struct { int cmd; bool typeface; char pxtf[33], pxfm[33]; int variant; } libCmd;
+enum { LC_NONE, LC_LOCK, LC_DELETE, LC_CLONE, LC_EXPORT, LC_ADDFONT, LC_RENAME };
+static struct { int cmd; bool typeface; char pxtf[33], pxfm[33]; int variant; char text[300]; } libCmd;
 
 static void LibCmd(int cmd, bool typeface, const char *pxtf, const char *pxfm, int variant)
 {
@@ -237,9 +237,14 @@ static void CloneFont(const char *pxtfIn, const char *pxfmIn, int variant)
  * with its Typeface tab showing; Add Font gives it fonts. */
 static void NewTypeface(void)
 {
-    char h[33], err[PX_ERR_LEN] = "";
+    char h[33], err[PX_ERR_LEN] = "", name[64] = "New Typeface";
     if (!store) { Th_Toast(TH_TOAST_ERR, "No database is loaded"); return; }
-    if (!store_new_typeface(store, h, err)) { ShowError("Cannot make a typeface", err); return; }
+    bool ok = false;
+    for (int i = 1; i < 1000 && !ok; i++) {   /* two empty typefaces of one name would be one file: New Typeface, New Typeface 2, ... */
+        if (i > 1) snprintf(name, sizeof name, "New Typeface %d", i);
+        ok = store_new_typeface(store, name, h, err);
+    }
+    if (!ok) { ShowError("Cannot make a typeface", err); return; }
     if (fsettings) fs_set_unlocked(fsettings, 1, h, true);
     if (browser) { Browser_Rescan(browser); Browser_SelectTypeface(browser, h); }
     Th_Toast(TH_TOAST_OK, "New typeface: Add Font in its Typeface tab gives it fonts");
@@ -324,8 +329,18 @@ static void AddFontToTypeface(const char *pxtfIn, const char *pxfmIn)
         const PxtfVariant *fromTf = t.count > 1 ? &t.v[0] : ov;   /* the typeface-wide fields */
         nv = &t.v[t.count - 1];
         memcpy(nv->pxfm, fmh, 33);
-        nv->format = _strdup(PXTF_EDITOR_FORMAT);
-        nv->type = _strdup(PXTF_EDITOR_TYPE);
+        if (ov) {   /* the font's source, as its old variant states it (pxtf: "a variant copied from another typeface keeps its source lines") */
+            memcpy(nv->source, ov->source, 33);
+            nv->format = _strdup(ov->format ? ov->format : PXTF_EDITOR_FORMAT);
+            nv->type = _strdup(ov->type ? ov->type : PXTF_EDITOR_TYPE);
+            for (int o = 0; o < ov->nopts; o++) {   /* and its reading options */
+                char **no = (char **)realloc(nv->opts, sizeof(char *) * (size_t)(nv->nopts + 1));
+                if (!no) break;
+                nv->opts = no;
+                nv->opts[nv->nopts++] = _strdup(ov->opts[o]);
+            }
+        } else pxtf_set_editor_source(nv);   /* a font no typeface names: made in an editor */
+        if (!t.name && haveOld && old.name) pxtf_set_name(&t, old.name);
         for (int k = 0; fromTf && k < (int)(sizeof kTfFields / sizeof kTfFields[0]); k++) pxtf_set_text(nv, kTfFields[k], fromTf->text[kTfFields[k]]);
         for (int k = 0; ov && k < (int)(sizeof kFontFields / sizeof kFontFields[0]); k++) pxtf_set_text(nv, kFontFields[k], ov->text[kFontFields[k]]);
         if (ov) { nv->italic = ov->italic; nv->struckout = ov->struckout; nv->underlined = ov->underlined; }
@@ -360,11 +375,11 @@ static void AddFontToTypeface(const char *pxtfIn, const char *pxfmIn)
     Th_Toast(TH_TOAST_OK, "Added as variant %04d of the typeface", num);
 }
 
-/* the fonts of the list that match the filter (family, style, full name, hash), in the order of their names */
+/* the fonts of the list that match the filter (typeface name, style, font name, hash), in the order of their names */
 static int AfCmp(const void *pa, const void *pb)
 {
     const StoreEntry *a = &af.fl.e[*(const int *)pa], *b = &af.fl.e[*(const int *)pb];
-    int r = _stricmp(a->family, b->family);
+    int r = _stricmp(a->typefaceName, b->typefaceName);
     if (!r) r = _stricmp(a->style, b->style);
     return r ? r : strcmp(a->pxfm, b->pxfm);
 }
@@ -382,7 +397,7 @@ static void AfRefilter(void)
     af.nvis = 0;
     for (int i = 0; i < af.fl.count; i++) {
         const StoreEntry *e = &af.fl.e[i];
-        if (af.filter[0] && !(AfHas(e->family, af.filter) || AfHas(e->style, af.filter) || AfHas(e->fullname, af.filter) || AfHas(e->pxfm, af.filter))) continue;
+        if (af.filter[0] && !(AfHas(e->typefaceName, af.filter) || AfHas(e->style, af.filter) || AfHas(e->fontName, af.filter) || AfHas(e->pxfm, af.filter))) continue;
         af.vis[af.nvis++] = i;
     }
     qsort(af.vis, (size_t)af.nvis, sizeof(int), AfCmp);
@@ -454,8 +469,8 @@ static void DrawAddFontDialog(int W, int H)
             af.lastClick = now;
         }
         char title[300], fit[300], det[200];
-        if (e->family[0]) snprintf(title, sizeof title, "%s%s%s", e->family, e->style[0] ? " " : "", e->style);
-        else if (e->fullname[0]) snprintf(title, sizeof title, "%s", e->fullname);
+        if (e->typefaceName[0]) snprintf(title, sizeof title, "%s%s%s", e->typefaceName, e->style[0] ? " " : "", e->style);
+        else if (e->fontName[0]) snprintf(title, sizeof title, "%s", e->fontName);
         else snprintf(title, sizeof title, "Font %.8s", e->pxfm);
         Th_FitText(title, 0, rr.width - 24, fit, sizeof fit);
         Th_Text(fit, rr.x + 12, ry + 4, TH_TEXT);
@@ -490,6 +505,31 @@ static void DrawAddFontDialog(int W, int H)
     }
 }
 
+/* The Name of an unlocked typeface of the library that is not the open document's (an empty one, say): it is rewritten in place under a
+ * new hash (the open document's typeface is edited in `cont` and committed with the font instead). */
+static void RenameTypeface(const char *pxtfIn, const char *name)
+{
+    char tfh[33], err[PX_ERR_LEN] = "";
+    snprintf(tfh, sizeof tfh, "%s", pxtfIn);
+    if (!store || !tfh[0]) return;
+    if (LockedOf(true, tfh)) { Th_Toast(TH_TOAST_ERR, "The typeface is locked: unlock it first"); return; }
+    PxtfTypeface t;
+    pxtf_init(&t);
+    StoreEditResult er;
+    memset(&er, 0, sizeof er);
+    bool ok = store_load_typeface(store_main_conn(store), tfh, &t, err);
+    if (ok && t.count == 0 && !(name && name[0])) { pxtf_free(&t); Th_Toast(TH_TOAST_ERR, "A typeface with no font needs a name"); return; }
+    if (ok) ok = pxtf_set_name(&t, name) && store_edit_in_place(store, "", NULL, tfh, &t, &er, err);
+    pxtf_free(&t);
+    if (!ok) { ShowError("Cannot rename the typeface", err[0] ? err : "The typeface could not be read."); return; }
+    if (fsettings) fs_rename_typeface(fsettings, tfh, er.pxtf);
+    if (browser) {
+        Browser_Follow(browser, tfh, er.pxtf);
+        Browser_Rescan(browser);
+        if (inBrowser && !Browser_InTypeface(browser)) Browser_SelectTypeface(browser, er.pxtf);
+    }
+}
+
 static void ExportPackage(bool typeface, const char *pxtf, const char *pxfm, int variant);   /* below */
 
 static void RunLibCommand(void)
@@ -502,6 +542,7 @@ static void RunLibCommand(void)
     else if (cmd == LC_CLONE) CloneFont(libCmd.pxtf, libCmd.pxfm, libCmd.variant);
     else if (cmd == LC_EXPORT) ExportPackage(tf, libCmd.pxtf, libCmd.pxfm, libCmd.variant);
     else if (cmd == LC_ADDFONT) AddFontOpen(libCmd.pxtf);
+    else if (cmd == LC_RENAME) RenameTypeface(libCmd.pxtf, libCmd.text);
 }
 
 /* ---- the Typeface and Font tabs ---- */
@@ -553,8 +594,15 @@ static void DrawInfoTab(bool typeface, float px, float pw, float *yp, const Pxtf
     if (typeface) {
         snprintf(tabHash, sizeof tabHash, "%s", cur);
         /* META: the typeface's fields; ACTIONS under it: the hash and the commands */
-        if (cv && Th_Section("META", x, &y, w, TextFormat("%d variant%s%s%s", tf->count, tf->count == 1 ? "" : "s", cv->format && cv->format[0] ? "  \xC2\xB7  " : "", cv->format ? cv->format : ""))) {
-            FieldRows(x, &y, w, (PxtfTypeface *)tf, cv, kTfFields, (int)(sizeof kTfFields / sizeof kTfFields[0]), doc && !contLocked, true);
+        if (tf && Th_Section("META", x, &y, w, TextFormat("%d variant%s", tf->count, tf->count == 1 ? "" : "s"))) {
+            /* the typeface's NAME: edited in the open document's typeface, else (unlocked) rewritten in the library at once */
+            bool enName = doc ? !contLocked : stored && !locked;
+            Rectangle r = Th_Row(x, &y, w, "Name", NULL, 0);
+            if (Th_TextField(r, "c.typeface", tf->name ? tf->name : "", 0, TH_TF_REVERT | (enName ? 0 : TH_TF_READONLY), NULL) & TH_TF_CHANGED) {
+                if (doc) { pxtf_set_name((PxtfTypeface *)tf, Th_TextValue()); needHash = true; }
+                else { LibCmd(LC_RENAME, true, pxtf, pxfm, variant); snprintf(libCmd.text, sizeof libCmd.text, "%s", Th_TextValue()); }
+            }
+            if (cv) FieldRows(x, &y, w, (PxtfTypeface *)tf, cv, kTfFields, (int)(sizeof kTfFields / sizeof kTfFields[0]), doc && !contLocked, true);
             y += 4;
         }
         if (Th_Section("ACTIONS", x, &y, w, NULL)) {

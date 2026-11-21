@@ -180,7 +180,7 @@ static void table_sum(sqlite3 *db, const char *table, const char *order, long *r
 }
 
 static const char *label(const StoreEntry *e, char *buf, size_t n) {
-    snprintf(buf, n, "%s %s [%.8s]", e->family[0] ? e->family : "(no family)", e->style, e->pxfm);
+    snprintf(buf, n, "%s %s [%.8s]", e->typefaceName[0] ? e->typefaceName : "(no name)", e->style, e->pxfm);
     return buf;
 }
 
@@ -359,7 +359,7 @@ int main(int argc, char **argv) {
         int shown = 0;
         for (size_t w = 0; w < sizeof wanted / sizeof *wanted && shown < 3; w++) {
             int fi = -1;
-            for (int i = 0; i < tl.count; i++) if (strstr(tl.e[i].family, wanted[w])) { fi = i; break; }
+            for (int i = 0; i < tl.count; i++) if (strstr(tl.e[i].typefaceName, wanted[w])) { fi = i; break; }
             if (fi < 0) continue;
             StoreSimilar sim[20];
             int n;
@@ -382,11 +382,11 @@ int main(int argc, char **argv) {
                 StoreSimilar sm[5];
                 t0 = now();
                 store_similar_typefaces(sBuilt, tl.e[fi].pxtf, 5, sm, &n, err);
-                printf("E. similar typefaces to %s (%.3f s):\n", tl.e[fi].family, now() - t0);
+                printf("E. similar typefaces to %s (%.3f s):\n", tl.e[fi].typefaceName, now() - t0);
                 for (int k = 0; k < n; k++) {
                     PxtfTypeface tf;
                     const char *fam = "?";
-                    if (store_load_typeface(c, sm[k].hash, &tf, err)) fam = tf.count && tf.v[0].text[PXTF_FAMILY] ? tf.v[0].text[PXTF_FAMILY] : "(no family)";
+                    if (store_load_typeface(c, sm[k].hash, &tf, err)) fam = tf.name ? tf.name : "(no name)";
                     printf("      %6.2f (%d fonts)  %s [%.8s]\n", sm[k].score, sm[k].nFonts, fam, sm[k].hash);
                     if (fam[0] != '?') pxtf_free(&tf);
                 }

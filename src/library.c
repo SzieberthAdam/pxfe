@@ -108,7 +108,7 @@ static void entry_from_store(LibEntry *e, LibKind kind, const StoreEntry *se) {
     memcpy(e->pxfm, se->pxfm, 33);
     memcpy(e->pxtf, se->pxtf, 33);
     e->variant = se->variant;
-    e->family = se->family; e->style = se->style; e->fullname = se->fullname;
+    e->typefaceName = se->typefaceName; e->style = se->style; e->fontName = se->fontName;
     e->designer = se->designer; e->format = se->format;
     e->italic = se->italic; e->struckout = se->struckout; e->underlined = se->underlined;
     info_from_store(e, se);
@@ -198,8 +198,8 @@ void library_apply_result(Library *lib, const LibLoadResult *r) { library_apply_
 
 void library_entry_title(const LibEntry *e, char *buf, size_t size) {
     if (e->kind == LIB_DRAFT && e->name && e->name[0]) snprintf(buf, size, "%s", e->name);
-    else if (e->family && e->family[0]) snprintf(buf, size, "%s%s%s", e->family, e->style && e->style[0] ? " " : "", e->style ? e->style : "");
-    else if (e->fullname && e->fullname[0]) snprintf(buf, size, "%s", e->fullname);
+    else if (e->typefaceName && e->typefaceName[0]) snprintf(buf, size, "%s%s%s", e->typefaceName, e->style && e->style[0] ? " " : "", e->style ? e->style : "");
+    else if (e->fontName && e->fontName[0]) snprintf(buf, size, "%s", e->fontName);
     else snprintf(buf, size, "%.8s", e->pxfm[0] ? e->pxfm : "draft");
 }
 
@@ -215,9 +215,9 @@ static void set_meta(LibEntry *e, const PxtfTypeface *c, const PxtfVariant *v) {
     e->typeface = v ? c : NULL;
     e->tvariant = v;
 #define T(t) ((v && v->text[t]) ? v->text[t] : none)
-    e->family = T(PXTF_FAMILY);
+    e->typefaceName = c && c->name ? c->name : none;
     e->style = T(PXTF_STYLE);
-    e->fullname = T(PXTF_FULLNAME);
+    e->fontName = T(PXTF_NAME);
     e->designer = T(PXTF_DESIGNER);
 #undef T
     e->format = (v && v->format) ? v->format : none;
