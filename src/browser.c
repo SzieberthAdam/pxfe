@@ -63,6 +63,8 @@ static BrowserInfoTab g_infoTab;
 void Browser_SetInfoTab(BrowserInfoTab draw) { g_infoTab = draw; }
 static BrowserLocked g_locked;
 void Browser_SetLockQuery(BrowserLocked locked) { g_locked = locked; }
+static BrowserLicence g_licOpen;
+void Browser_SetLicenceOpen(BrowserLicence open) { g_licOpen = open; }
 /* the state mark of an unlocked font or typeface (an open padlock at the right end of r); nothing while it is locked */
 static float unlock_mark(float xr, float y, bool typeface, const char *hash)
 {
@@ -105,6 +107,11 @@ struct Browser {
     BrowserAction lastAction; char lastPxfm[33], lastPxtf[33];
     float msUpd[120], msFrame[120]; int msN;   /* CPU time of Browser_UpdateDraw and whole frame time (GetFrameTime) of the last frames, in ms */
     bool mouseEaten, closeEat;
+    /* the licence labels drawn this frame and the last (a press is matched against the last frame's) */
+    struct { Rectangle r; int abs; } chip[2][160];
+    int nchip[2], chipCur;
+    /* the licence filter: per word key a mask of the words wanted (0: any); obligations: those the fonts must not have */
+    uint32_t licMask[STORE_TERMS_NWORDS], licNoOblig;
     bool modalBlocked;             /* Th_InputBlocked() when the frame began (a dialog is open) */
 
     /* filtered list */
@@ -511,6 +518,89 @@ static void group_boxes(Browser *b, int anchorAbs)
     free(slot); free(slotRank); free(g);
 }
 
+/* the licence filter: every key with words chosen needs one of them; no obligation that is excluded */
+static bool licence_match(const Browser *b, const LibEntry *e)
+{
+    for (int k = 0; k < STORE_TERMS_NWORDS; k++) {
+        if (!b->licMask[k]) continue;
+        int w = e->terms.word[k];
+        if (!e->terms.license || w < 0 || !(b->licMask[k] & (1u << w))) return false;
+    }
+    return !(b->licNoOblig && e->terms.license && (e->terms.obligations & b->licNoOblig));
+}
+
+int Browser_LicenceFilterCount(const Browser *b)
+{
+    int n = 0;
+    for (int k = 0; k < STORE_TERMS_NWORDS; k++) for (uint32_t m = b->licMask[k]; m; m &= m - 1) n++;
+    for (uint32_t m = b->licNoOblig; m; m &= m - 1) n++;
+    return n;
+}
+
+void Browser_LicenceFilterClear(Browser *b)
+{
+    memset(b->licMask, 0, sizeof b->licMask);
+    b->licNoOblig = 0;
+    b->dirtyVis = true;
+}
+
+/* ---- the licence label of a font card: its licence in short, at the right of the first row; a click shows the terms */
+
+static const char *licence_label(const LibEntry *e)
+{
+    if (!e->pxtf[0] || e->variant <= 0) return NULL;   /* a font no typeface names has no terms */
+    return e->terms.license && e->terms.license[0] ? e->terms.license : "No licence info";
+}
+
+/* the width the label takes (0 for none), at most maxW */
+static float licence_w(const LibEntry *e, float maxW)
+{
+    const char *l = licence_label(e);
+    if (!l) return 0;
+    float w = Th_MeasureSmall(l).x + 12;
+    return w > maxW ? maxW : w;
+}
+
+/* draws the label right-aligned at xr (its text on the line y), and keeps its place for the next frame's press */
+static void licence_chip(Browser *b, int abs, float xr, float y, float maxW)
+{
+    const LibEntry *e = E(b, abs);
+    const char *l = licence_label(e);
+    if (!l) return;
+    float w = licence_w(e, maxW);
+    char fit[200];
+    Th_FitText(l, 1, w - 12, fit, sizeof fit);
+    Rectangle r = RR(snapf(xr - w), y - 3, w, TH_SIZE_SMALL + 7);
+    bool over = hov(b, r) && !b->pop.open;
+    bool known = e->terms.license && e->terms.license[0];
+    rrect(r, over ? TH_ACCENT_TINT : alpha(TH_LINE_SOFT, 160), over ? TH_HOVER_BORDER : TH_LINE, 9);
+    Th_TextSmall(fit, r.x + 6, y, over ? TH_ACCENT : known ? TH_TEXT_DIM : TH_TEXT_OFF);
+    int cur = b->chipCur;
+    if (b->nchip[cur] < (int)(sizeof b->chip[0] / sizeof b->chip[0][0])) {
+        b->chip[cur][b->nchip[cur]].r = r;
+        b->chip[cur][b->nchip[cur]].abs = abs;
+        b->nchip[cur]++;
+    }
+    Th_Reg(TextFormat("lic.%s.%d", e->pxtf, e->variant), r);
+}
+
+/* a press on a label drawn last frame: the licence dialog opens and the press goes no further; then this frame's list starts */
+static void licence_press(Browser *b)
+{
+    int prev = b->chipCur;
+    b->chipCur ^= 1;
+    b->nchip[b->chipCur] = 0;
+    if (b->mouseEaten || b->pop.open || Th_InputBlocked() || Th_MouseBlocked() || !IsMouseButtonPressed(MOUSE_BUTTON_LEFT)) return;
+    Vector2 mp = GetMousePosition();
+    for (int i = 0; i < b->nchip[prev]; i++) {
+        if (!pt_in(b->chip[prev][i].r, mp)) continue;
+        const LibEntry *e = E(b, b->chip[prev][i].abs);
+        if (g_licOpen) g_licOpen(e->pxtf, e->variant);
+        b->mouseEaten = true;
+        return;
+    }
+}
+
 static void rebuild_vis(Browser *b)
 {
     int anchorAbs = -1;
@@ -538,6 +628,7 @@ static void rebuild_vis(Browser *b)
         if (b->selStr[0][0] && strcmp(e->style, b->selStr[0]) != 0) continue;
         if (b->mono && !(e->info.ready && !e->info.failed && e->info.monospaced)) continue;
         if (b->colorOnly && entry_colors(e) < 2) continue;
+        if (!licence_match(b, e)) continue;
         b->vis[b->nvis++] = i;
     }
     g_sort = b;
@@ -1203,6 +1294,72 @@ static const PxtfTypeface *sel_typeface(Browser *b, int *variant)
 /* The View area above the side panel's tabs, with no captions of its own: the name filter, Style, Monospaced and Colours; Zoom, Columns (a
  * stepper and Auto) and Sort by (Name, Size, Glyphs, beside its label); then the sample field, growing with its lines, and the presets A C D H P.
  * The Typeface view has only the zoom and the sample. */
+/* ---- the licence filter: a section of its own in the View area, closed at first */
+
+static const char *const LIC_PERM_LABEL[] = {"Yes", "No", "Ask", "Not stated", "Unknown"};
+static const char *const LIC_CLASS_LABEL[] = {"CC0", "Public domain", "OFL", "MIT", "GPL", "CC BY", "CC BY-SA", "CC BY-ND", "CC BY-NC",
+                                              "Free", "Free personal", "Free, unspecified", "Shareware", "Proprietary", "Unknown"};
+static const char *const LIC_PROV_LABEL[] = {"Original", "Vendor", "Derived", "Possibly derived", "Unknown"};
+static const char *const LIC_CONF_LABEL[] = {"High", "Medium", "Low"};
+static const char *const LIC_LIMIT_LABEL[] = {"Personal only", "Non-commercial"};
+static const char *const LIC_UP_LABEL[] = {"Cleared", "Not cleared", "Unknown"};
+static const char *const LIC_OBL_LABEL[] = {"Attribution", "Device limit", "Embed only", "Licence text", "Notice", "No collections",
+                                            "No embedding", "No NFT", "No sale", "No sale alone", "Notify author", "Only bundled",
+                                            "Rename", "Reserved name", "Share-alike"};
+
+/* one criterion: its caption, then its words as toggles, wrapped; returns whether the mask changed */
+static bool licence_row(Browser *b, float x, float w, float *yp, const char *caption, const char *key, const char *id,
+                        const char *const *labels, uint32_t *mask)
+{
+    int n = 0;
+    const PxtfWord *words = pxtf_terms_words(key, &n);
+    float y = *yp;
+    Th_TextSmall(caption, x, y, TH_TEXT_DIM);
+    y += TH_SIZE_SMALL + 6;
+    const float h = 24, gap = 4;
+    float cx = x;
+    bool changed = false;
+    for (int i = 0; i < n; i++) {
+        float bw = Th_ButtonW(labels[i]) - 8;
+        if (cx > x && cx + bw > x + w) { cx = x; y += h + gap; }
+        Rectangle r = RR(cx, y, bw, h);
+        bool on = (*mask >> i) & 1u;
+        char name[96];
+        snprintf(name, sizeof name, "lic.%s.%s", id, words[i].word);
+        Th_Reg(name, r);
+        if (Th_Toggle(r, labels[i], &on, 0, words[i].meaning)) { *mask ^= 1u << i; changed = true; }
+        cx += bw + gap;
+    }
+    *yp = y + h + 10;
+    if (changed) { b->dirtyVis = true; b->anchorItem[b->tab] = 0; b->anchorOff[b->tab] = 0; }
+    return changed;
+}
+
+static void licence_filter_ui(Browser *b, float x, float w, float *yp)
+{
+    int on = Browser_LicenceFilterCount(b);
+    char right[40] = "";
+    if (on) snprintf(right, sizeof right, "%d on", on);
+    static bool closedAtFirst;
+    if (!closedAtFirst) { Th_SectionSetOpen("LICENCE", false); closedAtFirst = true; }   /* a section of many criteria: opened when wanted */
+    if (!Th_Section("LICENCE", x, yp, w, right)) return;
+    float y = *yp;
+    licence_row(b, x, w, &y, "Commercial use", "TERMS-COMMERCIAL", "commercial", LIC_PERM_LABEL, &b->licMask[STORE_TERMS_COMMERCIAL]);
+    licence_row(b, x, w, &y, "Changing it", "TERMS-MODIFY", "modify", LIC_PERM_LABEL, &b->licMask[STORE_TERMS_MODIFY]);
+    licence_row(b, x, w, &y, "Passing it on", "TERMS-REDISTRIBUTE", "redistribute", LIC_PERM_LABEL, &b->licMask[STORE_TERMS_REDISTRIBUTE]);
+    licence_row(b, x, w, &y, "Passing on a changed version", "TERMS-REDISTRIBUTE-MODIFIED", "redistmod", LIC_PERM_LABEL, &b->licMask[STORE_TERMS_REDISTRIBUTE_MODIFIED]);
+    licence_row(b, x, w, &y, "Licence", "TERMS-CLASS", "class", LIC_CLASS_LABEL, &b->licMask[STORE_TERMS_CLASS]);
+    licence_row(b, x, w, &y, "Without the condition", "TERMS-OBLIGATION", "without", LIC_OBL_LABEL, &b->licNoOblig);
+    licence_row(b, x, w, &y, "Use limited to", "TERMS-USE-LIMIT", "limit", LIC_LIMIT_LABEL, &b->licMask[STORE_TERMS_USE_LIMIT]);
+    licence_row(b, x, w, &y, "Design", "TERMS-PROVENANCE", "design", LIC_PROV_LABEL, &b->licMask[STORE_TERMS_PROVENANCE]);
+    licence_row(b, x, w, &y, "Rights of the original", "TERMS-UPSTREAM-STATUS", "upstream", LIC_UP_LABEL, &b->licMask[STORE_TERMS_UPSTREAM_STATUS]);
+    licence_row(b, x, w, &y, "Confidence of the reading", "TERMS-CONFIDENCE", "confidence", LIC_CONF_LABEL, &b->licMask[STORE_TERMS_CONFIDENCE]);
+    Rectangle cr = RR(x, y - 4, Th_ButtonW("Clear"), TH_ROW_H);
+    Th_Reg("lic.clear", cr);
+    if (Th_Button(cr, "Clear", TH_BTN_OFF(on > 0), "Turn every licence criterion off")) Browser_LicenceFilterClear(b);
+    *yp = y - 4 + TH_ROW_H + TH_GAP;
+}
+
 static void view_area(Browser *b, float x, float w, float *yp, Rectangle clip)
 {
     float y = *yp + 4;
@@ -1215,6 +1372,7 @@ static void view_area(Browser *b, float x, float w, float *yp, Rectangle clip)
         if (Th_Switch(RR(x, y, hw, TH_ROW_H), "Monospaced", &b->mono, 0, "Monospaced")) b->dirtyVis = true;
         if (Th_Switch(RR(x + hw + TH_GAP, y, w - hw - TH_GAP, TH_ROW_H), "Colours", &b->colorOnly, 0, "Colours")) b->dirtyVis = true;
         y += TH_ROW_H + TH_GAP;
+        licence_filter_ui(b, x, w, &y);
     }
 
     {   /* ---- the cards: zoom, columns, sort */
@@ -1521,8 +1679,10 @@ static void draw_boxes(Browser *b, const TfCtx *c)
                 float tx = cx + 14, tw = c->cardW - 28;
                 char nm[200], det[200], clipd[260];
                 const char *st = e->style[0] ? e->style : (e->fontName[0] ? e->fontName : "Regular");
-                Th_FitText(st, 0, tw, nm, sizeof nm);
+                float lw = licence_w(e, floorf(tw * 0.45f));
+                Th_FitText(st, 0, tw - (lw > 0 ? lw + 10 : 0), nm, sizeof nm);
                 Th_Text(nm, tx, ry + 6, TH_TEXT);
+                licence_chip(b, b->vis[vi], tx + tw, ry + 9, floorf(tw * 0.45f));
                 /* row 2: size and glyphs, and at the right the font hash (small) and the lock, as in the box header */
                 float mk = unlock_mark(tx + tw, ry + 30, false, e->pxfm);
                 float hw = e->pxfm[0] ? Th_HashShort("Font", e->pxfm, 0, 0, TH_HASH_MEASURE | TH_HASH_SMALL, NULL) + 12 : 0;
@@ -1752,6 +1912,7 @@ static void grid_ui(Browser *b, Rectangle G, BrowserChoice *choice, bool *chosen
         }
     }
     bool hit = tf ? hoverBox >= 0 : hoverIdx >= 0;
+    licence_press(b);   /* a press on a licence label shows the terms, and selects nothing */
     /* a press selects; a press on the entry that is selected already opens it */
     if (hit && !b->pop.open && !Th_InputBlocked() && IsMouseButtonPressed(MOUSE_BUTTON_LEFT) && !b->mouseEaten) {
         int openVi = -1;
@@ -1839,7 +2000,8 @@ static void grid_ui(Browser *b, Rectangle G, BrowserChoice *choice, bool *chosen
                 char fam[300], sty[300];
                 entry_names(e, fam, sizeof fam, sty, sizeof sty, &c->hHashOnly);
                 float hw = e->pxfm[0] && !c->hHashOnly ? Th_HashShort("Font", e->pxfm, 0, 0, TH_HASH_MEASURE | TH_HASH_SMALL, NULL) + 12 + 22 : 0;   /* row 2: the hash and room for the lock */
-                float titleW = tw;
+                float lw = licence_w(e, floorf(tw * 0.45f));
+                float titleW = tw - (lw > 0 ? lw + 10 : 0);   /* row 1: the licence at the right */
                 float famW = Th_Measure(fam).x;
                 Th_FitText(fam, 0, titleW, c->hFam, sizeof c->hFam);
                 c->hSty[0] = 0;
@@ -1851,6 +2013,7 @@ static void grid_ui(Browser *b, Rectangle G, BrowserChoice *choice, bool *chosen
             }
             if (c->hHashOnly) Th_HashShort("Font", e->pxfm, tx, cy + 9, 0, NULL); else Th_Text(c->hFam, tx, cy + 9, TH_TEXT);
             if (c->hSty[0]) Th_Text(c->hSty, tx + c->hStyX, cy + 9, TH_TEXT_DIM);
+            licence_chip(b, abs, tx + tw, cy + 12, floorf(tw * 0.45f));
             Th_TextSmall(c->hDet, tx, cy + 33, e->info.failed ? TH_TEXT_ERR : TH_TEXT_DIM);
             {   /* row 2, at the right: the lock and the font hash (small), as in a typeface box */
                 float mk = unlock_mark(tx + tw, cy + 31, false, e->pxfm);
@@ -1986,6 +2149,7 @@ static void tview_ui(Browser *b, Rectangle G, BrowserChoice *choice, bool *chose
     bool onBar = Th_ScrollBar(G, &b->scrollY, content, 72, !b->pop.open && !b->mouseEaten);
     if (onBar) b->mouseEaten = true;
 
+    licence_press(b);
     Vector2 mp = GetMousePosition();
     int hoverVi = -1;
     if (mouseInGrid && !onBar)
@@ -2029,8 +2193,10 @@ static void tview_ui(Browser *b, Rectangle G, BrowserChoice *choice, bool *chose
         float tx = innerX + 16, tw = w - 32;
         char nm[200], det[260], clipd[260];
         const char *st = e->style[0] ? e->style : (e->fontName[0] ? e->fontName : "Regular");
-        Th_FitText(st, 0, tw, nm, sizeof nm);
+        float lw = licence_w(e, floorf(tw * 0.45f));
+        Th_FitText(st, 0, tw - (lw > 0 ? lw + 10 : 0), nm, sizeof nm);
         Th_Text(nm, tx, ry + 11, TH_TEXT);
+        licence_chip(b, abs, tx + tw, ry + 14, floorf(tw * 0.45f));
         /* row 2: size and glyphs, and at the right the font hash (small) and the lock, as in the cards */
         float mk = unlock_mark(tx + tw, ry + 38, false, e->pxfm);
         float hw = e->pxfm[0] ? Th_HashShort("Font", e->pxfm, 0, 0, TH_HASH_MEASURE | TH_HASH_SMALL, NULL) + 12 : 0;

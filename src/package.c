@@ -286,7 +286,7 @@ typedef struct Checked {
     StoreFile *files; int nFiles;   /* canonical texts (owned by `texts`) */
     char **texts;
     HSet pxfm;
-    int nGlyphs, nPalettes;
+    int nGlyphs, nPalettes, nLicenses;
 } Checked;
 
 static void checked_free(Checked *c) {
@@ -298,8 +298,24 @@ static void checked_free(Checked *c) {
 }
 
 /* the file kinds of the folders of a package */
-static const char *const FOLDER[4] = {"pxgl", "pxfm", "pxtf", "palette"};
-static const char *const EXT[4] = {".pxgl", ".pxfm", ".pxtf", ".hex"};
+static const char *const FOLDER[5] = {"pxgl", "pxfm", "pxtf", "palette", "license"};
+static const char *const EXT[5] = {".pxgl", ".pxfm", ".pxtf", ".hex", ".txt"};
+
+/* the licence texts a pxtf file names (TERMS-TEXT of every variant), in lower case */
+static bool licence_names(const PxtfTypeface *t, HSet *out) {
+    for (int v = 0; v < t->count; v++) {
+        const char *h[64];
+        int n = pxtf_opt_all(&t->v[v], "TERMS-TEXT", h, 64);
+        for (int i = 0; i < n; i++) {
+            char lo[33];
+            for (int q = 0; q < 32; q++) lo[q] = (char)(h[i][q] >= 'A' && h[i][q] <= 'F' ? h[i][q] + 32 : h[i][q]);
+            lo[32] = 0;
+            if (!hset_has(out, lo) && !hset_add(out, lo)) return false;
+            hset_sort(out);
+        }
+    }
+    return true;
+}
 
 /* Checks the entries of a package as pkgbase.check does, then, when `strict`, the files with the store's strict readers
  * (store_add_files without a store; an import leaves them to its own store_add_files, which reads them first).  The kind
@@ -308,7 +324,8 @@ static bool check_package(const EntryList *l, bool strict, Checked *out, char er
     memset(out, 0, sizeof *out);
     int root = -1, nRoot = 0, nInPxfm = 0;
     int *kindOf = (int *)malloc(sizeof(int) * (size_t)(l->n ? l->n : 1));
-    HSet named = {0}, needG = {0}, needP = {0}, haveG = {0}, haveP = {0}, haveF = {0};
+    HSet named = {0}, needG = {0}, needP = {0}, haveG = {0}, haveP = {0}, haveF = {0}, needL = {0}, haveL = {0};
+    int nInLicense = 0;
     bool ok = false;
     if (!kindOf) return fail(err, "out of memory");
     for (int i = 0; i < l->n; i++) {
@@ -316,10 +333,11 @@ static bool check_package(const EntryList *l, bool strict, Checked *out, char er
         if (!slash) { kindOf[i] = -1; root = i; nRoot++; continue; }
         size_t fl = (size_t)(slash - nm);
         int k = -1;
-        for (int q = 0; q < 4; q++) if (q != STORE_FILE_PXTF && strlen(FOLDER[q]) == fl && memcmp(nm, FOLDER[q], fl) == 0) k = q;
-        if (k < 0 || !slash[1] || strchr(slash + 1, '/')) { fail(err, "%s: not at the root, in pxfm/, pxgl/ or palette/", nm); goto done; }
+        for (int q = 0; q < 5; q++) if (q != STORE_FILE_PXTF && strlen(FOLDER[q]) == fl && memcmp(nm, FOLDER[q], fl) == 0) k = q;
+        if (k < 0 || !slash[1] || strchr(slash + 1, '/')) { fail(err, "%s: not at the root, in pxfm/, pxgl/, palette/ or license/", nm); goto done; }
         kindOf[i] = k;
         if (k == STORE_FILE_PXFM) nInPxfm++;
+        if (k == STORE_FILE_LICENSE) nInLicense++;
     }
     if (nRoot != 1) { fail(err, "%d files at the root, not one .pxfm or .pxtf file", nRoot); goto done; }
     {
@@ -331,6 +349,7 @@ static bool check_package(const EntryList *l, bool strict, Checked *out, char er
         kindOf[root] = out->kind == PKG_FONT ? STORE_FILE_PXFM : STORE_FILE_PXTF;
     }
     if (out->kind == PKG_FONT && nInPxfm) { fail(err, "a pxfm/ folder in a font package"); goto done; }
+    if (out->kind == PKG_FONT && nInLicense) { fail(err, "a license/ folder in a font package"); goto done; }
     if (out->kind == PKG_TYPEFACE && !nInPxfm) { fail(err, "no pxfm/ folder in a typeface package"); goto done; }
     out->files = (StoreFile *)calloc((size_t)l->n, sizeof(StoreFile));
     out->texts = (char **)calloc((size_t)l->n, sizeof(char *));
@@ -342,12 +361,19 @@ static bool check_package(const EntryList *l, bool strict, Checked *out, char er
         const char *leaf = i == root ? e->name : strchr(e->name, '/') + 1;
         size_t ll = strlen(leaf), xl = strlen(EXT[k]);
         if (ll != 32 + xl || strcmp(leaf + 32, EXT[k]) != 0 || !is_lower_hash(leaf, 32)) { fail(err, "%s: not <hash>%s", e->name, EXT[k]); goto done; }
-        if (k != STORE_FILE_PXTF) {
+        if (k != STORE_FILE_PXTF && k != STORE_FILE_LICENSE) {
             for (size_t q = 0; q < e->len; q++) if (e->data[q] >= 0x80) { fail(err, "%s: not ASCII text", e->name); goto done; }
         }
         size_t cl;
-        char *can = px_canonical((const char *)e->data, e->len, &cl);
-        if (!can) { fail(err, "out of memory"); goto done; }
+        char *can;
+        if (k == STORE_FILE_LICENSE) {   /* a licence text: the reader of license.md, and its canonical form */
+            char lerr[PX_ERR_LEN] = "";
+            can = pxtf_license_canonical((const char *)e->data, e->len, &cl, lerr);
+            if (!can) { fail(err, "%s: %s", e->name, lerr); goto done; }
+        } else {
+            can = px_canonical((const char *)e->data, e->len, &cl);
+            if (!can) { fail(err, "out of memory"); goto done; }
+        }
         StoreFile *f = &out->files[out->nFiles];
         out->texts[out->nFiles] = can;
         out->nFiles++;
@@ -356,10 +382,10 @@ static bool check_package(const EntryList *l, bool strict, Checked *out, char er
         f->len = cl;
         px_hash128_hex(can, cl, f->hash, false);
         if (memcmp(f->hash, leaf, 32) != 0) { fail(err, "%s: its hash is %s", e->name, f->hash); goto done; }
-        HSet *have = k == STORE_FILE_PXGL ? &haveG : k == STORE_FILE_PALETTE ? &haveP : k == STORE_FILE_PXFM ? &haveF : NULL;
+        HSet *have = k == STORE_FILE_PXGL ? &haveG : k == STORE_FILE_PALETTE ? &haveP : k == STORE_FILE_PXFM ? &haveF : k == STORE_FILE_LICENSE ? &haveL : NULL;
         if (have && !hset_add(have, f->hash)) { fail(err, "out of memory"); goto done; }
     }
-    hset_sort(&haveG); hset_sort(&haveP); hset_sort(&haveF);
+    hset_sort(&haveG); hset_sort(&haveP); hset_sort(&haveF); hset_sort(&haveL);
     if (out->kind == PKG_TYPEFACE) {   /* the pxtf names exactly the fonts of pxfm/ */
         const StoreFile *tf = NULL;
         for (int i = 0; i < out->nFiles; i++) if (out->files[i].kind == STORE_FILE_PXTF) tf = &out->files[i];
@@ -368,11 +394,14 @@ static bool check_package(const EntryList *l, bool strict, Checked *out, char er
         char perr[PX_ERR_LEN];
         if (!pxtf_parse(tf->data, tf->len, &t, perr)) { pxtf_free(&t); fail(err, "%s.pxtf: %s", tf->hash, perr); goto done; }
         for (int v = 0; v < t.count; v++) if (!hset_add(&named, t.v[v].pxfm)) { pxtf_free(&t); fail(err, "out of memory"); goto done; }
+        if (!licence_names(&t, &needL)) { pxtf_free(&t); fail(err, "out of memory"); goto done; }
         pxtf_free(&t);
         hset_sort(&named);
         snprintf(out->pxtf, sizeof out->pxtf, "%s", tf->hash);
         for (int i = 0; i < named.n; i++) if (!hset_has(&haveF, named.h[i])) { fail(err, "the pxfm file %s, named by the pxtf file, is not in the package", named.h[i]); goto done; }
         for (int i = 0; i < haveF.n; i++) if (!hset_has(&named, haveF.h[i])) { fail(err, "the pxfm file %s is not named by the pxtf file", haveF.h[i]); goto done; }
+        for (int i = 0; i < needL.n; i++) if (!hset_has(&haveL, needL.h[i])) { fail(err, "the licence text %s, named by the pxtf file, is not in the package", needL.h[i]); goto done; }
+        for (int i = 0; i < haveL.n; i++) if (!hset_has(&needL, haveL.h[i])) { fail(err, "the licence text %s is not named by the pxtf file", haveL.h[i]); goto done; }
     }
     for (int i = 0; i < out->nFiles; i++) {   /* the pxgl and palette files are exactly those the fonts name */
         if (out->files[i].kind != STORE_FILE_PXFM) continue;
@@ -388,10 +417,12 @@ static bool check_package(const EntryList *l, bool strict, Checked *out, char er
     memset(&haveF, 0, sizeof haveF);
     out->nGlyphs = haveG.n;
     out->nPalettes = haveP.n;
+    out->nLicenses = haveL.n;
     ok = true;
 done:
     free(kindOf);
     hset_free(&named); hset_free(&needG); hset_free(&needP); hset_free(&haveG); hset_free(&haveP); hset_free(&haveF);
+    hset_free(&needL); hset_free(&haveL);
     if (!ok) checked_free(out);
     return ok;
 }
@@ -406,6 +437,7 @@ static void fill_result(const Checked *c, PkgImportResult *res) {
     else res->nPxfm = 0;
     res->nGlyphs = c->nGlyphs;
     res->nPalettes = c->nPalettes;
+    res->nLicenses = c->nLicenses;
 }
 
 static bool check_or_import(Store *s, bool add, const unsigned char *zip, size_t len, PkgImportResult *res, char err[PX_ERR_LEN]) {
@@ -416,7 +448,7 @@ static bool check_or_import(Store *s, bool add, const unsigned char *zip, size_t
     bool ok = check_package(&l, !add, &c, err);
     list_free(&l);
     if (!ok) return false;
-    StoreCounts added = {0, 0, 0, 0}, skipped = {0, 0, 0, 0};
+    StoreCounts added = {0, 0, 0, 0, 0}, skipped = {0, 0, 0, 0, 0};
     if (add) ok = store_add_files(s, c.files, c.nFiles, &added, &skipped, err);
     if (ok) {
         fill_result(&c, res);
@@ -466,7 +498,8 @@ static bool add_store_file(StoreConn *c, int kind, const char *hash, const char 
     size_t len = 0;
     char got[33] = "";
     char *t = kind == STORE_FILE_PXGL ? store_pxgl_text(c, hash, &len, got) : kind == STORE_FILE_PXFM ? store_pxfm_text(c, hash, &len, got)
-            : kind == STORE_FILE_PXTF ? store_pxtf_text(c, hash, &len, got) : store_palette_text(c, hash, &len, got);
+            : kind == STORE_FILE_PXTF ? store_pxtf_text(c, hash, &len, got) : kind == STORE_FILE_LICENSE ? store_license_text(c, hash, &len, got)
+            : store_palette_text(c, hash, &len, got);
     if (!t) return fail(err, "the %s file %s is not in the library", FOLDER[kind], hash);
     if (strcmp(got, hash) != 0) { free(t); return fail(err, "the %s file %s made from the rows has the hash %s", FOLDER[kind], hash, got); }
     if (!list_add(l, name, (unsigned char *)t, len)) { free(t); return fail(err, "out of memory"); }
@@ -526,10 +559,16 @@ unsigned char *pkg_typeface_bytes(StoreConn *c, const char *pxtfHash, size_t *le
         char perr[PX_ERR_LEN];
         bool ok = pxtf_parse((const char *)e->data, e->len, &t, perr);
         if (!ok) fail(err, "the pxtf file %s: %s", h, perr);
-        HSet fonts = {0};
+        HSet fonts = {0}, lics = {0};
         for (int v = 0; v < t.count && ok; v++) if (!hset_add(&fonts, t.v[v].pxfm)) ok = fail(err, "out of memory");
+        if (ok && !licence_names(&t, &lics)) ok = fail(err, "out of memory");
         pxtf_free(&t);
         hset_sort(&fonts);
+        for (int i = 0; i < lics.n && ok; i++) {
+            snprintf(name, sizeof name, "license/%s.txt", lics.h[i]);
+            ok = add_store_file(c, STORE_FILE_LICENSE, lics.h[i], name, &l, err);
+        }
+        hset_free(&lics);
         for (int i = 0; i < fonts.n && ok; i++) {
             snprintf(name, sizeof name, "pxfm/%s.pxfm", fonts.h[i]);
             ok = add_font(c, fonts.h[i], name, &l, err);

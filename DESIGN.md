@@ -3,9 +3,9 @@
 > This file describes the current design only, by topic, without version history.
 > It must stay under 100,000 characters (`wc -m DESIGN.md`); when adding, shorten something else.
 
-pxfe is a desktop browser and editor for the pixel fonts of a pixelglyphlib library: pxtf typefaces, pxfm fonts, pxgl glyph files and hex palettes, kept in one pxfdb SQLite database.
+pxfe is a desktop browser and editor for the pixel fonts of a pxfdb library: pxtf typefaces, pxfm fonts, pxgl glyph files and hex palettes, kept in one pxfdb SQLite database.
 It is written in C99 with raylib 6 and SQLite 3.54 (`vendor/sqlite3/`, static).
-The formats are specified in `C:/Users/jnsGEzD3/Documents/GitHub/pixelglyphlib/spec/`: `pxfm.md`, `pxtf.md`, `pxgl.md`, `hex.md` and `pxfdb.md`; pxfe follows the spec of pxfm version 3, as in the working tree after commit 5dd97ca2c4: codes `G+CCCCCC-VVV` with variants, and the glyph line `GLYPH code advance x y [glyph [palette]]`.
+The formats are specified in `C:/Users/jnsGEzD3/Documents/GitHub/pxfdb/spec/` (`pxfm.md`, `pxtf.md`, `pxgl.md`, `hex.md`, `license.md`, `pxfdb.md`, `pxfp.md`, `pxtp.md`); pxfm version 3 has codes `G+CCCCCC-VVV` and the glyph line `GLYPH code advance x y [glyph [palette]]`.
 The whole UI is in English.
 
 ## Build
@@ -26,7 +26,7 @@ The tests are described in `HANDOFF.md` and `tests/e2e/README.md`.
 | File | What it does |
 | --- | --- |
 | `src/pxfont.h/.c` | font model, SHA-256, canonical form, pxfm v3 and its codes, pxgl and hex read and write, the per-glyph palette table, drafts; no raylib |
-| `src/pxtf.h/.c` | typeface model, pxtf read and write; no raylib |
+| `src/pxtf.h/.c` | typeface model, pxtf read and write, licence terms and texts; no raylib |
 | `src/store.h/.c`, `src/store_int.h` | the SQLite store in memory: load, import, save, export, change counter, rows and model both ways, lists, deletion with cascade, editing in place, glyph usage; no raylib |
 | `src/store_sim.c` | similar fonts and typefaces; no raylib |
 | `src/library.h/.c` | the browser index from the store, lazy threaded loading; no raylib |
@@ -38,7 +38,7 @@ The tests are described in `HANDOFF.md` and `tests/e2e/README.md`.
 | `src/insight.h/.c` | Glyph usage, Similar fonts and Similar typefaces, on a worker thread |
 | `src/sample.h/.c` | the shared sample text, its renderer and editor, the sample strip |
 | `src/main.c` | window, app state, views, the top bar and Menu, Load / Save / Import / Export flows and dialogs, commits, locks, glyph grid, status bar |
-| `src/panel.inc`, `src/gpanel.inc` | the right panels of the font view and of the glyph view |
+| `src/panel.inc`, `src/gpanel.inc` | the right panels of the font view and of the glyph view; the licence dialog |
 | `src/editor.h/.c` | the glyph view |
 | `src/selection.h/.c`, `src/raster.h/.c` | the selection mask and the cell paths of the tools; no raylib |
 | `src/layers.h/.c`, `src/flayers.h/.c` | session layers with the Layers tab and Add Layer popover; font layers |
@@ -86,8 +86,7 @@ Exactly three UI sizes (18, 16, 13) and the pixel face at 16:
   A size is the em, as in CSS: Noto Sans is loaded at `em * 1.362` (`TH_NOTO_RATIO`) because raylib's `LoadFontEx` size is the ascent-to-descent height.
 - Fonts are found under `assets/fonts` next to the executable, else two folders up, else the working directory; a missing file raises an error toast and raylib's default font stands in.
 - Unifont is drawn only at 16 px or 32 px, with point filtering and whole-pixel positions.
-  Both `.otf` files stay in memory and a glyph is rasterised with `LoadFontData` when first drawn, into a 1024 x 1024 atlas of 32 x 32 slots that is flushed when full; planes 1 to 16 come from `unifont_upper`.
-- At 16 px every coverage value of the Unifont `.otf` outlines is 0 or 255, so no atlas had to be made by hand.
+  Both `.otf` files stay in memory and a glyph is rasterised with `LoadFontData` when first drawn, into a 1024 x 1024 atlas of 32 x 32 slots that is flushed when full; planes 1 to 16 come from `unifont_upper`; at 16 px every coverage is 0 or 255.
 - Glyph captions (`Th_CodeDraw`, `Th_TextRich`): the character itself in Unifont, centred; "U+XXXX" while the mouse is over the caption or its cell, and always for a code point with no visible Unifont image (controls, blanks, marks without an advance, code points Unifont lacks); "#n" for a glyph without a code point; a variant adds its "-VVV" to the text and shows no image.
   Sites: the font view's cell captions, the glyph segment of the navigation bar, the glyph view's bar, the layer rows, the Glyph usage rows, the code beside Find in Library, the Add Glyph dialog.
 - A glyph preview (the large character of the Glyphs view) is Unifont at 32 px, never another size.
@@ -229,8 +228,7 @@ Exactly two forms, both in Unifont; nothing else prints a hash.
 - `live` false gives no input; the result is true while the bar is hovered or dragged, so the view must not react under it.
 - A menu moves its first row to keep the keyboard highlight in view, and the bar follows (`Th_ScrollRows`).
 - A view that needs the scroll before it draws calls the function before its content; the sample editor and the panels call it after the content they draw under the bar.
-- Used by the font grid, the library views, the Glyphs view, the side panels, the Usage list, the sample editor and preview, the Add Layer font list, the long menus and the palette bar.
-- No view keeps a drag state, thumb calculation or bar drawing of its own.
+- Every scrolling view uses it (font grid, library views, Glyphs view, side panels, Usage list, sample, Add Layer, long menus, palette bar); none keeps a drag state or bar drawing of its own.
 
 #### Colour picker
 
@@ -304,8 +302,8 @@ This file and `HANDOFF.md` follow the author's Markdown protocol: a heading has 
 
 - Files are named by their hashes; storage is content-addressed, so an edit changes the hash of what it touches, and a glyph's pxgl is never changed in place.
 - A font is modified exactly when the canonical hash of its current state differs from the hash the store holds, so an undone edit leaves it unmodified.
-- Reader and writer round-trip: every pxfm, pxtf, pxgl and palette, read and written unchanged, gives the bytes and hash of its name; the text writer and the converter from rows agree byte for byte.
-- A short hash (8 digits) is shown where space is tight, the full hash in the panels' info blocks; every label names its owner: "Font 3b52125b", "Typeface ff6354ce", "Glyph c0fc54c2".
+- Reader and writer round-trip: every pxfm, pxtf, pxgl, palette and licence text, read and written unchanged, gives the bytes and hash of its name; the text writer and the converter from rows agree byte for byte.
+- A short hash (8 digits) is shown where space is tight, the full hash in the panels' info blocks; every label names its owner: "Font 3b52125b", "Typeface 236dc4b7", "Glyph c0fc54c2".
 
 ### Typefaces
 
@@ -378,14 +376,14 @@ Each glyph has its own palette, so a font may have any number of colours; a glyp
 ## Storage: Load, Save, Import, Export
 
 pxfe works on one database (a `.pxfdb` file) at a time: Load reads it into memory, all work happens in memory, Save writes memory back.
-The text folders (`pxtf/`, `pxfm/`, `pxgl/`, `palette/`) are reached only through Import and Export.
+The text folders (`pxtf/`, `pxfm/`, `pxgl/`, `palette/`, `license/`) are reached only through Import and Export.
 
 ### The store
 
 - The library lives in memory as one SQLite database with the pxfdb schema; every view reads it through the store.
 - The open font is a `PxFont` document; the store holds what is committed.
-- A pxfdb made before hex palettes is refused: "made by an older pixelglyphlib (before hex palettes: colour lines, no palette table): rebuild it from its files with the current pixelglyphlib"; pxfe never migrates it.
-- A pxfdb with the codes of pxfm version 2 (more `pxfm_glyph` rows with a variant than without) is refused: "made by an older pixelglyphlib (codes of pxfm version 2): rebuild it from its files with the current pixelglyphlib"; the schema is the same, so only the codes tell.
+- A pxfdb made before hex palettes, or with the codes of pxfm version 2 (more `pxfm_glyph` rows with a variant than without), is refused with a message to rebuild it from its files; pxfe never migrates it.
+- The `license` table (made when missing) holds each licence text once: a zlib stream (level 9) when shorter than the text, else the text; `store_license_text` gives the text.
 - `store_glyphs_for_codepoint` (the Glyph usage and the finder) takes every variant of a code point.
 
 ### Load, Save, Save As
@@ -398,33 +396,33 @@ The text folders (`pxtf/`, `pxfm/`, `pxgl/`, `palette/`) are reached only throug
 
 ### Import (`Menu ▸ Import Folder…`)
 
-- The user picks a folder with `pxtf/`, `pxfm/`, `pxgl/` and `palette/`, then the new database's path (default `<folder>/pxfdb.pxfdb`; an existing file is replaced only after a confirmation).
+- The user picks a folder with `pxtf/`, `pxfm/`, `pxgl/`, `palette/` and `license/`, then the new database's path (default `<folder>/pxfdb.pxfdb`; an existing file is replaced only after a confirmation).
 - Every file is read by the strict readers (with a progress screen); the database is built, written and loaded.
-- The build checks that every named palette exists and has a line for each colour of its glyph, that a glyph of several colours has a palette, and `COLORS`.
+- The build checks that every named palette exists and has a line for each colour of its glyph, that a glyph of several colours has a palette, `COLORS`, and that every `TERMS-TEXT` names a licence text in its canonical form.
 - A file that fails stops the import with its name and reason; nothing is written.
 - Unsaved changes are asked about first; the new database starts with empty settings.
 
 ### Export (`Menu ▸ Export to Folder…`)
 
 - A folder without library data gets every file of memory (committed first).
-- A folder with library data opens a dialog with the counts found and a choice: Update (write what the folder lacks and leave the files already there, since the same name is the same content; delete nothing), Overwrite (empty its `pxtf/`, `pxfm/`, `pxgl/` and `palette/`, nothing else, then write everything) or Cancel.
+- A folder with library data opens a dialog with the counts found and a choice: Update (write what the folder lacks and leave the files already there, since the same name is the same content; delete nothing), Overwrite (empty its five data folders, nothing else, then write everything) or Cancel.
 - Overwrite offers "Make a backup first", on by default: the folder's data is imported into `<folder>-backup-<YYYYMMDD-HHMM>.pxfdb` beside it first; if that fails, nothing is deleted, and overwriting without a backup needs a second confirmation.
 - A summary says what was written, skipped and deleted; the sidecar is not touched.
 
 ### Packages (pxfp, pxtp)
 
-A font package (`.pxfp`) carries one font, a typeface package (`.pxtp`) a typeface with all its fonts, from one library to another (pixelglyphlib `spec/pxfp.md`, `spec/pxtp.md`).
-Both are plain zip files of library files named by their hashes: the pxfm or pxtf at the root, then flat `pxfm/`, `pxgl/` and `palette/` folders.
+A font package (`.pxfp`) carries one font, a typeface package (`.pxtp`) a typeface with all its fonts, from one library to another.
+Both are plain zip files of library files named by their hashes: the pxfm or pxtf at the root, then flat `pxfm/`, `pxgl/`, `palette/` and (a pxtp whose pxtf has `TERMS-TEXT`) `license/` folders.
 `src/package.c` writes, checks and imports them; it uses no raylib.
 
-- Writing takes the text of every file from the rows, as Export does, and gives the bytes pixelglyphlib's `package export` gives: entries in byte order of their names, deflate at level 9, 1980-01-01 00:00:00, Unix mode 0644, no extra field, no comment.
+- Writing takes the text of every file from the rows, as Export does, with the same bytes for the same content: entries in byte order of their names, deflate at level 9, 1980-01-01 00:00:00, Unix mode 0644, no extra field, no comment.
 - The deflate is zlib's own, vendored unchanged in `vendor/zlib/` (zlib 1.4, zlib licence), since another deflate (zlib-ng, sdefl) gives other bytes.
 - The recommended file name is `<typeface name>-<style>.pxfp` after the first typeface variant that names the font (else `<hash>.pxfp`) and `<typeface name>.pxtp` (else `typeface.pxtp`); a name taken in the folder by other bytes gets `-<first 8 hex digits of the hash>`.
 - Reading decides the kind by the file at the root, never by the file name or extension, and checks the whole package before anything is used: the zip itself, the shape of the kind, every name against the hash of the canonical form of its content, that the files name each other exactly, and every file with the strict readers of Import.
 - Each file is kept in its canonical form: a package whose files have CR LF line ends or trailing blanks reads as the same files.
 - Importing adds the files to memory, all or nothing: a file memory has already with the same text is skipped; one memory has under the same hash with another text stops the import, and nothing is added.
 - An import is a change of memory like any other, written by Save; it brings no source file and no font JSON.
-- `tests/test_package.c` checks round trips on the test databases, every rejection rule with a crafted zip, and byte identity with packages written by the Python reference (run with zlib's deflate; the Windows builds of Python use zlib-ng).
+- `tests/test_package.c` checks round trips on the test databases, every rejection rule with a crafted zip, and byte identity with the Python reference when it accepts the files.
 
 ### Deleting fonts and typefaces
 
@@ -432,7 +430,7 @@ Both are plain zip files of library files named by their hashes: the pxfm or pxt
 - A deleted font's typefaces lose that variant and are rewritten under new hashes; a typeface left with no variant goes.
 - Deleting a typeface deletes its pxtf and every font of it that no other typeface names.
 - Glyphs and palettes that the deletion leaves unnamed go too; earlier orphans are left alone.
-- The confirmation names exactly what goes: "Delete 1 font, 1 typeface (Typeface ff6354ce loses variant 0002 and is rewritten), 14 glyphs, 2 palettes?".
+- The confirmation names exactly what goes: "Delete 1 font, 1 typeface (Typeface 236dc4b7 loses variant 0002 and is rewritten), 14 glyphs, 2 palettes?".
 - A deletion is made in memory; Save writes it.
 
 ### New Font
@@ -569,6 +567,15 @@ The library views are Typefaces, Typeface and Fonts (`src/browser.c`).
 - Typefaces: as for Style, a variant matches by its font and a box shows with its matching variants.
 - Kept in `[browser] colouronly=`, turned off by Clear filters.
 
+### Licence terms
+
+- A variant may carry licence terms (`TERMS-*`, spec pxtf "Licence terms"); a list entry's `StoreTerms` has each word key as an index into `pxtf_terms_words`, the obligations as bits, the licence text count and the short licence (`TERMS-SPDX`, else `TERMS-LICENSE`, the class name, `LICENSE`).
+- Variant rows, Fonts cards and Typeface-view cards show the short licence as a pill at the right of their first row ("No licence info" without terms); a press opens the licence dialog (`lic.<pxtf>.<variant>`).
+- The dialog (`li.*`) is a table in plain words: Copyright, Designer, Licence (the terms' name, else `LICENSE`), the licence texts, then kind, the four permissions, conditions, design, note, evidence and where it was read.
+  A URL gives Copy URL (`li.copy.designer`, `li.copy.licence`); Show text (`li.text<i>`) shows a licence text, with Back.
+- The View area's LICENCE section, closed at first, "N on" at the right: toggles per permission, class, conditions to avoid, use limit, design, upstream status and confidence (`lic.<row>.<word>`), and Clear (`lic.clear`).
+  Toggles of a row are alternatives, rows narrow each other, and a variant without that term does not match.
+
 ### The Typeface view
 
 - One large card per font: the style, then the details (size, glyph count, mono, italic and so on) with "Font xxxxxxxx" at the right, and the shared multi-line sample at 2x or more.
@@ -601,7 +608,7 @@ The library views are Typefaces, Typeface and Fonts (`src/browser.c`).
 - The "+" after the boxes returns `BROWSER_NEW_TYPEFACE`; `NewTypeface` (panel.inc) makes it with `store_new_typeface`, unlocks it, rescans, and selects its header with the Typeface tab showing (`Browser_SelectTypeface`).
 - Add Font… opens a dialog (`af`, `DrawAddFontDialog`): the fonts of the library with a name or hash filter, by name; a click selects, a double click, Enter or Add adds, Escape cancels.
 - `AddFontToTypeface`: the font becomes a new variant under the next number (`pxtf_add_variant`), and stays in its other typefaces.
-  The variant keeps the source lines and reading options of the font's old variant (spec: "a variant copied from another typeface keeps its source lines"), or, with none, gets the editor's (`pxtf_set_editor_source`); a typeface with no name takes the old typeface's; it has the typeface-wide fields of the typeface's first variant (of the font's old variant when the typeface has none), and the style, names, slant and flags of the font's old variant (the first that names it; `STYLE Regular` when there is none).
+  The variant keeps the source lines and reading options of the font's old variant, or else gets the editor's (`pxtf_set_editor_source`); a nameless typeface takes the old one's name; the typeface-wide fields come from its first variant (else the old variant), the style, names, slant and flags from the old variant (`STYLE Regular` without one).
 - The typeface must be unlocked; it is rewritten under a new hash with `store_edit_in_place`, as Clone Font does.
 
 ### Similar fonts and typefaces
@@ -720,7 +727,7 @@ The View area (see "View area", `Editor_ViewPanel`), then the tabs **Glyph | Lay
 - A vertical strip left of the canvas, from the bar to the palette bar; the canvas, its mapping, Fit and the advance handle use the narrower rectangle.
 - Square icon buttons (`TH_ROW_H`), 2 px apart, 6 px padding; 40 px wide with one column, 72 px with two.
 - Fourteen buttons in four groups: Pencil, Eraser; Line, Curve, Rectangle, Ellipse, Polygon, Contour; Fill, Eyedropper; Marquee, Lasso, Magic Wand, Move.
-- `kTool[]` in `editor.c` (name, shortcut, key, icon, group, selection tool) is read by the strip, the shortcuts, the status line and the tooltips; its rows are the tool numbers (Pencil 0, Eraser 1, Line 2, Rectangle 3, Fill 4, Marquee 5, Lasso 6, Magic Wand 7, Move 8, Curve 9, Ellipse 10, Eyedropper 11, Polygon 12, Contour 13).
+- `kTool[]` in `editor.c` (name, shortcut, key, icon, group, selection tool) is read by the strip, the shortcuts, the status line and the tooltips; its rows are the tool numbers (Pencil 0 to Contour 13).
   `kStrip[]` is the button order, laid out by `draw_strip`; a new tool is a row in `kTool[]`, a place in `kStrip[]`, a `Tool` value, an icon in `theme.c` and a branch in `canvas_input`.
 - Buttons fill a column while they fit; a group that does not fit the rest of a column starts the next (a group taller than a column wraps button by button); 8 px between groups.
   At 1110 x 600 there are two columns, at 1110 x 520 and 480 three, at 900 px high one.
@@ -1003,7 +1010,7 @@ The searches and drawing are in `src/fit.c` (no raylib), the document logic in `
 ### Finding the grid of a pixel font
 
 `fit_find_grid` ports `pixelglyphlib/readers/ttf.py` (`find_grid`) with its constants, and agrees with it on the 621 TrueType and OpenType files of the real library.
-The searches, in order: dots (the lattice of the centres of same-size dots); exact (the common divisor of all coordinates, at most 256 cells per em); coarser (the coarsest divisor close to every coordinate or redrawing 95 % of the ink); lattice (evenly spaced cells fitted to where ink starts and ends); edges (the commonest edge lengths); glyph columns (columns starting anew in each glyph, stored as x corrections); loose (only the cores of the cells compared).
+The searches, in order: dots (a lattice of same-size dot centres); exact (the common divisor of all coordinates, at most 256 cells per em); coarser (the coarsest divisor near every coordinate or redrawing 95 % of the ink); lattice (even cells fitted to where ink starts and ends); edges (the commonest edge lengths); glyph columns (restarting in each glyph, as x corrections); loose (cell cores only).
 When nothing passes, the best lattice redrawing at least 80 % of the ink is offered as a guess, and the dialog proposes the smooth mode.
 It takes about 20 ms for a typical pixel font, 0.8 s for GNU Unifont.
 `outline.c` places a TrueType simple glyph `lsb - xMin` to the right of its coordinates (the first phantom point); a composite glyph stays where its parts put it, as fontTools draws it.

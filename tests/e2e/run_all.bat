@@ -7,7 +7,7 @@ cd /d "%~dp0\..\.."
 call "%CD%\build.bat" e2e
 if errorlevel 1 exit /b 2
 powershell -NoProfile -ExecutionPolicy Bypass -File tests\e2e\prep_real.ps1
-if errorlevel 1 exit /b 2
+if errorlevel 1 echo WARNING: the real font is not in the library: 01_grid and 07d_real will fail
 
 set EXE=tests\tmp\pxfe_e2e.exe
 set OPTS=--ini tests\tmp\e2e.ini
@@ -17,7 +17,7 @@ set H1=3b52125b2e5f6466823baa4fa3186fa0
 set H2=4fba4190f6ba7e10b296c7070234e1ce
 set H3=894ef821e147533c34b39e2131016133
 set H4=54caf68fe9ec18634701a55bfc87b5c0
-set HTF=ff6354ce745de4d0170855e161a491be
+set HTF=236dc4b75338cd1dfd6af2da597df169
 set REALH=b86206e5d4408e60dd8174f29050daa7
 set REALD=tests\tmp\reallib
 set FAILS=0
@@ -261,6 +261,8 @@ call :run 144_kerning "%DB% --font %H1%"
 call :run 145_view_area "%DB% --font %H1%"
 call :fresh
 call :run 146_new_typeface "%DB%"
+call :fresh
+call :run 147_licence "%DB%"
 call :fresh
 call :run 70_panel_tabs "%DB%"
 

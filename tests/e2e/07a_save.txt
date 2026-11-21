@@ -1,4 +1,4 @@
-# 7a. Duplicate of a typeface font (testdata typeface ff6354ce, variant 1 = font 3b52125b): edit it, Save writes the database file.
+# 7a. Duplicate of a typeface font (testdata typeface 236dc4b7, variant 1 = font 3b52125b): edit it, Save writes the database file.
 # The file must stay byte for byte as it was until Save; the rows that existed before stay.
 wait 5
 click @Unlock

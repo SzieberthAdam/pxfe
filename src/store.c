@@ -10,6 +10,11 @@
 #include <windows.h>
 
 #include "sqlite3.h"
+#include "zlib/zlib.h"
+
+/* the kinds of library files: their tables, folders and extensions are KIND_* below */
+enum { K_GLYPH = 0, K_PXFM = 1, K_PXTF = 2, K_PALETTE = 3, K_LICENSE = 4 };
+#define NKIND 5
 
 /* ------------------------------------------------------------------ small helpers */
 
@@ -220,7 +225,18 @@ static const char SCHEMA[] =
 "    value  TEXT NOT NULL,\n"
 "    PRIMARY KEY (pxtf, number, key, value),\n"
 "    FOREIGN KEY (pxtf, number) REFERENCES pxtf_variant\n"
+") WITHOUT ROWID;\n"
+"CREATE TABLE license (\n"
+"    hash BLOB PRIMARY KEY,\n"
+"    size INTEGER NOT NULL,\n"
+"    data BLOB NOT NULL,\n"
+"    CHECK (length(hash) = 16 AND size > 0 AND length(data) <= size)\n"
 ") WITHOUT ROWID;\n";
+
+/* the table of licence texts, for a pxfdb of version 2 written before it (pxfe made those) */
+static const char LICENSE_TABLE[] =
+"CREATE TABLE IF NOT EXISTS license (hash BLOB PRIMARY KEY, size INTEGER NOT NULL, data BLOB NOT NULL,"
+" CHECK (length(hash) = 16 AND size > 0 AND length(data) <= size)) WITHOUT ROWID;";
 
 static const char INDEXES[] =
 "CREATE INDEX glyph_size ON glyph (width, height);\n"
@@ -393,11 +409,11 @@ static void palette_blobs(const uint32_t *c, int n, uint8_t *colors, uint8_t *co
 /* ------------------------------------------------------------------ inserting rows */
 
 typedef struct InsStmts {
-    sqlite3_stmt *glyph, *pxfm, *pal, *pg, *kern, *tf, *var, *fld;
+    sqlite3_stmt *glyph, *pxfm, *pal, *pg, *kern, *tf, *var, *fld, *lic;
 } InsStmts;
 
 static void ins_finalize(InsStmts *s) {
-    sqlite3_stmt **p[] = {&s->glyph, &s->pxfm, &s->pal, &s->pg, &s->kern, &s->tf, &s->var, &s->fld};
+    sqlite3_stmt **p[] = {&s->glyph, &s->pxfm, &s->pal, &s->pg, &s->kern, &s->tf, &s->var, &s->fld, &s->lic};
     for (size_t i = 0; i < sizeof p / sizeof *p; i++) if (*p[i]) { sqlite3_finalize(*p[i]); *p[i] = NULL; }
 }
 
@@ -413,7 +429,8 @@ static bool ins_prepare(sqlite3 *db, InsStmts *s, bool orIgnore, char err[PX_ERR
         {&s->kern, "pxfm_kerning VALUES (?,?,?,?)"},
         {&s->tf, "pxtf VALUES (?,?)"},
         {&s->var, "pxtf_variant VALUES (?,?,?,?,?,?)"},
-        {&s->fld, "pxtf_field VALUES (?,?,?,?)"}};
+        {&s->fld, "pxtf_field VALUES (?,?,?,?)"},
+        {&s->lic, "license VALUES (?,?,?)"}};
     for (size_t i = 0; i < sizeof q / sizeof *q; i++) {
         snprintf(sql, sizeof sql, "%s%s", ins, q[i].tail);
         if (sqlite3_prepare_v2(db, sql, -1, q[i].st, NULL) != SQLITE_OK) { fail(err, "sqlite: %s", sqlite3_errmsg(db)); ins_finalize(s); return false; }
@@ -452,6 +469,46 @@ static bool ins_palette(sqlite3 *db, InsStmts *s, const uint8_t hash[16], const 
     sqlite3_bind_blob(s->pal, 3, b + 4 * n, 4 * n, SQLITE_TRANSIENT);
     free(b);
     return step_done(s->pal, db, err, "palette");
+}
+
+/* A licence text: `data` is its zlib stream (RFC 1950, level 9) when that is shorter than the text, else the text itself
+ * (pxfdb.md "license", as sqlar keeps a file). */
+/* zlib's compress2 (level 9) and uncompress, with deflate and inflate (vendor/zlib has no compress.c or uncompr.c) */
+static bool z_compress9(Bytef *out, uLongf *outLen, const Bytef *in, uLong n) {
+    z_stream z;
+    memset(&z, 0, sizeof z);
+    if (deflateInit(&z, 9) != Z_OK) return false;
+    z.next_in = (Bytef *)in; z.avail_in = (uInt)n;
+    z.next_out = out; z.avail_out = (uInt)*outLen;
+    int rc = deflate(&z, Z_FINISH);
+    *outLen = z.total_out;
+    deflateEnd(&z);
+    return rc == Z_STREAM_END;
+}
+
+static bool z_uncompress(Bytef *out, uLongf *outLen, const Bytef *in, uLong n) {
+    z_stream z;
+    memset(&z, 0, sizeof z);
+    if (inflateInit(&z) != Z_OK) return false;
+    z.next_in = (Bytef *)in; z.avail_in = (uInt)n;
+    z.next_out = out; z.avail_out = (uInt)*outLen;
+    int rc = inflate(&z, Z_FINISH);
+    *outLen = z.total_out;
+    inflateEnd(&z);
+    return rc == Z_STREAM_END && z.avail_in == 0;
+}
+
+static bool ins_license(sqlite3 *db, InsStmts *s, const uint8_t hash[16], const char *text, size_t n, char err[PX_ERR_LEN]) {
+    uLongf zl = (uLongf)(n + n / 100 + 64);
+    Bytef *z = (Bytef *)malloc(zl);
+    if (!z) return fail(err, "out of memory");
+    bool packed = z_compress9(z, &zl, (const Bytef *)text, (uLong)n) && zl < n;
+    sqlite3_bind_blob(s->lic, 1, hash, 16, SQLITE_STATIC);
+    sqlite3_bind_int64(s->lic, 2, (sqlite3_int64)n);
+    if (packed) sqlite3_bind_blob(s->lic, 3, z, (int)zl, SQLITE_TRANSIENT);
+    else sqlite3_bind_blob(s->lic, 3, text, (int)n, SQLITE_TRANSIENT);
+    free(z);
+    return step_done(s->lic, db, err, "license");
 }
 
 /* The rows of a pxfm: `f` is a LAZY font as px_parse_pxfm gives it (glyph and palette hashes, offsets as in the file). */
@@ -668,16 +725,18 @@ static void count_rows(Store *s) {
 
 typedef struct GlyphRec { uint8_t hash[16]; int w, h; char *pix; uint64_t used; } GlyphRec;
 typedef struct PalRec { uint8_t hash[16]; uint32_t *c; int n; } PalRec;
+typedef struct LicRec { char *text; size_t n; } LicRec;
 
 typedef struct BuildCtx {
     const char *root;
-    HashList *lists;            /* [0] glyph [1] pxfm [2] pxtf [3] palette */
+    HashList *lists;            /* [0] glyph [1] pxfm [2] pxtf [3] palette [4] license */
     StoreProgress *prog;
     GlyphRec *glyphs;           /* index = list order */
     PxFont *fonts;
     PxtfTypeface *tfs;
     PalRec *pals;               /* index = list order */
-    char **errs[4];             /* per file */
+    LicRec *lics;               /* index = list order */
+    char **errs[NKIND];         /* per file */
     volatile LONG failed;
     sqlite3 *db;                /* Memory: glyphs and fonts the lists do not hold are looked up there (NULL: a fresh build) */
     CRITICAL_SECTION dbCs;      /* the worker threads share `db` for those lookups */
@@ -692,6 +751,20 @@ static bool ext_glyph_used(BuildCtx *b, const uint8_t h[16], uint64_t *used) {
     bool r = pixels_of_hash(b->db, h, used);
     LeaveCriticalSection(&b->dbCs);
     return r;
+}
+
+static bool ext_has_license(BuildCtx *b, const uint8_t h[16]) {
+    bool has = false;
+    if (!b->db) return false;
+    EnterCriticalSection(&b->dbCs);
+    sqlite3_stmt *st;
+    if (sqlite3_prepare_v2(b->db, "SELECT 1 FROM license WHERE hash = ?", -1, &st, NULL) == SQLITE_OK) {
+        sqlite3_bind_blob(st, 1, h, 16, SQLITE_STATIC);
+        has = sqlite3_step(st) == SQLITE_ROW;
+        sqlite3_finalize(st);
+    }
+    LeaveCriticalSection(&b->dbCs);
+    return has;
 }
 
 static bool ext_has_pxfm(BuildCtx *b, const uint8_t h[16]) {
@@ -788,6 +861,30 @@ static void work_palette(void *vb, int i) {
     store_blob_to_hex(pr->hash, name);
     if (strcmp(hh, name) != 0) set_err(b, 3, i, "%s: the hash of its content is %s (or it is not in canonical form)", path, hh);
     else if (!px_hex_parse(raw, n, &pr->c, &pr->n, err)) set_err(b, 3, i, "%s: %s", path, err);
+    free(raw);
+    tick(b);
+}
+
+static void work_license(void *vb, int i) {
+    BuildCtx *b = (BuildCtx *)vb;
+    if (b->failed || (b->prog && b->prog->cancel)) return;
+    char path[1300], err[PX_ERR_LEN];
+    file_path(b, "license", "txt", b->lists[K_LICENSE].h[i], path, sizeof path);
+    size_t n;
+    char *raw = px_read_file(path, &n);
+    if (!raw) { set_err(b, K_LICENSE, i, "%s: cannot read", path); return; }
+    size_t cl = 0;
+    char *can = pxtf_license_canonical(raw, n, &cl, err);
+    char hh[33], name[33];
+    store_blob_to_hex(b->lists[K_LICENSE].h[i], name);
+    if (!can) set_err(b, K_LICENSE, i, "%s: %s", path, err);
+    else if (cl != n || memcmp(can, raw, n) != 0) set_err(b, K_LICENSE, i, "%s: not in canonical form", path);
+    else {
+        px_hash128_hex(can, cl, hh, false);
+        if (strcmp(hh, name) != 0) set_err(b, K_LICENSE, i, "%s: the hash of its content is %s", path, hh);
+        else { b->lics[i].text = can; b->lics[i].n = cl; can = NULL; }
+    }
+    free(can);
     free(raw);
     tick(b);
 }
@@ -908,6 +1005,13 @@ static void work_pxtf(void *vb, int i) {
         uint8_t hb[16];
         store_hex_to_blob(t->v[v].pxfm, hb);
         if (!in_list(&b->lists[1], hb) && !ext_has_pxfm(b, hb)) { set_err(b, 2, i, "%s: variant %04d names the pxfm %s, which is not in the library", path, t->v[v].number, t->v[v].pxfm); return; }
+        const char *tx[32];
+        int ntx = pxtf_opt_all(&t->v[v], "TERMS-TEXT", tx, 32);
+        for (int k = 0; k < ntx; k++) {
+            uint8_t lb[16];
+            store_hex_to_blob(tx[k], lb);
+            if (!in_list(&b->lists[K_LICENSE], lb) && !ext_has_license(b, lb)) { set_err(b, 2, i, "%s: variant %04d names the licence text %s, which is not in the library", path, t->v[v].number, tx[k]); return; }
+        }
     }
     tick(b);
 }
@@ -922,14 +1026,14 @@ static void progress_set(StoreProgress *p, long phase, long total) {
 /* Reads the files of `lists` (pxgl, pxfm, pxtf, palette) with the strict readers and inserts them into Memory.  fresh: Memory is
  * empty and has no schema yet (the schema, meta and indexes are made); else the rows are added to a loaded database
  * (a pxfm may name glyphs, a pxtf fonts, that Memory has). */
-static bool build_from_files(Store *s, const char *root, HashList lists[4], bool fresh, StoreProgress *prog, char err[PX_ERR_LEN]) {
+static bool build_from_files(Store *s, const char *root, HashList lists[NKIND], bool fresh, StoreProgress *prog, char err[PX_ERR_LEN]) {
     sqlite3 *db = s->main->db;
     BuildCtx b;
     memset(&b, 0, sizeof b);
     b.root = root; b.lists = lists; b.prog = prog;
     b.db = fresh ? NULL : db;
     InitializeCriticalSection(&b.dbCs);
-    int ng = lists[0].n, nm = lists[1].n, nt = lists[2].n, np = lists[3].n;
+    int ng = lists[0].n, nm = lists[1].n, nt = lists[2].n, np = lists[3].n, nl = lists[K_LICENSE].n;
     b.glyphs = (GlyphRec *)calloc((size_t)(ng ? ng : 1), sizeof(GlyphRec));
     b.fonts = (PxFont *)calloc((size_t)(nm ? nm : 1), sizeof(PxFont));
     b.tfs = (PxtfTypeface *)calloc((size_t)(nt ? nt : 1), sizeof(PxtfTypeface));
@@ -938,12 +1042,17 @@ static bool build_from_files(Store *s, const char *root, HashList lists[4], bool
     b.errs[2] = (char **)calloc((size_t)(nt ? nt : 1), sizeof(char *));
     b.pals = (PalRec *)calloc((size_t)(np ? np : 1), sizeof(PalRec));
     b.errs[3] = (char **)calloc((size_t)(np ? np : 1), sizeof(char *));
+    b.lics = (LicRec *)calloc((size_t)(nl ? nl : 1), sizeof(LicRec));
+    b.errs[K_LICENSE] = (char **)calloc((size_t)(nl ? nl : 1), sizeof(char *));
     bool ok = false;
     InsStmts ins;
     memset(&ins, 0, sizeof ins);
-    if (!b.glyphs || !b.fonts || !b.tfs || !b.pals || !b.errs[0] || !b.errs[1] || !b.errs[2] || !b.errs[3]) { fail(err, "out of memory"); goto done; }
+    if (!b.glyphs || !b.fonts || !b.tfs || !b.pals || !b.lics || !b.errs[0] || !b.errs[1] || !b.errs[2] || !b.errs[3] || !b.errs[K_LICENSE]) { fail(err, "out of memory"); goto done; }
 
-    progress_set(prog, 3, (long)ng + nm + nt + np);
+    progress_set(prog, 3, (long)ng + nm + nt + np + nl);
+    par_run(nl, work_license, &b, 16);
+    for (int i = 0; i < nl; i++) if (b.errs[K_LICENSE][i]) { fail(err, "%s", b.errs[K_LICENSE][i]); goto done; }
+    if (prog && prog->cancel) { fail(err, "cancelled"); goto done; }
     par_run(np, work_palette, &b, 16);
     for (int i = 0; i < np; i++) if (b.errs[3][i]) { fail(err, "%s", b.errs[3][i]); goto done; }
     if (prog && prog->cancel) { fail(err, "cancelled"); goto done; }
@@ -957,7 +1066,7 @@ static bool build_from_files(Store *s, const char *root, HashList lists[4], bool
     for (int i = 0; i < nt; i++) if (b.errs[2][i]) { fail(err, "%s", b.errs[2][i]); goto done; }
     if (prog && prog->cancel) { fail(err, "cancelled"); goto done; }
 
-    progress_set(prog, 4, (long)ng + nm + nt + np);
+    progress_set(prog, 4, (long)ng + nm + nt + np + nl);
     if (fresh) {
         if (!exec_sql(db, "PRAGMA synchronous = OFF; PRAGMA journal_mode = OFF;", err)) goto done;
         if (!exec_sql(db, SCHEMA, err)) goto done;
@@ -971,6 +1080,10 @@ static bool build_from_files(Store *s, const char *root, HashList lists[4], bool
     }
     for (int i = 0; i < np; i++) {
         if (!ins_palette(db, &ins, b.pals[i].hash, b.pals[i].c, b.pals[i].n, err)) goto done;
+        if (prog) prog->done++;
+    }
+    for (int i = 0; i < nl; i++) {
+        if (!ins_license(db, &ins, lists[K_LICENSE].h[i], b.lics[i].text, b.lics[i].n, err)) goto done;
         if (prog) prog->done++;
     }
     for (int i = 0; i < nm; i++) {
@@ -997,8 +1110,10 @@ done:
     for (int i = 0; i < nm && b.fonts; i++) px_font_free(&b.fonts[i]);
     for (int i = 0; i < nt && b.tfs; i++) pxtf_free(&b.tfs[i]);
     for (int i = 0; i < np && b.pals; i++) free(b.pals[i].c);
-    for (int k = 0; k < 4; k++) {
-        int cnt = k == 0 ? ng : k == 1 ? nm : k == 2 ? nt : np;
+    for (int i = 0; i < nl && b.lics; i++) free(b.lics[i].text);
+    free(b.lics);
+    for (int k = 0; k < NKIND; k++) {
+        int cnt = k == 0 ? ng : k == 1 ? nm : k == 2 ? nt : k == 3 ? np : nl;
         for (int i = 0; i < cnt && b.errs[k]; i++) free(b.errs[k][i]);
         free(b.errs[k]);
     }
@@ -1136,6 +1251,90 @@ static const char *col_text(sqlite3_stmt *st, int i, Arena **a) {
     return arena_str(a, (const char *)p, (int)strnlen((const char *)p, (size_t)n));
 }
 
+static int cmp_entry_pxtf(const void *a, const void *b);
+
+/* ------------------------------------------------------------------ licence terms in brief */
+
+const char *const STORE_TERMS_KEY[STORE_TERMS_NWORDS] = {"TERMS-CLASS", "TERMS-COMMERCIAL", "TERMS-MODIFY", "TERMS-REDISTRIBUTE",
+    "TERMS-REDISTRIBUTE-MODIFIED", "TERMS-PROVENANCE", "TERMS-CONFIDENCE", "TERMS-USE-LIMIT", "TERMS-UPSTREAM-STATUS"};
+
+static int terms_word_index(const char *key, const char *word) {
+    int n = 0;
+    const PxtfWord *w = pxtf_terms_words(key, &n);
+    for (int i = 0; w && word && i < n; i++) if (!strcmp(w[i].word, word)) return i;
+    return -1;
+}
+
+static void terms_init(StoreTerms *t) {
+    memset(t, 0, sizeof *t);
+    t->license = "";
+    for (int k = 0; k < STORE_TERMS_NWORDS; k++) t->word[k] = -1;
+}
+
+/* one field line of a variant into its terms; spdx / lic / src gather the names the short licence is chosen from */
+static void terms_add(StoreTerms *t, const char *key, const char *value, const char **spdx, const char **lic, const char **src) {
+    if (!strcmp(key, "LICENSE")) { *src = value; return; }
+    if (strncmp(key, "TERMS-", 6) != 0) return;
+    t->any = true;
+    if (!strcmp(key, "TERMS-SPDX")) *spdx = value;
+    else if (!strcmp(key, "TERMS-LICENSE")) *lic = value;
+    else if (!strcmp(key, "TERMS-TEXT")) t->nTexts++;
+    else if (!strcmp(key, "TERMS-OBLIGATION")) { int i = terms_word_index(key, value); if (i >= 0 && i < 32) t->obligations |= 1u << i; }
+    else for (int k = 0; k < STORE_TERMS_NWORDS; k++) if (!strcmp(key, STORE_TERMS_KEY[k])) t->word[k] = (signed char)terms_word_index(key, value);
+}
+
+static void terms_finish(StoreTerms *t, const char *spdx, const char *lic, const char *src) {
+    int nw = 0;
+    const PxtfWord *cw = pxtf_terms_words("TERMS-CLASS", &nw);
+    t->license = spdx && spdx[0] ? spdx : lic && lic[0] ? lic : t->word[STORE_TERMS_CLASS] >= 0 ? cw[t->word[STORE_TERMS_CLASS]].meaning
+               : src && src[0] ? src : "";
+}
+
+void store_terms_of_variant(const PxtfVariant *v, StoreTerms *t) {
+    terms_init(t);
+    if (!v) return;
+    const char *spdx = NULL, *lic = NULL, *src = NULL;
+    for (int i = 0; i < PXTF_TEXT_COUNT; i++) if (v->text[i]) terms_add(t, pxtf_text_key((PxtfText)i), v->text[i], &spdx, &lic, &src);
+    for (int i = 0; i < v->nopts; i++) {
+        char key[64];
+        const char *tab = strchr(v->opts[i], '\t');
+        size_t kl = tab ? (size_t)(tab - v->opts[i]) : strlen(v->opts[i]);
+        if (kl >= sizeof key) continue;
+        memcpy(key, v->opts[i], kl);
+        key[kl] = 0;
+        terms_add(t, key, tab ? tab + 1 : "", &spdx, &lic, &src);
+    }
+    terms_finish(t, spdx, lic, src);
+}
+
+/* the terms of every variant of the list (sorted by pxtf hash and number) from the field rows */
+static bool list_terms(sqlite3 *db, StoreEntry *v, int cnt, Arena **a, char err[PX_ERR_LEN]) {
+    for (int i = 0; i < cnt; i++) terms_init(&v[i].terms);
+    sqlite3_stmt *st;
+    if (sqlite3_prepare_v2(db, "SELECT pxtf, number, key, value FROM pxtf_field WHERE (key >= 'TERMS-' AND key < 'TERMS.') OR key = 'LICENSE'"
+                               " ORDER BY pxtf, number", -1, &st, NULL) != SQLITE_OK) return fail(err, "sqlite: %s", sqlite3_errmsg(db));
+    int at = -1;
+    const char *spdx = NULL, *lic = NULL, *src = NULL;
+    StoreEntry key;
+    memset(&key, 0, sizeof key);
+    while (sqlite3_step(st) == SQLITE_ROW) {
+        store_blob_to_hex((const uint8_t *)sqlite3_column_blob(st, 0), key.pxtf);
+        key.variant = sqlite3_column_int(st, 1);
+        if (at < 0 || strcmp(v[at].pxtf, key.pxtf) != 0 || v[at].variant != key.variant) {
+            if (at >= 0) terms_finish(&v[at].terms, spdx, lic, src);
+            spdx = lic = src = NULL;
+            StoreEntry *f = (StoreEntry *)bsearch(&key, v, (size_t)cnt, sizeof(StoreEntry), cmp_entry_pxtf);
+            at = f ? (int)(f - v) : -1;
+            if (at < 0) continue;
+        }
+        const char *k = (const char *)sqlite3_column_text(st, 2);
+        if (k) terms_add(&v[at].terms, k, col_text(st, 3, a), &spdx, &lic, &src);
+    }
+    if (at >= 0) terms_finish(&v[at].terms, spdx, lic, src);
+    sqlite3_finalize(st);
+    return true;
+}
+
 /* all variants, with the facts of their fonts; list owns the arena */
 static bool list_variants(sqlite3 *db, StoreEntryList *out, FontFacts *facts, int nfacts, char err[PX_ERR_LEN]) {
     sqlite3_stmt *st;
@@ -1163,10 +1362,11 @@ static bool list_variants(sqlite3 *db, StoreEntryList *out, FontFacts *facts, in
         if (f) apply_facts(e, f);
     }
     sqlite3_finalize(st);
+    bool ok = list_terms(db, v, cnt, &a, err);
     out->arena = a;
     out->e = v;
     out->count = cnt;
-    return true;
+    return ok;
 }
 
 void store_entry_list_free(StoreEntryList *l) {
@@ -1199,6 +1399,7 @@ static bool list_empty_typefaces(sqlite3 *db, StoreEntryList *out, char err[PX_E
         e->style = e->fontName = e->designer = e->format = "";
         e->typefaceName = col_text(st, 1, &a);
         e->colors = 1;
+        terms_init(&e->terms);
         added++;
     }
     sqlite3_finalize(st);
@@ -1245,6 +1446,7 @@ static bool list_fonts_nolock(StoreConn *c, const uint8_t (*only)[16], int nonly
         store_blob_to_hex(f->hash, e->pxfm);
         apply_facts(e, f);
         e->typefaceName = e->style = e->fontName = e->designer = e->format = "";
+        terms_init(&e->terms);
         int lo = 0, hi = vars.count;
         while (lo < hi) {
             int mid = (lo + hi) / 2;
@@ -1254,7 +1456,7 @@ static bool list_fonts_nolock(StoreConn *c, const uint8_t (*only)[16], int nonly
             const StoreEntry *v = &vars.e[lo];
             memcpy(e->pxtf, v->pxtf, 33);
             e->variant = v->variant;
-            e->typefaceName = v->typefaceName; e->style = v->style; e->fontName = v->fontName; e->designer = v->designer; e->format = v->format;
+            e->typefaceName = v->typefaceName; e->style = v->style; e->fontName = v->fontName; e->designer = v->designer; e->format = v->format; e->terms = v->terms;
             e->italic = v->italic; e->struckout = v->struckout; e->underlined = v->underlined;
         }
     }
@@ -1639,6 +1841,30 @@ char *store_pxfm_text(StoreConn *c, const char *hex, size_t *len, char hashOut[3
     if (len) *len = b.n;
     if (hashOut) px_hash128_hex(b.p, b.n, hashOut, false);
     return b.p;
+}
+
+char *store_license_text(StoreConn *c, const char *hex, size_t *len, char hashOut[33]) {
+    uint8_t hb[16];
+    if (!c || !store_hex_to_blob(hex, hb)) return NULL;
+    sqlite3_stmt *st;
+    if (sqlite3_prepare_v2(c->db, "SELECT size, data FROM license WHERE hash = ?", -1, &st, NULL) != SQLITE_OK) return NULL;
+    sqlite3_bind_blob(st, 1, hb, 16, SQLITE_STATIC);
+    char *out = NULL;
+    if (sqlite3_step(st) == SQLITE_ROW) {
+        sqlite3_int64 size = sqlite3_column_int64(st, 0);
+        const Bytef *d = (const Bytef *)sqlite3_column_blob(st, 1);
+        int dl = sqlite3_column_bytes(st, 1);
+        if (size > 0 && size < (1 << 30) && d && dl > 0 && (out = (char *)malloc((size_t)size + 1)) != NULL) {
+            uLongf ul = (uLongf)size;
+            bool good = dl < size ? z_uncompress((Bytef *)out, &ul, d, (uLong)dl) && ul == (uLongf)size
+                                  : dl == size && (memcpy(out, d, (size_t)size), true);
+            if (good) { out[size] = 0; *len = (size_t)size; }
+            else { free(out); out = NULL; }
+        }
+    }
+    sqlite3_finalize(st);
+    if (out && hashOut) px_hash128_hex(out, *len, hashOut, false);
+    return out;
 }
 
 char *store_palette_text(StoreConn *c, const char *hex, size_t *len, char hashOut[33]) {
@@ -2124,14 +2350,12 @@ done:
 
 /* ================================================================== opening, importing, exporting */
 
-enum { K_GLYPH = 0, K_PXFM = 1, K_PXTF = 2, K_PALETTE = 3 };
-#define NKIND 4
-static const char *const KIND_TABLE[NKIND] = {"glyph", "pxfm", "pxtf", "palette"};
-static const char *const KIND_SUB[NKIND] = {"pxgl", "pxfm", "pxtf", "palette"};
-static const char *const KIND_EXT[NKIND] = {"pxgl", "pxfm", "pxtf", "hex"};
+static const char *const KIND_TABLE[NKIND] = {"glyph", "pxfm", "pxtf", "palette", "license"};
+static const char *const KIND_SUB[NKIND] = {"pxgl", "pxfm", "pxtf", "palette", "license"};
+static const char *const KIND_EXT[NKIND] = {"pxgl", "pxfm", "pxtf", "hex", "txt"};
 
 static int *count_of(StoreCounts *c, int k) {
-    return k == K_GLYPH ? &c->glyphs : k == K_PXFM ? &c->fonts : k == K_PXTF ? &c->typefaces : &c->palettes;
+    return k == K_GLYPH ? &c->glyphs : k == K_PXFM ? &c->fonts : k == K_PXTF ? &c->typefaces : k == K_PALETTE ? &c->palettes : &c->licenses;
 }
 
 void store_counts_text(const StoreCounts *c, char *out, size_t n) {
@@ -2141,6 +2365,7 @@ void store_counts_text(const StoreCounts *c, char *out, size_t n) {
     if (c->typefaces) o += (size_t)snprintf(t + o, sizeof t - o, "%s%d typeface%s", o ? ", " : "", c->typefaces, c->typefaces == 1 ? "" : "s");
     if (c->glyphs) o += (size_t)snprintf(t + o, sizeof t - o, "%s%d glyph%s", o ? ", " : "", c->glyphs, c->glyphs == 1 ? "" : "s");
     if (c->palettes) o += (size_t)snprintf(t + o, sizeof t - o, "%s%d palette%s", o ? ", " : "", c->palettes, c->palettes == 1 ? "" : "s");
+    if (c->licenses) o += (size_t)snprintf(t + o, sizeof t - o, "%s%d licence text%s", o ? ", " : "", c->licenses, c->licenses == 1 ? "" : "s");
     snprintf(out, n, "%s", o ? t : "nothing");
 }
 
@@ -2188,6 +2413,7 @@ bool store_open_pxfdb(const char *path, StoreProgress *prog, Store **out, char e
     progress_set(prog, 7, 1);
     if (!backup_into(s->main->db, src, err)) { sqlite3_close(src); store_close(s); return false; }
     sqlite3_close(src);
+    if (!exec_sql(s->main->db, LICENSE_TABLE, err)) { store_close(s); return false; }
     snprintf(s->info.path, sizeof s->info.path, "%s", path);
     count_rows(s);
     s->info.openSeconds = store_now() - t0;
@@ -2281,7 +2507,7 @@ void store_scan_folder(const char *folderIn, StoreFolderScan *out) {
 }
 
 bool store_scan_has_data(const StoreFolderScan *s) {
-    return s->found.fonts + s->found.typefaces + s->found.glyphs + s->found.palettes + s->other > 0;
+    return s->found.fonts + s->found.typefaces + s->found.glyphs + s->found.palettes + s->found.licenses + s->other > 0;
 }
 
 /* 1 written, 0 it was there already, -1 error.  Never replaces a file. */
@@ -2355,8 +2581,8 @@ bool store_export_folder(Store *s, const char *folderIn, StoreExportMode mode, S
     }
     StoreConn *c = store_conn_open(s);
     if (!c) return fail(err, "cannot open a store connection");
-    uint8_t (*hs[NKIND])[16] = {NULL, NULL, NULL, NULL};
-    int nh[NKIND] = {0, 0, 0, 0};
+    uint8_t (*hs[NKIND])[16] = {NULL, NULL, NULL, NULL, NULL};
+    int nh[NKIND] = {0, 0, 0, 0, 0};
     bool ok = true;
     long total = 0;
     for (int k = 0; k < NKIND && ok; k++) {
@@ -2374,14 +2600,15 @@ bool store_export_folder(Store *s, const char *folderIn, StoreExportMode mode, S
         total += nh[k];
     }
     progress_set(prog, 11, total);
-    for (int k = NKIND - 1; k >= 0 && ok; k--) {      /* palettes, typefaces, fonts, glyphs */
+    for (int k = NKIND - 1; k >= 0 && ok; k--) {      /* licence texts, palettes, typefaces, fonts, glyphs */
         for (int i = 0; i < nh[k] && ok; i++) {
             if (prog && prog->cancel) { fail(err, "cancelled"); ok = false; break; }
             char hex[33], got[33], path[1400];
             store_blob_to_hex(hs[k][i], hex);
             size_t len = 0;
             char *t = k == K_GLYPH ? store_pxgl_text(c, hex, &len, got) : k == K_PXFM ? store_pxfm_text(c, hex, &len, got)
-                    : k == K_PXTF ? store_pxtf_text(c, hex, &len, got) : store_palette_text(c, hex, &len, got);
+                    : k == K_PXTF ? store_pxtf_text(c, hex, &len, got) : k == K_PALETTE ? store_palette_text(c, hex, &len, got)
+                    : store_license_text(c, hex, &len, got);
             if (!t) { fail(err, "the %s %s cannot be made from the rows", KIND_SUB[k], hex); ok = false; break; }
             if (strcmp(got, hex) != 0) { fail(err, "the %s %s made from the rows has the hash %s: not written", KIND_SUB[k], hex, got); free(t); ok = false; break; }
             snprintf(path, sizeof path, "%s/%s/%c%c/%s.%s", folder, KIND_SUB[k], hex[0], hex[1], hex, KIND_EXT[k]);
@@ -2754,11 +2981,12 @@ static volatile LONG g_addSerial = 0;
 static char *file_text_of(StoreConn *c, int kind, const char *hex, size_t *len) {
     char got[33];
     return kind == K_GLYPH ? store_pxgl_text(c, hex, len, got) : kind == K_PXFM ? store_pxfm_text(c, hex, len, got)
-         : kind == K_PXTF ? store_pxtf_text(c, hex, len, got) : store_palette_text(c, hex, len, got);
+         : kind == K_PXTF ? store_pxtf_text(c, hex, len, got) : kind == K_PALETTE ? store_palette_text(c, hex, len, got)
+         : store_license_text(c, hex, len, got);
 }
 
 bool store_add_files(Store *s, const StoreFile *files, int n, StoreCounts *addedOut, StoreCounts *skippedOut, char err[PX_ERR_LEN]) {
-    StoreCounts added = {0, 0, 0, 0}, skipped = {0, 0, 0, 0};
+    StoreCounts added = {0, 0, 0, 0, 0}, skipped = {0, 0, 0, 0, 0};
     for (int i = 0; i < n; i++) {
         if (files[i].kind < 0 || files[i].kind >= NKIND || !px_is_hash(files[i].hash, false, true)) return fail(err, "store_add_files: file %d has no kind or no lower-case hash", i);
     }
@@ -2822,7 +3050,7 @@ bool store_add_files(Store *s, const StoreFile *files, int n, StoreCounts *added
         l->n = m;
         *count_of(&added, k) = m;
     }
-    if (lists[0].n + lists[1].n + lists[2].n + lists[3].n > 0) {
+    if (lists[0].n + lists[1].n + lists[2].n + lists[3].n + lists[4].n > 0) {
         AcquireSRWLockExclusive(&s->lock);
         bool good = build_from_files(s, root, lists, false, NULL, err);
         ReleaseSRWLockExclusive(&s->lock);

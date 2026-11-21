@@ -45,6 +45,11 @@ bool     Browser_TypefaceTabShown(const Browser *b);   /* the Typeface or Font t
 /* The lock of a font or typeface (true: locked): the cards and rows mark an unlocked one. */
 typedef bool (*BrowserLocked)(bool typeface, const char *hash);
 void     Browser_SetLockQuery(BrowserLocked locked);
+/* A click on the licence label of a font card (at the right of its style): the variant whose terms to show */
+typedef void (*BrowserLicence)(const char *pxtf, int variant);
+void     Browser_SetLicenceOpen(BrowserLicence open);
+int      Browser_LicenceFilterCount(const Browser *b);   /* the licence criteria that are on */
+void     Browser_LicenceFilterClear(Browser *b);
 /* Editing changed hashes: a typeface (and the font) the browser holds (selection, the open Typeface view) follows to the new one. */
 void     Browser_Follow(Browser *b, const char *oldPxtf, const char *newPxtf);
 

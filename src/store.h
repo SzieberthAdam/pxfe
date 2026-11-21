@@ -37,7 +37,7 @@ struct sqlite3;
 typedef struct Store Store;
 typedef struct StoreConn StoreConn;
 
-typedef struct StoreCounts { int fonts, typefaces, glyphs, palettes; } StoreCounts;
+typedef struct StoreCounts { int fonts, typefaces, glyphs, palettes, licenses; } StoreCounts;
 
 typedef struct StoreProgress {
     volatile long phase;        /* 0 idle, 1 listing, 3 reading files, 4 inserting, 5 indexing, 7 loading the pxfdb, 8 writing the database,
@@ -87,6 +87,21 @@ struct sqlite3 *store_sqlite(StoreConn *c); /* the raw handle, for tests and ad-
 
 /* ------------------------------------------------------------------ lists for the browser */
 
+/* The licence terms of a variant in brief (pxtf "Licence terms"), for the cards and the filters.  Each word is its index in
+ * pxtf_terms_words of its key, -1 when the variant does not state it. */
+enum { STORE_TERMS_CLASS, STORE_TERMS_COMMERCIAL, STORE_TERMS_MODIFY, STORE_TERMS_REDISTRIBUTE, STORE_TERMS_REDISTRIBUTE_MODIFIED,
+       STORE_TERMS_PROVENANCE, STORE_TERMS_CONFIDENCE, STORE_TERMS_USE_LIMIT, STORE_TERMS_UPSTREAM_STATUS, STORE_TERMS_NWORDS };
+extern const char *const STORE_TERMS_KEY[STORE_TERMS_NWORDS];   /* "TERMS-CLASS", ... */
+typedef struct StoreTerms {
+    const char *license;        /* in short: TERMS-SPDX, else TERMS-LICENSE, else the TERMS-CLASS name, else LICENSE; never NULL */
+    signed char word[STORE_TERMS_NWORDS];
+    uint32_t obligations;       /* bit i: the i-th word of TERMS-OBLIGATION */
+    int  nTexts;                /* TERMS-TEXT lines */
+    bool any;                   /* some TERMS- line: the terms have been looked at */
+} StoreTerms;
+/* the terms of a variant of the model (the strings point into it) */
+void store_terms_of_variant(const PxtfVariant *v, StoreTerms *t);
+
 /* One row per typeface VARIANT (the browser's "Containers") or per pxfm file ("Fonts", with the metadata of the
  * first variant, by typeface hash and number, that names it).  Strings point into the list's own arena. */
 typedef struct StoreEntry {
@@ -104,6 +119,7 @@ typedef struct StoreEntry {
     int  glyphCount;                         /* glyph lines of the font without the I+DEFA00-000 line */
     bool hasDefault;                         /* has an I+DEFA00-000 line */
     int  nVariants;                          /* typefaces' variants naming this font (fonts list) */
+    StoreTerms terms;                        /* the licence terms of the variant */
 } StoreEntry;
 
 typedef struct StoreEntryList {
@@ -134,6 +150,9 @@ char *store_pxfm_text(StoreConn *c, const char *pxfmHash, size_t *len, char hash
 char *store_pxtf_text(StoreConn *c, const char *pxtfHash, size_t *len, char hashOut[33]);
 char *store_pxgl_text(StoreConn *c, const char *glyphHash, size_t *len, char hashOut[33]);
 char *store_palette_text(StoreConn *c, const char *paletteHash, size_t *len, char hashOut[33]);   /* hex.md */
+/* A licence text (license.md) of the table `license`, decompressed (malloc'd, NUL-terminated, *len without the NUL); NULL when
+ * the store has no such text or its data is damaged. */
+char *store_license_text(StoreConn *c, const char *licenseHash, size_t *len, char hashOut[33]);
 
 /* ------------------------------------------------------------------ saving a font into memory */
 
@@ -168,7 +187,7 @@ bool store_new_typeface(Store *s, const char *name, char hashOut[33], char err[P
 /* ------------------------------------------------------------------ export to folders */
 
 typedef struct StoreFolderScan {
-    StoreCounts found;          /* files of pxtf/ pxfm/ pxgl/ palette/ named <hash>.<ext> under their prefix folder */
+    StoreCounts found;          /* files of pxtf/ pxfm/ pxgl/ palette/ license/ named <hash>.<ext> under their prefix folder */
     int other;                  /* other entries in those folders */
 } StoreFolderScan;
 /* What the folder holds of the three library folders (a missing folder holds nothing). */
@@ -177,7 +196,7 @@ bool store_scan_has_data(const StoreFolderScan *s);
 
 typedef enum StoreExportMode {
     STORE_EXPORT_APPEND = 0,    /* write the files the folder lacks, leave the others, delete nothing */
-    STORE_EXPORT_OVERWRITE = 1  /* delete the contents of pxtf/ pxfm/ pxgl/ palette/ (nothing else), then write every file */
+    STORE_EXPORT_OVERWRITE = 1  /* delete the contents of pxtf/ pxfm/ pxgl/ palette/ license/ (nothing else), then write every file */
 } StoreExportMode;
 
 typedef struct StoreExportResult {
@@ -203,7 +222,7 @@ typedef struct StoreDeletePlan {
     PxtfTypeface *newTf;                    /* the rewritten typefaces (parallel to rw) */
     char (*glyphs)[33]; int nGlyphs;        /* pxgl rows the deletion leaves named by no pxfm */
     char (*palettes)[33]; int nPalettes;    /* palette rows the deletion leaves named by no pxfm_glyph */
-    char summary[900];                       /* "1 font, 1 typeface, 14 glyphs; Typeface ff6354ce loses variant 0002 and is rewritten" */
+    char summary[900];                       /* "1 font, 1 typeface, 14 glyphs; Typeface 236dc4b7 loses variant 0002 and is rewritten" */
 } StoreDeletePlan;
 
 /* The plan of deleting a font / a whole typeface: nothing changes.  The font / typeface must be in memory. */
@@ -276,7 +295,7 @@ void store_blob_to_hex(const uint8_t *blob, char out[33]);
 
 /* ------------------------------------------------------------------ adding files given in memory (packages: src/package.c) */
 
-enum { STORE_FILE_PXGL = 0, STORE_FILE_PXFM = 1, STORE_FILE_PXTF = 2, STORE_FILE_PALETTE = 3 };
+enum { STORE_FILE_PXGL = 0, STORE_FILE_PXFM = 1, STORE_FILE_PXTF = 2, STORE_FILE_PALETTE = 3, STORE_FILE_LICENSE = 4 };
 typedef struct StoreFile {
     int kind;                   /* STORE_FILE_* */
     char hash[33];              /* lower case: the hash of the content */

@@ -35,9 +35,9 @@ exit /b 0
 set CORE=src\pxfont.c src\pxtf.c src\store.c src\store_sim.c src\library.c
 gcc tests\test_pxfont.c src\pxfont.c src\pxtf.c -o tests\test_pxfont.exe -O0 -g %CFLAGS%
 if errorlevel 1 (echo Test build failed & exit /b 1)
-gcc tests\test_pxtf.c %CORE% %SQL% -o tests\test_pxtf.exe -O0 -g %CFLAGS%
+gcc tests\test_pxtf.c %CORE% %ZLIB% %SQL% -o tests\test_pxtf.exe -O0 -g %CFLAGS%
 if errorlevel 1 (echo Test build failed & exit /b 1)
-gcc tests\test_store.c %CORE% %SQL% -o tests\test_store.exe -O0 -g %CFLAGS%
+gcc tests\test_store.c %CORE% %ZLIB% %SQL% -o tests\test_store.exe -O0 -g %CFLAGS%
 if errorlevel 1 (echo Test build failed & exit /b 1)
 gcc tests\test_package.c %CORE% %ZLIB% %SQL% -o tests\test_package.exe -O0 -g %CFLAGS%
 if errorlevel 1 (echo Test build failed & exit /b 1)
@@ -84,7 +84,7 @@ exit /b %errorlevel%
 
 :libtest
 set CORE=src\pxfont.c src\pxtf.c src\store.c src\store_sim.c src\library.c
-gcc tests\test_library.c %CORE% %SQL% -o tests\test_library.exe -O2 %CFLAGS%
+gcc tests\test_library.c %CORE% %ZLIB% %SQL% -o tests\test_library.exe -O2 %CFLAGS%
 if errorlevel 1 (echo Test build failed & exit /b 1)
 tests\test_library.exe %2 %3
 exit /b %errorlevel%

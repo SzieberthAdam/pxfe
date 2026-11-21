@@ -344,6 +344,9 @@ static bool GetInt(const char *name, long *v)
     else if (!strcmp(name, "xdopen")) *v = xd.open;                                                  /* the Export dialog */
     else if (!strcmp(name, "nfopen")) *v = nf.open;
     else if (!strcmp(name, "afopen")) *v = af.open;                                                  /* the Add Font dialog */
+    else if (!strcmp(name, "liopen")) *v = li.open;                                                  /* the licence dialog */
+    else if (!strcmp(name, "lilines")) *v = li.nlines;                                               /* its text view: the wrapped lines of the licence text (0: the terms) */
+    else if (!strcmp(name, "blicfilter")) *v = browser ? Browser_LicenceFilterCount(browser) : -1;    /* the licence criteria that are on */
     else if (!strcmp(name, "afrows")) *v = af.nvis;                                                  /* its fonts that match the filter */                                                  /* the New Font dialog */
     else if (!strcmp(name, "ifopen")) *v = fimp.open;                                                /* the Import Font File dialog */
     else if (!strcmp(name, "ifsheet")) *v = fimp.sheet;                                              /* the dialog is of a picture (sheet.h) */

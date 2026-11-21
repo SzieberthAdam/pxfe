@@ -215,7 +215,7 @@ static void test_save(void) {
 #define H_GREY "894ef821e147533c34b39e2131016133"
 #define H_NOASC "4fba4190f6ba7e10b296c7070234e1ce"
 #define H_UNC "54caf68fe9ec18634701a55bfc87b5c0"
-#define T_SANS "ff6354ce745de4d0170855e161a491be"
+#define T_SANS "236dc4b75338cd1dfd6af2da597df169"
 #define T_UNC "0021a99dbbf1ae9dc9c27c685f581c17"
 
 static int find_entry(const Library *lib, LibKind kind, const char *pxtf, int variant) {
@@ -353,12 +353,73 @@ static void test_library(void) {
     store_close(st);
 }
 
+/* the licence terms of a variant (spec "Licence terms") and licence texts (license.md) */
+static void test_terms(void) {
+#define TV(lines) ("0001\n" PXFM_LINE SRC lines)
+    static const char full[] = "0001\n" PXFM_LINE SRC
+        "\tTERMS-CLASS\tcc-by\n\tTERMS-COMMERCIAL\tyes\n\tTERMS-CONFIDENCE\thigh\n\tTERMS-DATE\t2026-11-21\n\tTERMS-LICENSE\tCC BY 4.0\n"
+        "\tTERMS-OBLIGATION\tattribution\n\tTERMS-OBLIGATION\tinclude-license\n\tTERMS-PROVENANCE\toriginal\n\tTERMS-SPDX\tCC-BY-4.0\n"
+        "\tTERMS-TEXT\t0123456789ABCDEF0123456789ABCDEF\n\tTERMS-TEXT\tFEDCBA9876543210FEDCBA9876543210\n";
+    PxtfTypeface c;
+    char err[PX_ERR_LEN] = "";
+    bool ok = pxtf_parse(full, sizeof full - 1, &c, err);
+    CHECK(ok, "terms: a variant with terms, two obligations and two licence texts parses");
+    if (ok) {
+        PxtfVariant *v = &c.v[0];
+        const char *o[4];
+        CHECK(strcmp(v->text[PXTF_TERMS_LICENSE], "CC BY 4.0") == 0 && strcmp(v->text[PXTF_TERMS_SPDX], "CC-BY-4.0") == 0, "terms: TERMS-LICENSE and TERMS-SPDX are text");
+        CHECK(pxtf_opt(v, "TERMS-COMMERCIAL") && strcmp(pxtf_opt(v, "TERMS-COMMERCIAL"), "yes") == 0 && pxtf_opt(v, "TERMS-MODIFY") == NULL, "terms: pxtf_opt");
+        CHECK(pxtf_opt_all(v, "TERMS-OBLIGATION", o, 4) == 2 && strcmp(o[1], "include-license") == 0 && pxtf_opt_all(v, "TERMS-TEXT", o, 4) == 2,
+              "terms: pxtf_opt_all gives the repeated lines");
+        CHECK(strcmp(pxtf_license_short(v), "CC-BY-4.0") == 0, "terms: the short licence is TERMS-SPDX first");
+        size_t n;
+        char *t = pxtf_text(&c, &n, NULL);
+        CHECK(t && n == sizeof full - 1 && memcmp(t, full, n) == 0, "terms: written again is the same bytes");
+        free(t);
+        pxtf_free(&c);
+    }
+    CHECK(pxtf_parse(TV("\tTERMS-CLASS\tfree-personal\n"), strlen(TV("\tTERMS-CLASS\tfree-personal\n")), &c, err), "terms: TERMS-CLASS alone parses");
+    if (c.count == 1) { CHECK(strcmp(pxtf_license_short(&c.v[0]), pxtf_terms_meaning("TERMS-CLASS", "free-personal")) == 0 && pxtf_license_short(&c.v[0])[0],
+                              "terms: the short licence falls back to the class name"); pxtf_free(&c); }
+    CHECK(strcmp(pxtf_terms_meaning("TERMS-COMMERCIAL", "ask"), "ask the holder") == 0 && strcmp(pxtf_terms_meaning("TERMS-NOPE", "x"), "x") == 0,
+          "terms: plain meanings, the word itself when unknown");
+    int nw = 0;
+    CHECK(pxtf_terms_words("TERMS-CLASS", &nw) && nw == 15 && pxtf_terms_words("TERMS-OBLIGATION", &nw) && nw == 15 && pxtf_terms_words("TERMS-NOTE", &nw) == NULL,
+          "terms: 15 classes, 15 obligations; a text key has no words");
+    CHECK(pfails(TV("\tTERMS-COMMERCIAL\tmaybe\n"), "not one of its words"), "terms: an unknown word rejected");
+    CHECK(pfails(TV("\tTERMS-DATE\t2026-02-30\n"), "not a date"), "terms: 30 February rejected");
+    CHECK(pfails(TV("\tTERMS-DATE\t2026-1-02\n"), "not a date"), "terms: a short date rejected");
+    CHECK(pfails(TV("\tTERMS-TEXT\t0123456789abcdef0123456789abcdef\n"), "upper-case"), "terms: a lower-case TERMS-TEXT rejected");
+    CHECK(pfails(TV("\tTERMS-DERIVED-FROM\tX\n"), "need TERMS-PROVENANCE"), "terms: TERMS-DERIVED-FROM without derived provenance rejected");
+    CHECK(pfails(TV("\tTERMS-PROVENANCE\toriginal\n\tTERMS-UPSTREAM-STATUS\tcleared\n"), "need TERMS-PROVENANCE"), "terms: TERMS-UPSTREAM-STATUS with original rejected");
+    CHECK(!pfails(TV("\tTERMS-PROVENANCE\tpossibly-derived\n\tTERMS-UPSTREAM-HOLDER\tX\n"), NULL), "terms: TERMS-UPSTREAM-HOLDER with possibly-derived accepted");
+    CHECK(pfails(TV("\tTERMS-COMMERCIAL\tyes\n\tTERMS-USE-LIMIT\tpersonal-only\n"), "TERMS-USE-LIMIT"), "terms: TERMS-USE-LIMIT with commercial yes rejected");
+    CHECK(pfails(TV("\tTERMS-COMMERCIAL\tno\n\tTERMS-COMMERCIAL\tyes\n"), NULL), "terms: TERMS-COMMERCIAL twice rejected");
+#undef TV
+
+    size_t n = 0;
+    const char *src = "\r\n  \nLine one  \t\r\r\n\nLine two\n\n\n";
+    char *can = pxtf_license_canonical(src, strlen(src), &n, err);
+    CHECK(can && n == 19 && memcmp(can, "Line one\n\nLine two\n", 19) == 0, "licence text: line ends, trailing spaces, empty lines folded");
+    if (can && n != 19) printf("      got %zu: [%s]\n", n, can);
+    free(can);
+    can = pxtf_license_canonical("A", 1, &n, err);
+    CHECK(can && n == 2 && memcmp(can, "A\n", 2) == 0, "licence text: LF after the last line");
+    free(can);
+    CHECK(!pxtf_license_canonical(" \n\t\n", 4, &n, err), "licence text: only white space rejected");
+    CHECK(!pxtf_license_canonical("\xEF\xBB\xBFX", 4, &n, err) && strstr(err, "byte order"), "licence text: BOM rejected");
+    CHECK(!pxtf_license_canonical("a\x01", 2, &n, err) && strstr(err, "control"), "licence text: a control character rejected");
+    CHECK(!pxtf_license_canonical("e\xCC\x81", 3, &n, err) && strstr(err, "NFC"), "licence text: not NFC rejected");
+    CHECK(!pxtf_license_canonical("\xC3(", 2, &n, err) && strstr(err, "UTF-8"), "licence text: bad UTF-8 rejected");
+}
+
 int main(void) {
     px_mkdir_p(TMP);
     test_escapes();
     test_example();
     test_roundtrip_variants();
     test_errors();
+    test_terms();
     test_save();
     test_library();
     printf("\n%d passed, %d failed\n", g_pass, g_fail);

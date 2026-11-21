@@ -56,6 +56,7 @@ typedef struct LibEntry {
     /* metadata, never NULL ("" when not stated): pointers valid until library_free */
     const char *typefaceName, *style, *fontName, *designer, *format;
     bool italic, struckout, underlined;
+    StoreTerms terms;          /* the licence terms of its variant (none for a font no typeface names) */
     bool fontPresent;          /* the pxfm exists in the store */
     char *path;                /* DRAFT: the .pxfd path, malloc'd; otherwise NULL */
     char *name;                /* DRAFT: its display name; otherwise NULL */

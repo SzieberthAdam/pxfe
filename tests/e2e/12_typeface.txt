@@ -17,7 +17,7 @@ wait 2
 type X
 wait 3
 assert unsaved 0
-assert tabhash ff6354ce745de4d0170855e161a491be
+assert tabhash 236dc4b75338cd1dfd6af2da597df169
 click @tf_lock
 wait 12
 assert nav 1
@@ -60,7 +60,7 @@ wait 10
 assert unsaved 1
 # the boxed hash is now the new one, and the one in the database stays shown below it
 assert w.hash_typeface_orig 1
-assert tabhash !ff6354ce
+assert tabhash !236dc4b7
 sleep 500
 wheel 10 1250 400
 wait 12
@@ -73,8 +73,8 @@ assert sqlfile tests/tmp/e2e.pxfdb "select count(*) from pxtf" 2
 assert sqlfile tests/tmp/e2e.pxfdb "select count(*) from pxfm" 4
 assert snapdir unchanged
 # the old typeface is gone, and the new one took its place
-assert sqlfile tests/tmp/e2e.pxfdb "select count(*) from pxtf where lower(hex(hash)) = 'ff6354ce745de4d0170855e161a491be'" 0
-assert sqlfile tests/tmp/e2e.pxfdb "select count(*) from pxtf where lower(hex(hash)) <> 'ff6354ce745de4d0170855e161a491be' and lower(hex(hash)) <> '0021a99dbbf1ae9dc9c27c685f581c17'" 1
+assert sqlfile tests/tmp/e2e.pxfdb "select count(*) from pxtf where lower(hex(hash)) = '236dc4b75338cd1dfd6af2da597df169'" 0
+assert sqlfile tests/tmp/e2e.pxfdb "select count(*) from pxtf where lower(hex(hash)) <> '236dc4b75338cd1dfd6af2da597df169' and lower(hex(hash)) <> '0021a99dbbf1ae9dc9c27c685f581c17'" 1
 # a text field: typing changes the copy, Escape puts the value back, backspacing the typed letter returns to the saved state
 sleep 500
 wheel 10 1250 400

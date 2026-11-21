@@ -1,7 +1,7 @@
-# Copies one real pixelglyphlib font and the pxgl files it names into tests\tmp\reallib (same pxfm/xx and pxgl/xx layout).
+# Copies one real font of the pxfdb library and the pxgl files it names into tests\tmp\reallib (same pxfm/xx and pxgl/xx layout).
 # The source library is only read, never written.
 param(
-    [string]$Source = "C:\Users\jnsGEzD3\Documents\GitHub\pixelglyphlib",
+    [string]$Source = "C:\Users\jnsGEzD3\Documents\GitHub\pxfdb",
     [string]$Dest = "tests\tmp\reallib",
     [string]$Hash = "b86206e5d4408e60dd8174f29050daa7"
 )

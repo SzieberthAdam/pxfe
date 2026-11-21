@@ -69,6 +69,7 @@ typedef struct PkgImportResult {
     char pxtf[33];              /* the typeface of a pxtp, "" for a pxfp */
     char (*pxfm)[33]; int nPxfm;   /* the fonts of the package, ascending (malloc'd: pkg_result_free) */
     int nGlyphs, nPalettes;     /* pxgl and palette files of the package */
+    int nLicenses;              /* licence text files of the package (license/) */
     StoreCounts added, skipped; /* pkg_import: files added to the store / there already with the same text */
 } PkgImportResult;
 

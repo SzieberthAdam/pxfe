@@ -41,7 +41,7 @@ wait 3
 assert bside 2
 assert w.hash_typeface_full 1
 # the hash shown is the typeface as stored (the pxtf of the library entry), as in the box header
-assert tabhash ff6354ce745de4d0170855e161a491be
+assert tabhash 236dc4b75338cd1dfd6af2da597df169
 assert w.c.typeface 1
 assert w.c.copyright 1
 assert w.c.italic 0

@@ -26,12 +26,13 @@ static int g_pass = 0, g_fail = 0;
 #define P_GREY "ebbba94934da6897d86c5e8ea2ac5409"
 #define H_NOASC "4fba4190f6ba7e10b296c7070234e1ce"
 #define H_UNC "54caf68fe9ec18634701a55bfc87b5c0"
-#define T_SANS "ff6354ce745de4d0170855e161a491be"
+#define T_SANS "236dc4b75338cd1dfd6af2da597df169"
 #define T_UNC "0021a99dbbf1ae9dc9c27c685f581c17"
+#define T_LIC "267033f422987f664ad048d2aee6c8ec"   /* the licence text of Test Sans 0001 */
 #define G_A "c0fc54c2ec60cb8617b041d991da1622"
 #define G_H "abe675527c81c31d04cda5e2aed7623a"
 
-static const char *const TABLES[] = {"glyph", "pxfm", "palette", "pxfm_glyph", "pxfm_kerning", "pxtf", "pxtf_variant", "pxtf_field"};
+static const char *const TABLES[] = {"glyph", "pxfm", "palette", "pxfm_glyph", "pxfm_kerning", "pxtf", "pxtf_variant", "pxtf_field", "license"};
 
 /* count and an order-independent... no: ordered FNV-1a content checksum of a table (the tables have primary keys, so the
  * scan order is the key order in both stores) */
@@ -250,6 +251,31 @@ static void test_model(void) {
     for (int i = 0; i < fl.count; i++) { if (strcmp(fl.e[i].pxfm, H_UNC) == 0) iu = i; if (strcmp(fl.e[i].pxfm, H_GREY) == 0) ig = i; }
     CHECK(iu >= 0 && ig >= 0 && strcmp(fl.e[iu].typefaceName, "Uncoded Mono") == 0 && fl.e[iu].glyphCount == 5 && fl.e[iu].hasDefault && fl.e[iu].monospaced && fl.e[iu].hasRatio && fl.e[iu].hasHeight && fl.e[iu].height == 8, "font entry facts");
     CHECK(fl.e[ig].pxtf[0] == 0 && fl.e[ig].typefaceName[0] == 0 && fl.e[ig].nVariants == 0, "a font no typeface names has no metadata");
+    {   /* the licence terms in brief: Test Sans 0001 free with credit and a licence text, 0002 personal use, Uncoded Mono none */
+        const StoreTerms *t1 = NULL, *t2 = NULL, *tu = NULL;
+        for (int i = 0; i < tl.count; i++) {
+            if (strcmp(tl.e[i].pxtf, T_SANS) == 0) { if (tl.e[i].variant == 1) t1 = &tl.e[i].terms; else t2 = &tl.e[i].terms; }
+            if (strcmp(tl.e[i].pxtf, T_UNC) == 0) tu = &tl.e[i].terms;
+        }
+        int nw = 0;
+        const PxtfWord *perm = pxtf_terms_words("TERMS-COMMERCIAL", &nw), *ob = pxtf_terms_words("TERMS-OBLIGATION", &nw);
+        int obN = nw, att = -1;
+        for (int i = 0; i < obN; i++) if (strcmp(ob[i].word, "attribution") == 0) att = i;
+        CHECK(t1 && t1->any && strcmp(t1->license, "CC-BY-4.0") == 0 && t1->nTexts == 1 && strcmp(perm[t1->word[STORE_TERMS_COMMERCIAL]].word, "yes") == 0 &&
+              att >= 0 && (t1->obligations >> att & 1) && t1->word[STORE_TERMS_USE_LIMIT] == -1, "terms: Test Sans 0001 is CC-BY-4.0, commercial yes, credit, one text");
+        CHECK(t2 && t2->any && strcmp(perm[t2->word[STORE_TERMS_COMMERCIAL]].word, "no") == 0 && t2->word[STORE_TERMS_USE_LIMIT] >= 0 && t2->nTexts == 0 &&
+              strcmp(t2->license, pxtf_terms_meaning("TERMS-CLASS", "free-personal")) == 0, "terms: Test Sans 0002 personal use, the class name as its short licence");
+        CHECK(tu && !tu->any && tu->license && tu->license[0] == 0 && tu->word[STORE_TERMS_CLASS] == -1, "terms: Uncoded Mono has none");
+        int is = -1;
+        for (int i = 0; i < fl.count; i++) if (strcmp(fl.e[i].pxtf, T_SANS) == 0 && fl.e[i].variant == 1) is = i;
+        CHECK(is >= 0 && strcmp(fl.e[is].terms.license, "CC-BY-4.0") == 0, "terms: the font list carries them too");
+        size_t n = 0;
+        char got[33] = "";
+        char *txt = store_license_text(c, T_LIC, &n, got);
+        CHECK(txt && strcmp(got, T_LIC) == 0 && n > 20 && strncmp(txt, "Test Licence\n\nYou may", 21) == 0 && txt[n - 1] == '\n', "store_license_text: the canonical text from its zlib row");
+        free(txt);
+        CHECK(store_license_text(c, "00000000000000000000000000000000", &n, got) == NULL, "store_license_text: an unknown hash gives NULL");
+    }
     store_entry_list_free(&tl);
     store_entry_list_free(&fl);
     store_conn_close(c);
@@ -421,7 +447,7 @@ static void test_import(void) {
     CHECK(store_import_folder(LIB, TMP "/imp_a/new.pxfdb", &prog, &b, err), "import of the testdata folder into a new pxfdb");
     if (!a || !b) return;
     CHECK(prog.phase == 0 && !store_modified(b) && strcmp(store_info(b)->path, TMP "/imp_a/new.pxfdb") == 0, "progress back to idle; the new file is the store's file; not modified");
-    CHECK(same_content(a, b), "store imported from files == store opened from the pxfdb (8 tables, content checksums)");
+    CHECK(same_content(a, b), "store imported from files == store opened from the pxfdb (9 tables, content checksums)");
     CHECK(px_file_exists(TMP "/imp_a/new.pxfdb") && !px_file_exists(TMP "/imp_a/new.pxfdb.tmp"), "the file was written, no temporary file is left");
     CHECK(store_open_pxfdb(TMP "/imp_a/new.pxfdb", NULL, &c, err) && same_content(a, c), "the written file loads and has the same content");
     store_close(c);
@@ -442,13 +468,28 @@ static void test_import(void) {
     CHECK(!store_import_folder(sub, TMP "/imp_a/old.pxfdb", NULL, &c, err) && err[0] && strstr(err, "00000000000000000000000000000000"), "a pxgl whose content hash is not its name stops the import, naming the file");
     printf("      error was: %s\n", err);
     { size_t l; char *d = px_read_file(TMP "/imp_a/old.pxfdb", &l); CHECK(d && l == 3 && memcmp(d, "OLD", 3) == 0 && !px_file_exists(TMP "/imp_a/old.pxfdb.tmp"), "the old target file is untouched, no temporary file"); free(d); }
+    rm_rf(sub);   /* a licence text the typeface names is missing */
+    copy_tree(LIB, sub);
+    DeleteFileA(TMP "/store_root_cp/license/26/" T_LIC ".txt");
+    c = NULL;
+    CHECK(!store_import_folder(sub, TMP "/imp_a/old.pxfdb", NULL, &c, err) && strstr(err, "267033F4") != NULL, "a TERMS-TEXT whose licence text is missing stops the import");
+    printf("      error was: %s\n", err);
+    rm_rf(sub);   /* a licence text not in its canonical form */
+    copy_tree(LIB, sub);
+    { size_t l; char *d = px_read_file(TMP "/store_root_cp/license/26/" T_LIC ".txt", &l), buf[512];
+      snprintf(buf, sizeof buf, "%.*s  \r\n", (int)l, d ? d : ""); free(d);
+      px_write_file(TMP "/store_root_cp/license/26/" T_LIC ".txt", buf, strlen(buf)); }
+    c = NULL;
+    CHECK(!store_import_folder(sub, TMP "/imp_a/old.pxfdb", NULL, &c, err) && strstr(err, T_LIC) != NULL, "a licence text not in its canonical form stops the import");
+    printf("      error was: %s\n", err);
     CHECK(!store_import_folder(TMP "/imp_a/no-such-folder", TMP "/imp_a/x.pxfdb", NULL, &c, err) && !px_file_exists(TMP "/imp_a/x.pxfdb"), "a missing folder is an error and writes nothing");
     px_mkdir_p(TMP "/imp_empty");
     CHECK(!store_import_folder(TMP "/imp_empty", TMP "/imp_a/x.pxfdb", NULL, &c, err) && !px_file_exists(TMP "/imp_a/x.pxfdb"), "a folder without library files is an error and writes nothing");
 
     StoreFolderScan sc;
     store_scan_folder(LIB, &sc);
-    CHECK(sc.found.fonts == 4 && sc.found.typefaces == 2 && sc.found.glyphs == 6 && sc.found.palettes == 1 && sc.other == 0 && store_scan_has_data(&sc), "scan of the testdata folder: 4 fonts, 2 typefaces, 6 glyphs, 1 palette");
+    CHECK(sc.found.fonts == 4 && sc.found.typefaces == 2 && sc.found.glyphs == 6 && sc.found.palettes == 1 && sc.found.licenses == 1 && sc.other == 0 && store_scan_has_data(&sc),
+          "scan of the testdata folder: 4 fonts, 2 typefaces, 6 glyphs, 1 palette, 1 licence text");
     store_scan_folder(TMP "/imp_empty", &sc);
     CHECK(!store_scan_has_data(&sc), "scan of an empty folder: no data");
 }

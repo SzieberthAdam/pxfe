@@ -27,11 +27,13 @@
 
 #include "pxfont.h"
 
-/* The text keys of a variant, in alphabetical key order.  PXTF_NAME is the variant key NAME (the font's name); the
- * typeface's NAME top line is PxtfTypeface.name. */
+/* The text keys of a variant: what the source states, in alphabetical key order, then the text keys of the licence terms.
+ * PXTF_NAME is the variant key NAME (the font's name); the typeface's NAME top line is PxtfTypeface.name. */
 typedef enum PxtfText {
     PXTF_CODEPAGE, PXTF_COPYRIGHT, PXTF_DESCRIPTION, PXTF_DESIGNER, PXTF_DESIGNERURL, PXTF_LICENSE, PXTF_LICENSEURL,
     PXTF_NAME, PXTF_SLANT, PXTF_STYLE, PXTF_TRADEMARK, PXTF_VENDOR, PXTF_VENDORURL, PXTF_VERSION, PXTF_WEIGHTNAME,
+    PXTF_TERMS_DERIVED_FROM, PXTF_TERMS_EVIDENCE, PXTF_TERMS_LICENSE, PXTF_TERMS_NOTE, PXTF_TERMS_SOURCE, PXTF_TERMS_SPDX,
+    PXTF_TERMS_UPSTREAM_HOLDER,
     PXTF_TEXT_COUNT
 } PxtfText;
 const char *pxtf_text_key(PxtfText t);     /* "COPYRIGHT", ..., "NAME" for PXTF_NAME */
@@ -68,6 +70,23 @@ bool pxtf_set_text(PxtfVariant *v, PxtfText t, const char *utf8); /* NULL or "" 
 bool pxtf_set_name(PxtfTypeface *c, const char *utf8);           /* the typeface's NAME; NULL or "" clears; copies */
 bool pxtf_set_editor_source(PxtfVariant *v);                     /* SOURCE-FORMAT PXFE, SOURCE-TYPE pxfe and a random SOURCE-HASH */
 void pxtf_random_hash(char out[33]);                             /* 32 random lower-case hex digits */
+
+/* Licence terms (spec "Licence terms").  The text keys are PxtfText (PXTF_TERMS_*); the keys of a word, a date or a hash
+ * (TERMS-CLASS, -COMMERCIAL, -CONFIDENCE, -DATE, -MODIFY, -OBLIGATION, -PROVENANCE, -REDISTRIBUTE, -REDISTRIBUTE-MODIFIED,
+ * -TEXT, -UPSTREAM-STATUS, -USE-LIMIT) are lines of `opts`, checked by the reader like the reading options; a typeface edit
+ * that copies a variant copies them with it.  TERMS-TEXT and TERMS-OBLIGATION may come several times. */
+typedef struct PxtfWord { const char *word, *meaning; } PxtfWord;
+const PxtfWord *pxtf_terms_words(const char *key, int *n);        /* the words a TERMS- key takes, with their meanings in plain words; NULL for another key */
+const char *pxtf_terms_meaning(const char *key, const char *word); /* the meaning of a word of that key, else the word itself ("" for NULL) */
+const char *pxtf_opt(const PxtfVariant *v, const char *key);       /* the fields of the first line of that key in `opts` (into it), else NULL */
+int pxtf_opt_all(const PxtfVariant *v, const char *key, const char **out, int max);   /* the fields of every such line, in order; their number */
+const char *pxtf_license_short(const PxtfVariant *v);              /* TERMS-SPDX, else TERMS-LICENSE, else the TERMS-CLASS name, else LICENSE, else "" */
+
+/* Licence text (spec license.md): the canonical form of `data` (lines split at CR LF, CR and LF; spaces and tabs cut at the
+ * line ends; empty lines at the start and the end left out and runs inside made one; each line ended with LF), malloc'd with
+ * *outLen, or NULL with err when the text is not UTF-8, begins with a byte order mark, is not in NFC, holds a control
+ * character other than the tab, CR and LF, or is empty.  Its hash is px_hash128_hex of the canonical form. */
+char *pxtf_license_canonical(const char *data, size_t len, size_t *outLen, char err[PX_ERR_LEN]);
 
 /* Text field escapes (spec "Text"): backslash, tab, line end (LF, CR LF, CR -> \n), other controls \xHH, trailing
  * spaces cut.  pxtf_escape(utf8) -> malloc'd escaped text; pxtf_unescape(escaped, &out, err) -> malloc'd UTF-8

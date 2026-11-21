@@ -98,6 +98,21 @@ static void save_font(PxFont *f, char hash[33]) {
     px_font_free(f);
 }
 
+/* a licence text (license.md) under <lib>/license/; its hash in upper case */
+static void save_license(const char *text, char up[33]) {
+    char err[PX_ERR_LEN] = "", h[33], dir[600], path[700];
+    size_t n = 0;
+    char *can = pxtf_license_canonical(text, strlen(text), &n, err);
+    must(can != NULL, "licence text", err);
+    px_hash128_hex(can, n, h, false);
+    snprintf(dir, sizeof dir, "%s/license/%c%c", g_lib, h[0], h[1]);
+    snprintf(path, sizeof path, "%s/%s.txt", dir, h);
+    must(px_mkdir_p(dir) && px_write_file(path, can, n), "write the licence text", path);
+    printf("license %s\n", h);
+    upper(h, up);
+    free(can);
+}
+
 static void save_typeface(const char *text) {
     PxtfTypeface c;
     char err[PX_ERR_LEN], hash[33], path[1024];
@@ -161,14 +176,26 @@ int main(void) {
     save_font(&f, hex[3]);
     for (int i = 0; i < 4; i++) upper(hex[i], up[i]);
 
-    /* typefaces */
-    char text[2048];
+    /* typefaces: Test Sans with licence terms (0001 free with credit and a licence text, 0002 personal use, derived), Uncoded Mono with none */
+    char lic[33];
+    save_license("Test Licence\r\n\r\n\r\nYou may use, change and pass on the pxfe test fonts,   \n"
+                 "if you credit pxfe tests and pass this text on with them.\n\n", lic);
+    char text[4096];
     snprintf(text, sizeof text,
              "NAME\tTest Sans\n"
              "0001\n\tCOPYRIGHT\t(c) pxfe tests\n\tDESIGNER\t\xC3\x81" "d\xC3\xA1m Test\n\tNAME\tTest Sans Regular\n"
-             "\tPXFM\t%s\n\tSLANT\tR\n\tSOURCE-FORMAT\tBDF\n\tSOURCE-HASH\tBCC7A744D44F7F35CBFAA1EFB0048A63\n\tSOURCE-TYPE\tbdf\n\tSTYLE\tRegular\n\tWEIGHTNAME\tMedium\n"
-             "0002\n\tITALIC\n\tPXFM\t%s\n\tSLANT\tI\n\tSOURCE-FORMAT\tBDF\n\tSOURCE-HASH\tBCC7A744D44F7F35CBFAA1EFB0048A63\n\tSOURCE-TYPE\tbdf\n\tSTYLE\tItalic\n",
-             up[0], up[2]);
+             "\tPXFM\t%s\n\tSLANT\tR\n\tSOURCE-FORMAT\tBDF\n\tSOURCE-HASH\tBCC7A744D44F7F35CBFAA1EFB0048A63\n\tSOURCE-TYPE\tbdf\n\tSTYLE\tRegular\n"
+             "\tTERMS-CLASS\tcc-by\n\tTERMS-COMMERCIAL\tyes\n\tTERMS-CONFIDENCE\thigh\n\tTERMS-DATE\t2026-11-21\n"
+             "\tTERMS-EVIDENCE\tYou may use, change and pass on the pxfe test fonts, if you credit pxfe tests.\n\tTERMS-LICENSE\tCC BY 4.0\n"
+             "\tTERMS-MODIFY\tyes\n\tTERMS-OBLIGATION\tattribution\n\tTERMS-OBLIGATION\tinclude-license\n\tTERMS-PROVENANCE\toriginal\n"
+             "\tTERMS-REDISTRIBUTE\tyes\n\tTERMS-REDISTRIBUTE-MODIFIED\tyes\n\tTERMS-SOURCE\treadme\n\tTERMS-SPDX\tCC-BY-4.0\n\tTERMS-TEXT\t%s\n"
+             "\tWEIGHTNAME\tMedium\n"
+             "0002\n\tITALIC\n\tPXFM\t%s\n\tSLANT\tI\n\tSOURCE-FORMAT\tBDF\n\tSOURCE-HASH\tBCC7A744D44F7F35CBFAA1EFB0048A63\n\tSOURCE-TYPE\tbdf\n\tSTYLE\tItalic\n"
+             "\tTERMS-CLASS\tfree-personal\n\tTERMS-COMMERCIAL\tno\n\tTERMS-CONFIDENCE\tlow\n\tTERMS-DERIVED-FROM\tIBM VGA ROM font\n"
+             "\tTERMS-MODIFY\task\n\tTERMS-NOTE\tFree for personal use; ask the author for a commercial licence.\n\tTERMS-PROVENANCE\tderived\n"
+             "\tTERMS-REDISTRIBUTE\tnot-stated\n\tTERMS-REDISTRIBUTE-MODIFIED\tno\n\tTERMS-UPSTREAM-HOLDER\tIBM\n\tTERMS-UPSTREAM-STATUS\tunknown\n"
+             "\tTERMS-USE-LIMIT\tpersonal-only\n",
+             up[0], lic, up[2]);
     save_typeface(text);
     snprintf(text, sizeof text,
              "NAME\tUncoded Mono\n"

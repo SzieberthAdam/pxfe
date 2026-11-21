@@ -505,6 +505,312 @@ static void DrawAddFontDialog(int W, int H)
     }
 }
 
+/* ------------------------------------------------------------------ the licence of a font (a click on its card's licence label)
+ * A table of the terms in plain words (pxtf "Showing the terms"), what the source states about the licence, and the licence
+ * texts a click away (the text view of the same dialog). */
+
+static struct {
+    bool open;
+    int frame;
+    char pxtf[33];
+    int variant;
+    PxtfTypeface tf;
+    bool haveTf;
+    char title[300];
+    float scroll;
+    /* the text view: one licence text, wrapped to the dialog */
+    char textHash[33];
+    char **lines; int nlines;
+    size_t textLen;
+} li;
+
+static void LicenceTextFree(void)
+{
+    for (int i = 0; i < li.nlines; i++) free(li.lines[i]);
+    free(li.lines);
+    li.lines = NULL;
+    li.nlines = 0;
+    li.textHash[0] = 0;
+}
+
+static void LicenceClose(void)
+{
+    LicenceTextFree();
+    if (li.haveTf) pxtf_free(&li.tf);
+    li.haveTf = false;
+    li.open = false;
+}
+
+static void LicenceOpen(const char *pxtf, int variant)
+{
+    char err[PX_ERR_LEN] = "";
+    if (!store || !pxtf || !pxtf[0]) return;
+    if (li.open) LicenceClose();
+    pxtf_init(&li.tf);
+    if (!store_load_typeface(store_main_conn(store), pxtf, &li.tf, err)) { pxtf_free(&li.tf); ShowError("Cannot read the typeface", err); return; }
+    li.haveTf = true;
+    snprintf(li.pxtf, sizeof li.pxtf, "%s", pxtf);
+    li.variant = variant;
+    const PxtfVariant *v = pxtf_find_variant(&li.tf, variant);
+    const char *st = v && v->text[PXTF_STYLE] ? v->text[PXTF_STYLE] : "";
+    if (li.tf.name && li.tf.name[0]) snprintf(li.title, sizeof li.title, "%s%s%s", li.tf.name, st[0] ? " " : "", st);
+    else if (v && v->text[PXTF_NAME]) snprintf(li.title, sizeof li.title, "%s", v->text[PXTF_NAME]);
+    else snprintf(li.title, sizeof li.title, "Font %.8s", v ? v->pxfm : "");
+    li.scroll = 0;
+    li.open = true;
+    li.frame = frameNo;
+}
+
+/* greedy word wrap of `s` to maxW (face 0 body, 1 small); a word longer than the line is cut where it must */
+static int LicWrap(const char *s, float maxW, int face, char (*out)[400], int maxLines)
+{
+    int n = 0;
+    char line[400] = "";
+    const char *p = s;
+    while (*p && n < maxLines) {
+        if (*p == '\n') { snprintf(out[n++], 400, "%s", line); line[0] = 0; p++; continue; }
+        const char *we = p;
+        while (*we && *we != ' ' && *we != '\n') we++;
+        char word[400];
+        snprintf(word, sizeof word, "%.*s", (int)(we - p) > 380 ? 380 : (int)(we - p), p);
+        char trial[800];
+        snprintf(trial, sizeof trial, "%s%s%s", line, line[0] ? " " : "", word);
+        float tw = face ? Th_MeasureSmall(trial).x : Th_Measure(trial).x;
+        if (tw <= maxW || !line[0]) {
+            if (tw > maxW) {   /* a word alone too long: cut it */
+                size_t k = strlen(word);
+                while (k > 1) { char c = word[k]; word[k] = 0; float ww = face ? Th_MeasureSmall(word).x : Th_Measure(word).x; word[k] = c; if (ww <= maxW) break; k--; }
+                while (k > 1 && (word[k] & 0xC0) == 0x80) k--;   /* not inside a UTF-8 sequence */
+                snprintf(out[n++], 400, "%.*s", (int)k, word);
+                p += k;
+                continue;
+            }
+            snprintf(line, sizeof line, "%.399s", trial);
+        } else {   /* the line is full: the word starts the next one, and is cut there if it is too long alone */
+            snprintf(out[n++], 400, "%s", line);
+            line[0] = 0;
+            continue;
+        }
+        p = we;
+        while (*p == ' ') p++;
+    }
+    if (line[0] && n < maxLines) snprintf(out[n++], 400, "%s", line);
+    return n;
+}
+
+static void LicenceShowText(const char *hash, float width)
+{
+    char err[PX_ERR_LEN] = "", got[33];
+    size_t len = 0;
+    char *t = store_license_text(store_main_conn(store), hash, &len, got);
+    if (!t) { snprintf(err, sizeof err, "The library has no licence text %s.", hash); ShowError("Cannot show the licence text", err); return; }
+    LicenceTextFree();
+    snprintf(li.textHash, sizeof li.textHash, "%s", hash);
+    li.textLen = len;
+    int cap = 256;
+    li.lines = (char **)malloc(sizeof(char *) * (size_t)cap);
+    static char wrapped[64][400];
+    char *p = t;
+    while (*p) {
+        char *nl = strchr(p, '\n');
+        if (nl) *nl = 0;
+        int k = p[0] ? LicWrap(p, width, 1, wrapped, 64) : 0;
+        if (k == 0) { snprintf(wrapped[0], 400, "%s", ""); k = 1; }
+        for (int i = 0; i < k; i++) {
+            if (li.nlines == cap) { cap *= 2; li.lines = (char **)realloc(li.lines, sizeof(char *) * (size_t)cap); }
+            li.lines[li.nlines++] = _strdup(wrapped[i]);
+        }
+        if (!nl) break;
+        p = nl + 1;
+    }
+    free(t);
+    li.scroll = 0;
+}
+
+/* one row of the table: the label, then the value wrapped in the rest; returns its height (draws only when draw) */
+static float LicRow(float x, float y, float w, const char *label, const char *value, Color vc, bool draw)
+{
+    const float lw = 232;
+    static char lines[16][400];
+    int n = LicWrap(value && value[0] ? value : "\xE2\x80\x94", w - lw, 0, lines, 16);
+    if (draw) {
+        Th_Text(label, x, y, TH_TEXT_DIM);
+        for (int i = 0; i < n; i++) Th_Text(lines[i], x + lw, y + i * TH_LINE_H, vc);
+    }
+    return n * TH_LINE_H + 8;
+}
+
+/* a row whose value has a URL: "Copy URL" at the right copies it (widget `name`) */
+static float LicUrlRow(float x, float y, float w, const char *label, const char *value, const char *url, const char *name, const char *what,
+                       bool draw, bool fresh)
+{
+    if (!url || !url[0]) return LicRow(x, y, w, label, value, TH_TEXT, draw);
+    const float bw = Th_ButtonW("Copy URL");
+    float h = LicRow(x, y, w - bw - 12, label, value, TH_TEXT, draw);
+    if (draw) {
+        Rectangle br = {x + w - bw, y - 4, bw, TH_ROW_H};
+        Th_Reg(name, br);
+        if (Th_Button(br, "Copy URL", 0, url) && !fresh) { SetClipboardText(url); Th_Toast(0, "%s copied", what); }
+    }
+    return h > TH_ROW_H + 4 ? h : TH_ROW_H + 4;
+}
+
+static const char *LicWord(const PxtfVariant *v, const char *key)
+{
+    const char *w = pxtf_opt(v, key);
+    return w ? pxtf_terms_meaning(key, w) : NULL;
+}
+
+/* the terms of the variant as rows; the licence texts' buttons; returns the height of it all */
+static float LicTable(const PxtfVariant *v, float x, float y0, float w, bool draw, bool fresh)
+{
+    float y = y0;
+    char buf[1200];
+    StoreTerms t;
+    store_terms_of_variant(v, &t);
+    /* who made it and under what: Copyright, Designer, Licence (a Copy URL button when there is a URL), the licence texts */
+    if (v->text[PXTF_COPYRIGHT]) y += LicRow(x, y, w, "Copyright", v->text[PXTF_COPYRIGHT], TH_TEXT, draw);
+    if (v->text[PXTF_DESIGNER] || v->text[PXTF_DESIGNERURL])
+        y += LicUrlRow(x, y, w, "Designer", v->text[PXTF_DESIGNER] ? v->text[PXTF_DESIGNER] : v->text[PXTF_DESIGNERURL], v->text[PXTF_DESIGNERURL],
+                       "li.copy.designer", "Designer URL", draw, fresh);
+    const char *nm = v->text[PXTF_TERMS_LICENSE], *sp = v->text[PXTF_TERMS_SPDX], *cl = LicWord(v, "TERMS-CLASS");
+    {   /* Licence: the name the terms give, the SPDX expression in brackets, else the kind; without terms the source's own */
+        if (nm && sp) snprintf(buf, sizeof buf, "%s (%s)", nm, sp);
+        else snprintf(buf, sizeof buf, "%s", nm ? nm : sp ? sp : cl ? cl : v->text[PXTF_LICENSE] ? v->text[PXTF_LICENSE] : "");
+        const char *url = v->text[PXTF_LICENSEURL];
+        if (buf[0] || url) y += LicUrlRow(x, y, w, "Licence", buf[0] ? buf : url, url, "li.copy.licence", "Licence URL", draw, fresh);
+    }
+    {   /* the licence texts: a button each, with the hash */
+        const char *tx[16];
+        int nt = pxtf_opt_all(v, "TERMS-TEXT", tx, 16);
+        if (nt > 0) {
+            if (draw) Th_Text(nt == 1 ? "Licence text" : "Licence texts", x, y + 4, TH_TEXT_DIM);
+            for (int i = 0; i < nt; i++) {
+                char hl[33];
+                for (int k = 0; k < 32; k++) hl[k] = (char)(tx[i][k] >= 'A' && tx[i][k] <= 'F' ? tx[i][k] + 32 : tx[i][k]);
+                hl[32] = 0;
+                if (draw) {
+                    Rectangle br = {x + 232, y, 110, TH_ROW_H};
+                    char bn[32];
+                    snprintf(bn, sizeof bn, "li.text%d", i);
+                    Th_Reg(bn, br);
+                    if (Th_Button(br, "Show text", 0, "Show the licence text") && !fresh) LicenceShowText(hl, 660 - 2 * 24 - TH_SB_W - 8);
+                    Th_HashShort("Licence text", hl, br.x + br.width + 12, y + 6, 0, NULL);
+                }
+                y += TH_ROW_H + 4;
+            }
+            y += 4;
+        }
+    }
+    if (!t.any) {
+        if (draw) Th_Text("Nobody has looked at the terms of this font yet.", x, y, TH_TEXT_NOTE);
+        y += TH_LINE_H + 12;
+    } else {
+        if (cl && (nm || sp)) y += LicRow(x, y, w, "Kind", cl, TH_TEXT, draw);
+        const char *cm = LicWord(v, "TERMS-COMMERCIAL"), *lim = LicWord(v, "TERMS-USE-LIMIT");
+        snprintf(buf, sizeof buf, "%s%s%s", cm ? cm : "", lim ? ": " : "", lim ? lim : "");
+        y += LicRow(x, y, w, "Commercial use", buf, TH_TEXT, draw);
+        y += LicRow(x, y, w, "Changing it", LicWord(v, "TERMS-MODIFY"), TH_TEXT, draw);
+        y += LicRow(x, y, w, "Passing it on", LicWord(v, "TERMS-REDISTRIBUTE"), TH_TEXT, draw);
+        y += LicRow(x, y, w, "Passing on a changed version", LicWord(v, "TERMS-REDISTRIBUTE-MODIFIED"), TH_TEXT, draw);
+        {   /* the conditions, one per line */
+            const char *ob[16];
+            int no = pxtf_opt_all(v, "TERMS-OBLIGATION", ob, 16);
+            size_t o = 0;
+            buf[0] = 0;
+            for (int i = 0; i < no && o < sizeof buf - 2; i++)
+                o += (size_t)snprintf(buf + o, sizeof buf - o, "%s%s", i ? "\n" : "", pxtf_terms_meaning("TERMS-OBLIGATION", ob[i]));
+            y += LicRow(x, y, w, "Conditions", no ? buf : "none", TH_TEXT, draw);
+        }
+        {   /* the design: where it comes from, what it is drawn after, and the rights of that */
+            const char *pv = LicWord(v, "TERMS-PROVENANCE"), *df = v->text[PXTF_TERMS_DERIVED_FROM], *uh = v->text[PXTF_TERMS_UPSTREAM_HOLDER];
+            const char *us = LicWord(v, "TERMS-UPSTREAM-STATUS");
+            size_t o = (size_t)snprintf(buf, sizeof buf, "%s", pv ? pv : "");
+            if (df) o += (size_t)snprintf(buf + o, sizeof buf - o, "%safter %s", o ? ", " : "", df);
+            if (uh) o += (size_t)snprintf(buf + o, sizeof buf - o, "%srights of %s", o ? "; " : "", uh);
+            if (us) snprintf(buf + o, sizeof buf - o, "%s%s", o ? ": " : "rights: ", us);
+            y += LicRow(x, y, w, "Design", buf, TH_TEXT, draw);
+        }
+        if (v->text[PXTF_TERMS_NOTE]) y += LicRow(x, y, w, "Note", v->text[PXTF_TERMS_NOTE], TH_TEXT_NOTE, draw);
+        if (v->text[PXTF_TERMS_EVIDENCE]) {
+            snprintf(buf, sizeof buf, "\xE2\x80\x9C%s\xE2\x80\x9D", v->text[PXTF_TERMS_EVIDENCE]);
+            y += LicRow(x, y, w, "Evidence", buf, TH_TEXT_DIM, draw);
+        }
+        {
+            const char *src = v->text[PXTF_TERMS_SOURCE], *cf = pxtf_opt(v, "TERMS-CONFIDENCE"), *dt = pxtf_opt(v, "TERMS-DATE");
+            size_t o = (size_t)snprintf(buf, sizeof buf, "%s", src ? src : "");
+            if (cf) o += (size_t)snprintf(buf + o, sizeof buf - o, "%s%s confidence", o ? ", " : "", cf);
+            if (dt) snprintf(buf + o, sizeof buf - o, "%s%s", o ? ", " : "", dt);
+            y += LicRow(x, y, w, "Read from", buf, TH_TEXT, draw);
+        }
+    }
+    return y - y0;
+}
+
+static void DrawLicenceDialog(int W, int H)
+{
+    if (!li.open) return;
+    DrawRectangle(0, 0, W, H, TH_SCRIM);
+    uiBlocked = false;
+    Th_SetInputBlocked(false);
+    bool fresh = li.frame == frameNo;
+    const PxtfVariant *v = li.haveTf ? pxtf_find_variant(&li.tf, li.variant) : NULL;
+    const float pw = 660, pad = 24;
+    bool textView = li.textHash[0] != 0;
+    float x0 = 0, w = pw - 2 * pad - TH_SB_W - 8;
+    float content = textView ? li.nlines * 18.0f + 8 : (v ? LicTable(v, x0, 0, w, false, true) : TH_LINE_H);
+    float head = TH_SIZE_HEAD + 6 + TH_LINE_H + TH_PAD / 2;
+    float ph = fminf(H - 80.0f, head + content + 2 * pad + TH_ROW_H + TH_PAD + 8);
+    if (textView) ph = H - 80.0f < 700 ? H - 80.0f : 700;
+    Rectangle pr = {Fl((W - pw) / 2), Fl((H - ph) / 2.5f), pw, ph};
+    Th_Raised(pr, 1);
+    float x = pr.x + pad, y = pr.y + pad;
+    char fit[300];
+    Th_FitText(li.title, 0, pr.width - 2 * pad, fit, sizeof fit);
+    Th_TextHead(fit, x, y, TH_TEXT);
+    y += TH_SIZE_HEAD + 6;
+    if (textView) {
+        char sub[120];
+        snprintf(sub, sizeof sub, "Licence text, %zu bytes", li.textLen);
+        Th_TextSmall(sub, x, y, TH_TEXT_DIM);
+        Th_HashShort("Licence text", li.textHash, pr.x + pr.width - pad, y, TH_HASH_RIGHT | TH_HASH_SMALL, NULL);
+    } else {
+        Th_TextSmall("The terms as the library reads them; they are no legal advice.", x, y, TH_TEXT_DIM);
+    }
+    y += TH_LINE_H + TH_PAD / 2;
+    Rectangle in = {x - 4, y, pr.width - 2 * pad + 8, pr.y + pr.height - pad - TH_ROW_H - TH_PAD - y};
+    bool onBar = Th_ScrollBar(in, &li.scroll, content, 40, true);
+    (void)onBar;
+    if (CheckCollisionPointRec(GetMousePosition(), in)) { float wh = GetMouseWheelMove(); if (wh != 0) li.scroll -= wh * 60; }
+    float maxS = content > in.height ? content - in.height : 0;
+    if (li.scroll > maxS) li.scroll = maxS;
+    if (li.scroll < 0) li.scroll = 0;
+    BeginScissorMode((int)in.x, (int)in.y, (int)(in.width - TH_SB_W), (int)in.height);
+    if (textView) {
+        int first = (int)(li.scroll / 18.0f);
+        for (int i = first < 0 ? 0 : first; i < li.nlines; i++) {
+            float ly = in.y + 4 + i * 18.0f - li.scroll;
+            if (ly > in.y + in.height) break;
+            Th_TextSmall(li.lines[i], x, ly, TH_TEXT);
+        }
+    } else if (v) LicTable(v, x, in.y - li.scroll, w, true, fresh);
+    else Th_Text("The variant is not in the typeface any more.", x, in.y, TH_TEXT_DIM);
+    EndScissorMode();
+    /* the buttons */
+    y = pr.y + pr.height - pad - TH_ROW_H;
+    float bx = pr.x + pr.width - pad - 96;
+    Th_Reg("li.close", (Rectangle){bx, y, 96, TH_ROW_H});
+    bool close = Th_Button((Rectangle){bx, y, 96, TH_ROW_H}, "Close", TH_BTN_PRIMARY, NULL) && !fresh;
+    if (textView) {
+        Th_Reg("li.back", (Rectangle){bx - 8 - 96, y, 96, TH_ROW_H});
+        if (Th_Button((Rectangle){bx - 8 - 96, y, 96, TH_ROW_H}, "Back", 0, "Back to the terms") && !fresh) { LicenceTextFree(); li.scroll = 0; }
+    }
+    if (!fresh && IsKeyPressed(KEY_ESCAPE)) {
+        if (li.textHash[0]) { LicenceTextFree(); li.scroll = 0; } else close = true;
+    }
+    if (close) LicenceClose();
+}
+
 /* The Name of an unlocked typeface of the library that is not the open document's (an empty one, say): it is rewritten in place under a
  * new hash (the open document's typeface is edited in `cont` and committed with the font instead). */
 static void RenameTypeface(const char *pxtfIn, const char *name)

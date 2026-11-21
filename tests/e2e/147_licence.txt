@@ -1,0 +1,71 @@
+# 147. Licence terms (testdata/lib): Test Sans 0001 is CC-BY-4.0 with a licence text, 0002 free for personal use, Uncoded Mono has no terms.
+# 1 the short licence at the right of a variant row opens the licence dialog; 2 its text view and back; 3 the LICENCE section of the View area
+# filters by the terms; 4 Clear.
+wait 16
+assert nav 0
+assert bvisible 3
+assert liopen 0
+
+# ---- 1. the licence label of Test Sans 0001 opens the dialog with its terms
+click @lic.236dc4b75338cd1dfd6af2da597df169.1
+wait 3
+assert liopen 1
+assert lilines 0
+shot tests/tmp/p1/lic_1_dialog.png
+
+# ---- 2. Show text: the licence text, wrapped; Back to the terms; Escape closes
+click @li.text0
+wait 3
+assert liopen 1
+assert lilines >= 3
+click @li.back
+wait 2
+assert lilines 0
+key escape
+wait 2
+assert liopen 0
+
+# the label of a variant without terms opens the dialog too
+click @lic.0021a99dbbf1ae9dc9c27c685f581c17.1
+wait 3
+assert liopen 1
+assert w.li.text0 0
+click @li.close
+wait 2
+assert liopen 0
+
+# ---- 3. the LICENCE section: closed at first, its criteria filter the variants
+assert w.lic.commercial.yes 0
+click @LICENCE_Fold
+wait 3
+assert w.lic.commercial.yes 1
+assert blicfilter 0
+click @lic.commercial.yes
+wait 3
+assert blicfilter 1
+assert bvisible 1
+click @lic.commercial.no
+wait 3
+assert blicfilter 2
+assert bvisible 2
+click @lic.commercial.yes
+click @lic.commercial.no
+wait 3
+assert blicfilter 0
+assert bvisible 3
+# without the condition "attribution": Test Sans 0001 asks for it, the others do not
+click @lic.without.attribution
+wait 3
+assert blicfilter 1
+assert bvisible 2
+click @lic.limit.personal-only
+wait 3
+assert blicfilter 2
+assert bvisible 1
+shot tests/tmp/p1/lic_2_filter.png
+
+# ---- 4. Clear turns every criterion off
+click @lic.clear
+wait 3
+assert blicfilter 0
+assert bvisible 3

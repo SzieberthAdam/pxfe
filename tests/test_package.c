@@ -30,7 +30,8 @@ static int g_pass = 0, g_fail = 0, g_skip = 0;
 #define H_NOASC "4fba4190f6ba7e10b296c7070234e1ce"     /* test-sans-italic */
 #define H_GREY "894ef821e147533c34b39e2131016133"      /* a colour font of no typeface */
 #define H_UNC "54caf68fe9ec18634701a55bfc87b5c0"
-#define T_SANS "ff6354ce745de4d0170855e161a491be"      /* test sans: H_EXAMPLE and H_NOASC */
+#define T_SANS "236dc4b75338cd1dfd6af2da597df169"      /* test sans: H_EXAMPLE and H_NOASC */
+#define T_LIC "267033f422987f664ad048d2aee6c8ec"       /* the licence text of Test Sans 0001 */
 #define T_UNC "0021a99dbbf1ae9dc9c27c685f581c17"
 
 static const char *const TABLES[] = {"glyph", "pxfm", "palette", "pxfm_glyph", "pxfm_kerning", "pxtf", "pxtf_variant", "pxtf_field"};
@@ -449,7 +450,9 @@ static void test_rejections(void) {
     PkgImportResult r;
     CHECK(pkg_check_bytes(fz, fl, &r, err) && r.kind == PKG_FONT && r.nPxfm == 1 && strcmp(r.pxfm[0], H_EXAMPLE) == 0 && !r.pxtf[0], "a font package is read as one");
     pkg_result_free(&r);
-    CHECK(pkg_check_bytes(tz, tl, &r, err) && r.kind == PKG_TYPEFACE && r.nPxfm == 2 && strcmp(r.pxtf, T_SANS) == 0, "a typeface package is read as one");
+    CHECK(pkg_check_bytes(tz, tl, &r, err) && r.kind == PKG_TYPEFACE && r.nPxfm == 2 && strcmp(r.pxtf, T_SANS) == 0 && r.nLicenses == 1,
+          "a typeface package is read as one, with the licence text its pxtf names");
+    CHECK(first_with(&tf, "license/") >= 0 && strcmp(tf.e[first_with(&tf, "license/")].name, "license/" T_LIC ".txt") == 0, "the licence text is license/<hash>.txt");
     pkg_result_free(&r);
     CHECK(pkg_check_bytes(gz, gl, &r, err) && r.nPalettes == 1, "a colour font package has its palette");
     pkg_result_free(&r);
@@ -477,7 +480,7 @@ static void test_rejections(void) {
     clone_list(&font, &l); { char nm[80]; int i = first_with(&l, "pxgl/"); snprintf(nm, sizeof nm, "pxgl/../%s", l.e[i].name + 5); set_name(&l, i, nm); }
     expect_reject(&l, "not a plain relative name", "a .. part");
     /* Contents */
-    clone_list(&font, &l); add_text(&l, "readme/notes.txt", "hello\n"); expect_reject(&l, "not at the root, in pxfm/, pxgl/ or palette/", "another folder");
+    clone_list(&font, &l); add_text(&l, "readme/notes.txt", "hello\n"); expect_reject(&l, "not at the root, in pxfm/, pxgl/, palette/ or license/", "another folder");
     clone_list(&font, &l); { char nm[80]; int i = first_with(&l, "pxgl/"); snprintf(nm, sizeof nm, "pxgl/%.2s/%s", l.e[i].name + 5, l.e[i].name + 5); set_name(&l, i, nm); }
     expect_reject(&l, "not at the root", "a prefix folder in pxgl/");
     clone_list(&tf, &l); { char nm[80]; int i = root_of(&l); snprintf(nm, sizeof nm, "pxtf/%s", l.e[i].name); set_name(&l, i, nm); }
@@ -543,6 +546,14 @@ static void test_rejections(void) {
         free(t);
     }
     expect_reject(&l, "is not named by the pxtf file", "a pxfm the pxtf does not name");
+    /* licence texts */
+    clone_list(&tf, &l); remove_entry(&l, first_with(&l, "license/")); expect_reject(&l, "licence text " T_LIC ", named by the pxtf file, is not in the package", "a licence text the pxtf names missing");
+    clone_list(&tf, &l); { add_text(&l, "license/x.txt", "Another licence\n"); rehash(&l, l.n - 1, NULL); }
+    expect_reject(&l, "is not named by the pxtf file", "a licence text the pxtf does not name");
+    clone_list(&font, &l); { add_text(&l, "license/x.txt", "Another licence\n"); rehash(&l, l.n - 1, NULL); }
+    expect_reject(&l, "a license/ folder in a font package", "a font package with a license/ folder");
+    clone_list(&tf, &l); { int i = first_with(&l, "license/"); set_data(&l, i, "Other words\n"); } expect_reject(&l, "its hash is", "a licence text that is not the hash of its name");
+    clone_list(&tf, &l); { int i = first_with(&l, "license/"); set_data(&l, i, "a\x01" "b\n"); } expect_reject(&l, "control", "a licence text with a control character");
     /* positive: a file in another form than its canonical one is read in its canonical form, whatever the package is called */
     clone_list(&font, &l); {
         int i = first_with(&l, "pxgl/");

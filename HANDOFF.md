@@ -1,4 +1,4 @@
-# pxfe handoff (2026-11-18)
+# pxfe handoff (2026-11-21)
 
 > This file describes the current state only, by topic, without version history.
 > It must stay under 25,000 characters (`wc -m HANDOFF.md`); when adding, shorten something else.
@@ -11,15 +11,17 @@ The files of `handoff/` are old agent reports, kept for history.
 ## State
 
 - `build.bat` and `build.bat e2e` build with no warnings.
-- `build.bat test` passes: 33 colormath, 243 pxfont, 44 selection, 110 raster, 249 outline, 148 bmsrc, 86 fit, 62 sheet, 120 fsettings, 101 pxtf and 203 store checks, 0 failed.
-- `tests\e2e\run_all.bat` runs 118 scripts (2026-11-20): `01_grid` and `07d_real` fail (they import the real library; they failed before the kerning change too).
-  Timing flakes: each of `02_metrics`, `05_clone`, `06_editor`, `06b_palette`, `06c_noascent`, `45_layers_discover`, `70_panel_tabs`, `139_many_colours` and `143_shots_picker` has failed in some full run and passed alone, more often while the machine is busy.
+- `build.bat test` passes: 33 colormath, 274 pxfont, 44 selection, 110 raster, 249 outline, 148 bmsrc, 86 fit, 62 sheet, 121 fsettings, 137 pxtf, 230 store and 85 package checks (3 skipped), 0 failed.
+- `tests\e2e\run_all.bat` runs 123 scripts (2026-11-21): `01_grid` and `07d_real` fail (their real font is not in the library).
+  Timing flakes: each of `02_metrics`, `03_selection`, `04_delete`, `05_clone`, `06_editor`, `06b_palette`, `06c_noascent`, `23_modified_prompts`, `27_export_overwrite`, `42_layers_add`, `45_layers_discover`, `53_sample_persist`, `59_navigation`, `70_panel_tabs`, `101_import_font`, `139_many_colours` and `143_shots_picker` has failed in some full run and passed alone, more often while the machine is busy.
 - `tests\e2e\run_reallib.bat` loads `pixelglyphlib\pxfdb.pxfdb` read-only and imports the folder into `tests\tmp\real.pxfdb`.
 - Plain `build.bat` fails only at the link step when a running `pxfe.exe` locks the file; closing it is enough.
 
 ## Things to know
 
-- The real library `C:\Users\jnsGEzD3\Documents\GitHub\pixelglyphlib` is never written by pxfe's tests.
+- The library and the specs now live in `C:\Users\jnsGEzD3\Documents\GitHub\pxfdb` (`spec/`, `pxtf/`, `pxfm/`, `pxgl/`, `palette/`, `license/`, no `.pxfdb` file); the `pixelglyphlib` folder is gone.
+  `prep_real.ps1` reads `pxfdb` but its font `b86206e5…` is not there, so 01_grid and 07d_real fail with a warning; `run_reallib.bat` and the notes below on `pixelglyphlib` are out of date.
+- The real library is never written by pxfe's tests.
   It holds two user-made fonts of 04b03 that its `pxfdb.pxfdb` lacks, so importing the folder gives more fonts than the file.
 - The agents work only on copies under `tests/tmp/` and on `testdata/`.
 - Every text file is LF; only the `.bat` files are CRLF on disk, because cmd needs it (`.gitattributes` enforces this; a `.bat` saved as LF breaks `call :label`).
@@ -56,9 +58,19 @@ The files of `handoff/` are old agent reports, kept for history.
 - Code names follow the keys: `PXTF_NAME` (the variant's `NAME`), `LibEntry`/`StoreEntry` `typefaceName` and `fontName`, `Browser.tfName`, `fimp.typefaceName`; the import dialogs label the name "Typeface".
 - A font made in pxfe: `pxtf_set_editor_source` (`SOURCE-FORMAT PXFE`, `SOURCE-TYPE pxfe`, a random `SOURCE-HASH` from `pxtf_random_hash`).
 - The UI shows no source format (cards, box headers, the Typeface view, META).
-- `tests/make_testdata.c` writes the version 2 fixtures; Test Sans is `ff6354ce…`, Uncoded Mono `0021a99d…`.
-- pixelglyphlib is still version 1: `test_package.c` skips its byte-identity check when the reference refuses the `NAME` top line.
+- `tests/make_testdata.c` writes the version 2 fixtures; Test Sans is `236dc4b7…`, Uncoded Mono `0021a99d…`.
+- `test_package.c` skips its byte-identity check when the Python reference refuses the `NAME` top line.
 - Tests: `test_pxtf.c`, `test_store.c`, `12_typeface` (`assert tfname`), `146_new_typeface`.
+
+## Licence terms
+
+- pxtf "Licence terms" (`TERMS-*`) in `src/pxtf.c`: the text keys are `PxtfText` (`PXTF_TERMS_*`); the word, date and hash keys stay raw in `opts` (`pxtf_opt`, `pxtf_opt_all`); `pxtf_terms_words` and `pxtf_terms_meaning` hold the words with their plain meanings; `check_terms` and `terms_ok` (the cross rules) run in the parser; `pxtf_license_short`; `pxtf_license_canonical` (license.md).
+- `src/store.c`: the `license` table (zlib level 9 when shorter, `z_compress9` and `z_uncompress` since vendor/zlib has no compress.c), `store_license_text`, `license/xx/<hash>.txt` in Import, Export and the scan; a `TERMS-TEXT` without its text stops an Import.
+  `StoreTerms` (`store_terms_of_variant`, `list_terms` from the field rows) is in every `StoreEntry` and `LibEntry`.
+- `src/package.c`: a pxtp carries `license/<hash>.txt` for every `TERMS-TEXT`; a pxfp has none.
+- `src/browser.c`: the pill (`licence_chip`, `licence_press`, `Browser_SetLicenceOpen`), the LICENCE section of the View area (`licence_filter_ui`, `licMask`, `licNoOblig`, `licence_match`); `src/panel.inc`: the licence dialog (`li`, `LicenceOpen`, `LicTable`, `DrawLicenceDialog`).
+- Test data: Test Sans 0001 is CC-BY-4.0 with the licence text `267033f4…`, 0002 free for personal use and derived, Uncoded Mono has no terms.
+- Tests: `test_pxtf.c` (`test_terms`), `test_store.c`, `test_package.c`, `147_licence`.
 
 ## Palettes and colours
 
@@ -81,6 +93,7 @@ The files of `handoff/` are old agent reports, kept for history.
 - Save runs on the UI thread; on the real library it freezes the window for the length of `TRACE saveas`.
 - SQLite gets Windows ANSI paths; a path with characters outside the code page is not supported.
 - Tests: `test_store.c`, `test_fsettings.c`, `test_pxtf.c`, scripts 15 to 18b, 23 to 31, 52b, 07a, 07b.
+- `build.bat` links zlib (`%ZLIB%`) wherever it links the store.
 - Font and typeface packages (`.pxfp`, `.pxtp`): `src/package.c` and `.h` (API in the header, DESIGN.md "Packages (pxfp, pxtp)"); zlib 1.4 vendored in `vendor/zlib`, linked by `build.bat`; `store_add_files` at the end of `store.c`.
   Export Font… and Export Typeface… of the Font and Typeface tabs write one (`ExportPackage`, panel.inc; `setdialog save` answers its dialog).
   Not in the UI yet: Import Package (`pkg_import`, then rescan; a store change, saved by Save).

@@ -67,7 +67,7 @@ assert file tests/tmp/xout/pxfm/89/894ef821e147533c34b39e2131016133.pxfm missing
 assert file tests/tmp/xout/palette/eb/ebbba94934da6897d86c5e8ea2ac5409.hex missing
 assert file tests/tmp/xout/pxfm/3b/3b52125b2e5f6466823baa4fa3186fa0.pxfm exists
 assert file tests/tmp/xout/pxfm/4f/4fba4190f6ba7e10b296c7070234e1ce.pxfm exists
-assert file tests/tmp/xout/pxtf/ff/ff6354ce745de4d0170855e161a491be.pxtf exists
+assert file tests/tmp/xout/pxtf/23/236dc4b75338cd1dfd6af2da597df169.pxtf exists
 assert file tests/tmp/xout/keep.txt contains keep me
 assert file tests/tmp/xout/other/keep2.txt contains keep me too
 # the database file is still as it was loaded; memory still differs from it

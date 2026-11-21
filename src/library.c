@@ -111,6 +111,7 @@ static void entry_from_store(LibEntry *e, LibKind kind, const StoreEntry *se) {
     e->typefaceName = se->typefaceName; e->style = se->style; e->fontName = se->fontName;
     e->designer = se->designer; e->format = se->format;
     e->italic = se->italic; e->struckout = se->struckout; e->underlined = se->underlined;
+    e->terms = se->terms;
     info_from_store(e, se);
 }
 
@@ -224,6 +225,7 @@ static void set_meta(LibEntry *e, const PxtfTypeface *c, const PxtfVariant *v) {
     e->italic = v && v->italic;
     e->struckout = v && v->struckout;
     e->underlined = v && v->underlined;
+    store_terms_of_variant(v, &e->terms);
 }
 
 static void lower_hash(char *dst, const char *src) {

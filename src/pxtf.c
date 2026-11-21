@@ -12,10 +12,12 @@
 
 static const char *const TEXT_KEY[PXTF_TEXT_COUNT] = {
     "CODEPAGE", "COPYRIGHT", "DESCRIPTION", "DESIGNER", "DESIGNERURL", "LICENSE", "LICENSEURL", "NAME",
-    "SLANT", "STYLE", "TRADEMARK", "VENDOR", "VENDORURL", "VERSION", "WEIGHTNAME"};
+    "SLANT", "STYLE", "TRADEMARK", "VENDOR", "VENDORURL", "VERSION", "WEIGHTNAME",
+    "TERMS-DERIVED-FROM", "TERMS-EVIDENCE", "TERMS-LICENSE", "TERMS-NOTE", "TERMS-SOURCE", "TERMS-SPDX", "TERMS-UPSTREAM-HOLDER"};
 static const char *const TEXT_LABEL[PXTF_TEXT_COUNT] = {
     "Code page", "Copyright", "Description", "Designer", "Designer URL", "License", "License URL", "Full name",
-    "Slant", "Style", "Trademark", "Vendor", "Vendor URL", "Version", "Weight name"};
+    "Slant", "Style", "Trademark", "Vendor", "Vendor URL", "Version", "Weight name",
+    "Derived from", "Evidence", "Licence", "Note", "Read from", "SPDX", "Upstream holder"};
 
 const char *pxtf_text_key(PxtfText t) { return (t >= 0 && t < PXTF_TEXT_COUNT) ? TEXT_KEY[t] : ""; }
 const char *pxtf_text_label(PxtfText t) { return (t >= 0 && t < PXTF_TEXT_COUNT) ? TEXT_LABEL[t] : ""; }
@@ -369,6 +371,12 @@ static bool variant_lines(const PxtfVariant *v, Lines *L) {
         if (!ok) return false;
     }
     qsort(L->v, (size_t)L->n, sizeof(char *), cmp_ptr);
+    int w = 0;   /* a line that would occur twice is written once */
+    for (int i = 0; i < L->n; i++) {
+        if (w > 0 && strcmp(L->v[w - 1], L->v[i]) == 0) { free(L->v[i]); continue; }
+        L->v[w++] = L->v[i];
+    }
+    L->n = w;
     return true;
 }
 
@@ -526,6 +534,148 @@ static bool is_variant_number(const char *s) { /* [0-9]{4}|[1-9][0-9]{4,} */
 static const char *const OPT_KEYS[] = {"ADVANCEGAP", "CELL", "CHARSET", "GRID", "IGNORE", "NINTHCOLUMN",
                                        "PFM", "RECORDSIZE", "SPACEADVANCE"};
 
+/* ------------------------------------------------------------------ licence terms: the words */
+
+static const PxtfWord W_PERMISSION[] = {{"yes", "allowed"}, {"no", "not allowed"}, {"ask", "ask the holder"},
+                                        {"not-stated", "not stated"}, {"unknown", "unknown"}};
+static const PxtfWord W_CLASS[] = {
+    {"cc0", "CC0"}, {"public-domain", "Public domain"}, {"ofl", "SIL OFL"}, {"mit", "MIT"}, {"gpl", "GPL"},
+    {"cc-by", "CC BY"}, {"cc-by-sa", "CC BY-SA"}, {"cc-by-nd", "CC BY-ND"}, {"cc-by-nc", "CC BY-NC"},
+    {"free", "Free (own terms)"}, {"free-personal", "Free for personal use"}, {"free-unspecified", "Free, unspecified"},
+    {"shareware-demo", "Shareware or demo"}, {"proprietary", "Proprietary"}, {"unknown", "Unknown"}};
+static const PxtfWord W_CONFIDENCE[] = {{"high", "high"}, {"medium", "medium"}, {"low", "low"}};
+static const PxtfWord W_OBLIGATION[] = {
+    {"attribution", "credit the author"}, {"device-limit", "a limited number of computers"},
+    {"embed-only", "passed on only embedded in a work"}, {"include-license", "the licence text goes with the font"},
+    {"include-notice", "the notice or readme goes with the font"}, {"no-collections", "not in font collections"},
+    {"no-embedding", "no embedding"}, {"no-nft-crypto", "no NFTs or cryptocurrencies"}, {"no-sale", "not to be sold"},
+    {"no-sale-alone", "not to be sold by itself"}, {"notify-author", "tell the author"},
+    {"only-bundled-in-project", "passed on only in one's own project"}, {"rename", "a changed version gets another name"},
+    {"rename-if-reserved-name", "a changed version cannot keep the Reserved Font Name"},
+    {"share-alike", "a changed version under the same licence"}};
+static const PxtfWord W_PROVENANCE[] = {{"original", "the author's own"}, {"vendor-original", "a vendor's design"},
+                                        {"derived", "derived"}, {"possibly-derived", "possibly derived"}, {"unknown", "unknown"}};
+static const PxtfWord W_UPSTREAM[] = {{"cleared", "cleared"}, {"not-cleared", "not cleared"}, {"unknown", "unknown"}};
+static const PxtfWord W_USELIMIT[] = {{"personal-only", "personal use only"}, {"non-commercial", "non-commercial use only"}};
+
+#define NW(a) (int)(sizeof a / sizeof *a)
+const PxtfWord *pxtf_terms_words(const char *key, int *n) {
+    if (!key) return NULL;
+    if (!strcmp(key, "TERMS-COMMERCIAL") || !strcmp(key, "TERMS-MODIFY") || !strcmp(key, "TERMS-REDISTRIBUTE") ||
+        !strcmp(key, "TERMS-REDISTRIBUTE-MODIFIED")) { *n = NW(W_PERMISSION); return W_PERMISSION; }
+    if (!strcmp(key, "TERMS-CLASS")) { *n = NW(W_CLASS); return W_CLASS; }
+    if (!strcmp(key, "TERMS-CONFIDENCE")) { *n = NW(W_CONFIDENCE); return W_CONFIDENCE; }
+    if (!strcmp(key, "TERMS-OBLIGATION")) { *n = NW(W_OBLIGATION); return W_OBLIGATION; }
+    if (!strcmp(key, "TERMS-PROVENANCE")) { *n = NW(W_PROVENANCE); return W_PROVENANCE; }
+    if (!strcmp(key, "TERMS-UPSTREAM-STATUS")) { *n = NW(W_UPSTREAM); return W_UPSTREAM; }
+    if (!strcmp(key, "TERMS-USE-LIMIT")) { *n = NW(W_USELIMIT); return W_USELIMIT; }
+    return NULL;
+}
+#undef NW
+
+const char *pxtf_terms_meaning(const char *key, const char *word) {
+    if (!word) return "";
+    int n = 0;
+    const PxtfWord *w = pxtf_terms_words(key, &n);
+    for (int i = 0; w && i < n; i++) if (!strcmp(w[i].word, word)) return w[i].meaning;
+    return word;
+}
+
+const char *pxtf_opt(const PxtfVariant *v, const char *key) {
+    size_t kl = strlen(key);
+    for (int i = 0; v && i < v->nopts; i++)
+        if (!strncmp(v->opts[i], key, kl) && (v->opts[i][kl] == '\t' || !v->opts[i][kl])) return v->opts[i][kl] ? v->opts[i] + kl + 1 : "";
+    return NULL;
+}
+
+int pxtf_opt_all(const PxtfVariant *v, const char *key, const char **out, int max) {
+    size_t kl = strlen(key);
+    int n = 0;
+    for (int i = 0; v && i < v->nopts && n < max; i++)
+        if (!strncmp(v->opts[i], key, kl) && v->opts[i][kl] == '\t') out[n++] = v->opts[i] + kl + 1;
+    return n;
+}
+
+const char *pxtf_license_short(const PxtfVariant *v) {
+    if (!v) return "";
+    if (v->text[PXTF_TERMS_SPDX] && v->text[PXTF_TERMS_SPDX][0]) return v->text[PXTF_TERMS_SPDX];
+    if (v->text[PXTF_TERMS_LICENSE] && v->text[PXTF_TERMS_LICENSE][0]) return v->text[PXTF_TERMS_LICENSE];
+    const char *c = pxtf_opt(v, "TERMS-CLASS");
+    if (c) return pxtf_terms_meaning("TERMS-CLASS", c);
+    if (v->text[PXTF_LICENSE] && v->text[PXTF_LICENSE][0]) return v->text[PXTF_LICENSE];
+    return "";
+}
+
+static bool is_date(const char *s) {   /* YYYY-MM-DD, a real date */
+    if (strlen(s) != 10 || s[4] != '-' || s[7] != '-') return false;
+    for (int i = 0; i < 10; i++) if (i != 4 && i != 7 && !(s[i] >= '0' && s[i] <= '9')) return false;
+    int y = atoi(s), m = atoi(s + 5), d = atoi(s + 8);
+    static const int dm[12] = {31, 29, 31, 30, 31, 30, 31, 31, 30, 31, 30, 31};
+    if (m < 1 || m > 12 || d < 1 || d > dm[m - 1]) return false;
+    if (m == 2 && d == 29 && !((y % 4 == 0 && y % 100 != 0) || y % 400 == 0)) return false;
+    return true;
+}
+
+/* a TERMS- key of a word, a date or a hash: 1 (msg set and -1 when bad), 0 when the key is not one */
+static int check_terms(const char *key, char **f, int nf, char *msg, size_t msgSize) {
+    if (strncmp(key, "TERMS-", 6) != 0) return 0;
+    int n = 0;
+    const PxtfWord *w = pxtf_terms_words(key, &n);
+    bool date = !strcmp(key, "TERMS-DATE"), text = !strcmp(key, "TERMS-TEXT");
+    if (!w && !date && !text) return 0;
+    if (nf != 1) { snprintf(msg, msgSize, "%s takes one field", key); return -1; }
+    if (date) { if (!is_date(f[0])) { snprintf(msg, msgSize, "TERMS-DATE '%s' is not a date YYYY-MM-DD", f[0]); return -1; } return 1; }
+    if (text) { if (!px_is_hash(f[0], true, false)) { snprintf(msg, msgSize, "TERMS-TEXT '%s' is not 32 upper-case hex digits", f[0]); return -1; } return 1; }
+    for (int i = 0; i < n; i++) if (!strcmp(w[i].word, f[0])) return 1;
+    snprintf(msg, msgSize, "%s '%s' is not one of its words", key, f[0]);
+    return -1;
+}
+
+/* the rules across the TERMS- lines of a variant (spec "Errors") */
+static bool terms_ok(const PxtfVariant *v, char *msg, size_t msgSize) {
+    const char *pv = pxtf_opt(v, "TERMS-PROVENANCE");
+    bool derived = pv && (!strcmp(pv, "derived") || !strcmp(pv, "possibly-derived"));
+    if (!derived && (v->text[PXTF_TERMS_DERIVED_FROM] || v->text[PXTF_TERMS_UPSTREAM_HOLDER] || pxtf_opt(v, "TERMS-UPSTREAM-STATUS"))) {
+        snprintf(msg, msgSize, "TERMS-DERIVED-FROM, TERMS-UPSTREAM-HOLDER and TERMS-UPSTREAM-STATUS need TERMS-PROVENANCE derived or possibly-derived");
+        return false;
+    }
+    const char *cm = pxtf_opt(v, "TERMS-COMMERCIAL");
+    if (cm && !strcmp(cm, "yes") && pxtf_opt(v, "TERMS-USE-LIMIT")) { snprintf(msg, msgSize, "TERMS-USE-LIMIT with TERMS-COMMERCIAL yes"); return false; }
+    return true;
+}
+
+/* ------------------------------------------------------------------ licence texts */
+
+char *pxtf_license_canonical(const char *data, size_t len, size_t *outLen, char err[PX_ERR_LEN]) {
+    if (len >= 3 && (unsigned char)data[0] == 0xEF && (unsigned char)data[1] == 0xBB && (unsigned char)data[2] == 0xBF) { fail(err, "a byte order mark"); return NULL; }
+    if (!pxtf_utf8_valid(data, len)) { fail(err, "not valid UTF-8"); return NULL; }
+    for (size_t i = 0; i < len; i++) {
+        unsigned char ch = (unsigned char)data[i];
+        if ((ch < 0x20 && ch != '\t' && ch != '\r' && ch != '\n') || ch == 0x7F) { fail(err, "a control character 0x%02X", ch); return NULL; }
+    }
+    if (!pxtf_nfc_ok(data, len)) { fail(err, "not in NFC"); return NULL; }
+    char *out = (char *)malloc(len + 2);
+    if (!out) { fail(err, "out of memory"); return NULL; }
+    size_t o = 0, i = 0;
+    bool pendingBlank = false;   /* an empty line seen after some text */
+    while (i < len) {
+        size_t s = i;
+        while (i < len && data[i] != '\r' && data[i] != '\n') i++;
+        size_t e = i;
+        if (i < len) { if (data[i] == '\r' && i + 1 < len && data[i + 1] == '\n') i += 2; else i++; }
+        while (e > s && (data[e - 1] == ' ' || data[e - 1] == '\t')) e--;
+        if (e == s) { if (o > 0) pendingBlank = true; continue; }
+        if (pendingBlank) { out[o++] = '\n'; pendingBlank = false; }
+        memcpy(out + o, data + s, e - s);
+        o += e - s;
+        out[o++] = '\n';
+    }
+    if (o == 0) { free(out); fail(err, "empty"); return NULL; }
+    out[o] = 0;
+    *outLen = o;
+    return out;
+}
+
 /* checks one variant line's fields for a reading option; returns 1 if the key is an option (err set when bad), 0 if not */
 static int check_option(const char *key, char **f, int nf, char *msg, size_t msgSize) {
     int known = 0;
@@ -601,7 +751,8 @@ bool pxtf_parse(const char *data, size_t len, PxtfTypeface *out, char err[PX_ERR
 
 #define LFAIL(...) do { snprintf(msg, sizeof msg, __VA_ARGS__); fail(err, "line %d: %.400s", lineNo, msg); goto bad; } while (0)
 #define CLOSE_VARIANT() do { if (cur && (!seenPxfm || !seenFormat || !seenSource || !seenType)) { lineNo = -1; \
-        fail(err, "variant %04d has no %s line", cur->number, !seenPxfm ? "PXFM" : !seenFormat ? "SOURCE-FORMAT" : !seenSource ? "SOURCE-HASH" : "SOURCE-TYPE"); goto bad; } } while (0)
+        fail(err, "variant %04d has no %s line", cur->number, !seenPxfm ? "PXFM" : !seenFormat ? "SOURCE-FORMAT" : !seenSource ? "SOURCE-HASH" : "SOURCE-TYPE"); goto bad; } \
+        if (cur) { char tm[200]; if (!terms_ok(cur, tm, sizeof tm)) { fail(err, "variant %04d: %s", cur->number, tm); goto bad; } } } while (0)
 
     while (*p) {
         char *line = p;
@@ -693,9 +844,10 @@ bool pxtf_parse(const char *data, size_t len, PxtfTypeface *out, char err[PX_ERR
         } else {
             char m2[200];
             int r = check_option(key, fld + 1, na, m2, sizeof m2);
+            if (r == 0) r = check_terms(key, fld + 1, na, m2, sizeof m2);
             if (r == 0) LFAIL("unknown key '%s'", key);
             if (r < 0) LFAIL("%s", m2);
-            if (strcmp(key, "IGNORE") != 0)
+            if (strcmp(key, "IGNORE") != 0 && strcmp(key, "TERMS-TEXT") != 0 && strcmp(key, "TERMS-OBLIGATION") != 0)
                 for (int i = 0; i < cur->nopts; i++) {
                     size_t kl = strlen(key);
                     if (strncmp(cur->opts[i], key, kl) == 0 && (cur->opts[i][kl] == '\t' || !cur->opts[i][kl])) LFAIL("two %s lines", key);
