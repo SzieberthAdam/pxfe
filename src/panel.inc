@@ -928,7 +928,7 @@ static void DrawInfoTab(bool typeface, float px, float pw, float *yp, const Pxtf
             }
             static const char *lab[2] = {"Export Typeface\xE2\x80\xA6", "Delete Typeface"};
             const int fl[2] = {TH_BTN_OFF(stored && tf), TH_BTN_DANGER | TH_BTN_OFF(stored && tf)};
-            static const char *tip[2] = {"Write the typeface and every font it names into a .pxtp package", "Delete the typeface from the database"};
+            static const char *tip[2] = {"Write the typeface into a .pxtp package, or its fonts into font files: BDF, PCF, FNT, FON, TrueType, OpenType, WOFF", "Delete the typeface from the database"};
             int c = ButtonRow(x, &y, w, 2, lab, fl, tip);
             if (c >= 0) LibCmd(c == 0 ? LC_EXPORT : LC_DELETE, true, pxtf, pxfm, variant);
         }
@@ -939,7 +939,7 @@ static void DrawInfoTab(bool typeface, float px, float pw, float *yp, const Pxtf
         bool canClone = stored && cv && !LockedOf(true, doc ? origContHash : pxtf);
         const int fl[3] = {TH_BTN_OFF(canClone), TH_BTN_OFF(stored), TH_BTN_DANGER | TH_BTN_OFF(stored)};
         const char *tip[3] = {!cv ? "The font belongs to no typeface" : canClone ? "A new variant of the typeface with the same font, its style \"... copy\"" : "The typeface is locked: unlock it first",
-                              "Write the font into a .pxfp package", "Delete the font from the database"};
+                              "Write the font into a .pxfp package or a font file: BDF, PCF, FNT, FON, TrueType, OpenType, WOFF", "Delete the font from the database"};
         int c = ButtonRow(x, &y, w, 3, lab, fl, tip);
         if (c >= 0) LibCmd(c == 0 ? LC_CLONE : c == 1 ? LC_EXPORT : LC_DELETE, false, doc ? origContHash : pxtf, doc ? origHash : pxfm, variant);
     }
@@ -1312,23 +1312,122 @@ static void DrawMetricsPanel(Rectangle p)
     Th_ScrollBar(cr, &panelScroll, panelContentH, 48, true);
 }
 
-/* Export Typeface... / Export Font...: a .pxtp or .pxfp package (pixelglyphlib spec, src/package.c), written where the user picks.  The open
- * document's edits go into the store first, so the package holds what the user sees. */
+/* The text of a variant for a font file (fontwrite.h); the strings stay the typeface's. */
+static FwMeta FwMetaOf(const PxtfTypeface *tf, const PxtfVariant *v)
+{
+    FwMeta m;
+    memset(&m, 0, sizeof m);
+    m.family = tf ? tf->name : NULL;
+    if (!v) return m;
+    const char *const *t = (const char *const *)v->text;
+    m.style = t[PXTF_STYLE]; m.fullName = t[PXTF_NAME]; m.weightName = t[PXTF_WEIGHTNAME]; m.version = t[PXTF_VERSION];
+    m.copyright = t[PXTF_COPYRIGHT]; m.trademark = t[PXTF_TRADEMARK]; m.description = t[PXTF_DESCRIPTION]; m.designer = t[PXTF_DESIGNER];
+    m.designerUrl = t[PXTF_DESIGNERURL]; m.vendor = t[PXTF_VENDOR]; m.vendorUrl = t[PXTF_VENDORURL]; m.license = t[PXTF_LICENSE];
+    m.licenseUrl = t[PXTF_LICENSEURL]; m.codepage = t[PXTF_CODEPAGE];
+    m.italic = v->italic; m.underlined = v->underlined; m.struckout = v->struckout;
+    return m;
+}
+
+/* Export in a font format (fontwrite.h): the typeface's fonts of one colour, a file each (`<stem>-<Style>.<ext>` beside the chosen path when
+ * there are several), or all in one FON; or the one font of Export Font... (with the text of its variant when it has one).  Colour fonts are
+ * left out with a word in the toast; what a format could not hold is told in a dialog. */
+static void ExportFontFile(bool typeface, const char *pxtfHash, const char *pxfmHash, int variant, const char *path, FwFormat fmt)
+{
+    StoreConn *c = store_main_conn(store);
+    char err[PX_ERR_LEN] = "", warn[4096] = "";
+    PxtfTypeface tf;
+    pxtf_init(&tf);
+    bool haveTf = pxtfHash && pxtfHash[0] && store_load_typeface(c, pxtfHash, &tf, err);
+    if (typeface && !haveTf) { ShowError("Cannot export the typeface", err[0] ? err : "The typeface could not be read."); return; }
+    int nv = typeface ? tf.count : 1;
+    PxFont *fonts = calloc((size_t)(nv ? nv : 1), sizeof *fonts);
+    FwFace *faces = calloc((size_t)(nv ? nv : 1), sizeof *faces);
+    int *num = calloc((size_t)(nv ? nv : 1), sizeof *num);   /* the variant number of each face */
+    int nf = 0, colour = 0;
+    bool ok = fonts && faces && num;
+    for (int i = 0; ok && i < nv; i++) {
+        const PxtfVariant *v = typeface ? &tf.v[i] : haveTf ? pxtf_find_variant(&tf, variant) : NULL;
+        const char *fm = typeface ? v->pxfm : pxfmHash;
+        px_font_init(&fonts[nf]);
+        if (!store_load_font(c, fm, NULL, 0, &fonts[nf], err)) { ok = false; break; }
+        if (!fw_takes_colour(fmt) && px_font_is_colour(&fonts[nf])) { px_font_free(&fonts[nf]); colour++; continue; }
+        faces[nf].font = &fonts[nf];
+        faces[nf].meta = FwMetaOf(haveTf ? &tf : NULL, v);
+        num[nf] = v ? v->number : 1;
+        nf++;
+    }
+    char dir[PATH_MAX_LEN], stem[PATH_MAX_LEN], written[2 * PATH_MAX_LEN + 96] = "";
+    snprintf(dir, sizeof dir, "%s", path);
+    char *slash = strrchr(dir, '/');
+    const char *base = slash ? slash + 1 : dir;
+    snprintf(stem, sizeof stem, "%s", base);
+    char *dot = strrchr(stem, '.');
+    if (dot && dot != stem) *dot = 0;
+    if (slash) slash[1] = 0; else dir[0] = 0;
+    int files = 0;
+    if (!ok) ShowError(typeface ? "Cannot export the typeface" : "Cannot export the font", err[0] ? err : "Out of memory.");
+    else if (!nv) ShowError("Cannot export the typeface", "The typeface has no font.");
+    else if (!nf) ShowError(typeface ? "Cannot export the typeface" : "Cannot export the font",
+                            TextFormat("%s holds fonts of one colour only, and %s.", fw_label(fmt), typeface ? "every font of the typeface has colours" : "the font has colours"));
+    else if (fw_one_file(fmt) || nf == 1) {
+        if (fw_write(fmt, faces, fw_one_file(fmt) ? nf : 1, path, warn, sizeof warn, err)) { files = 1; snprintf(written, sizeof written, "%s", path); }
+        else ShowError("Cannot export", err);
+    } else {
+        for (int i = 0; i < nf; i++) {   /* <stem>-<Style>.<ext>, the variant's number when the style is empty or taken */
+            char st[80], p[2 * PATH_MAX_LEN + 96], w1[1024] = "";
+            fw_ascii_name(faces[i].meta.style, st, sizeof st, false);
+            bool taken = !st[0];
+            for (int k = 0; k < i && !taken; k++) { char o[80]; fw_ascii_name(faces[k].meta.style, o, sizeof o, false); taken = !strcmp(o, st); }
+            if (taken) { size_t l = strlen(st); snprintf(st + l, sizeof st - l, "%s%04d", l ? "-" : "", num[i]); }
+            snprintf(p, sizeof p, "%s%s-%s.%s", dir, stem, st, fw_ext(fmt));
+            if (!fw_write(fmt, &faces[i], 1, p, w1, sizeof w1, err)) { ShowError("Cannot export", TextFormat("%s: %s", p, err)); break; }
+            for (char *s = w1, *e; *s && (e = strchr(s, '\n')); s = e + 1) { *e = 0; fw_warn(warn, sizeof warn, "%s: %s", st, s); }
+            files++;
+            snprintf(written, sizeof written, "%s", p);
+        }
+    }
+    if (files) {
+        if (files == 1) Th_Toast(TH_TOAST_OK, "%s written: %s", fw_label(fmt), written);
+        else Th_Toast(TH_TOAST_OK, "%d %s files written in %s", files, fw_label(fmt), dir);
+        if (colour) Th_Toast(TH_TOAST_INFO, "%d colour font%s left out: %s holds fonts of one colour only", colour, colour == 1 ? "" : "s", fw_label(fmt));
+        if (warn[0]) ShowError(TextFormat("%s export: not everything fits", fw_label(fmt)), warn);
+    }
+    for (int i = 0; i < nf; i++) px_font_free(&fonts[i]);
+    free(fonts);
+    free(faces);
+    free(num);
+    pxtf_free(&tf);
+}
+
+/* Export Typeface... / Export Font...: a .pxtp or .pxfp package (pixelglyphlib spec, src/package.c), or a font file (ExportFontFile), written
+ * where the user picks; the dialog's file type (the extension) chooses.  The open document's edits go into the store first, so the file holds
+ * what the user sees. */
 static void ExportPackage(bool typeface, const char *pxtfIn, const char *pxfmIn, int variant)
 {
-    (void)variant;
     if (!store) return;
-    char h[33], name[PATH_MAX_LEN], path[PATH_MAX_LEN], err[PX_ERR_LEN] = "";
+    char h[33], tfh[33], name[PATH_MAX_LEN], path[PATH_MAX_LEN], err[PX_ERR_LEN] = "";
     bool doc = typeface ? hasCont && docStored && Same(pxtfIn, origContHash) : hasFont && docStored && Same(pxfmIn, origHash);
+    bool docTf = hasCont && docStored && Same(pxtfIn, origContHash);
     snprintf(h, sizeof h, "%s", typeface ? pxtfIn : pxfmIn);
+    snprintf(tfh, sizeof tfh, "%s", pxtfIn ? pxtfIn : "");
     if (!CommitEdits()) return;
     if (doc) snprintf(h, sizeof h, "%s", typeface ? origContHash : origHash);
+    if (docTf) snprintf(tfh, sizeof tfh, "%s", origContHash);
     StoreConn *c = store_main_conn(store);
     if (typeface) pkg_default_name_typeface(c, h, name, sizeof name); else pkg_default_name_font(c, h, name, sizeof name);
+    char *dot = strrchr(name, '.');
+    if (dot && dot != name) *dot = 0;   /* the extension comes from the file type chosen in the dialog */
     if (dlgSavePath[0]) snprintf(path, sizeof path, "%s", dlgSavePath);
-    else if (noDialogs || !Win_SaveFileDialog(path, (int)sizeof path, typeface ? "Pixel typeface package (*.pxtp)|*.pxtp|All files|*.*" : "Pixel font package (*.pxfp)|*.pxfp|All files|*.*",
+    else if (noDialogs || !Win_SaveFileDialog(path, (int)sizeof path,
+                                              TextFormat("%s|BDF (*.bdf)|*.bdf|PCF (*.pcf)|*.pcf|Windows font, one file per font (*.fnt)|*.fnt|"
+                                                         "Windows font resource, %s (*.fon)|*.fon|TrueType (*.ttf)|*.ttf|OpenType, colour fonts with SVG glyphs (*.otf)|*.otf|WOFF (*.woff)|*.woff|All files|*.*",
+                                                         typeface ? "Pixel typeface package (*.pxtp)|*.pxtp" : "Pixel font package (*.pxfp)|*.pxfp",
+                                                         typeface ? "every font in one file" : "one font"),
                                               name, typeface ? "pxtp" : "pxfp")) return;
     Slashes(path);
+    const char *ext = strrchr(path, '.');
+    FwFormat fmt;
+    if (ext && !strchr(ext, '/') && fw_format_of_ext(ext, &fmt)) { ExportFontFile(typeface, tfh, h, variant, path, fmt); return; }
     if (typeface ? pkg_write_typeface(c, h, path, err) : pkg_write_font(c, h, path, err)) Th_Toast(TH_TOAST_OK, "%s written: %s", typeface ? "Typeface package" : "Font package", path);
     else ShowError(typeface ? "Cannot export the typeface" : "Cannot export the font", err[0] ? err : "Unknown error.");
 }

@@ -45,6 +45,7 @@ The tests are described in `HANDOFF.md` and `tests/e2e/README.md`.
 | `src/outline.h/.c`, `src/bmsrc.h/.c` | outline and bitmap font sources |
 | `src/fit.h/.c`, `src/fitdoc.inc` | fitting an outline to pixels, importing a font file, glyphs that follow a layer |
 | `src/sheet.h/.c`, `src/sheetref.h/.c` | finding a font in a picture, and its reference glyphs |
+| `src/fontwrite.h/.c`, `src/fontwrite_sfnt.c` | writing BDF, PCF, FNT, FON, TrueType, OpenType and WOFF; no raylib |
 | `src/winfile.h/.c` | native Windows file and folder dialogs |
 | `src/play.inc` | the scripted input player of the end-to-end tests (`--play`) |
 
@@ -84,12 +85,9 @@ Exactly three UI sizes (18, 16, 13) and the pixel face at 16:
 
 - The sizes are `TH_SIZE_HEAD`, `TH_SIZE_BODY`, `TH_SIZE_CAP`, `TH_SIZE_SMALL`.
   A size is the em, as in CSS: Noto Sans is loaded at `em * 1.362` (`TH_NOTO_RATIO`) because raylib's `LoadFontEx` size is the ascent-to-descent height.
-- Fonts are found under `assets/fonts` next to the executable, else two folders up, else the working directory; a missing file raises an error toast and raylib's default font stands in.
 - Unifont is drawn only at 16 px or 32 px, with point filtering and whole-pixel positions.
   Both `.otf` files stay in memory and a glyph is rasterised with `LoadFontData` when first drawn, into a 1024 x 1024 atlas of 32 x 32 slots that is flushed when full; planes 1 to 16 come from `unifont_upper`; at 16 px every coverage is 0 or 255.
 - Glyph captions (`Th_CodeDraw`, `Th_TextRich`): the character itself in Unifont, centred; "U+XXXX" while the mouse is over the caption or its cell, and always for a code point with no visible Unifont image (controls, blanks, marks without an advance, code points Unifont lacks); "#n" for a glyph without a code point; a variant adds its "-VVV" to the text and shows no image.
-  Sites: the font view's cell captions, the glyph segment of the navigation bar, the glyph view's bar, the layer rows, the Glyph usage rows, the code beside Find in Library, the Add Glyph dialog.
-- A glyph preview (the large character of the Glyphs view) is Unifont at 32 px, never another size.
 - Roles differ by size, weight and colour, never by a size of their own: a new role takes one of the five rows above.
 - The side panel is 352 px wide and the minimum window is 1110 x 600; at that size and at 1400 x 900 no text is clipped or overlaps without an ellipsis.
 
@@ -260,7 +258,6 @@ The light neutral theme: window `#F3F3F4`, panels `#FFFFFF`, hairlines `#DCDCE0`
 
 - Metric lines, the same everywhere: baseline `#E5484D`, ascent and descent `#8E8E99`, cap height `#2F9E6E`, x-height `#D68A00`, advance `#2F6FED` dashed; underline and strike-out `#9B59D0` dotted.
 - The name chip over a glyph box is `TH_PANEL` at 90 %, the baseline in a finder cell `TH_M_BASELINE` at 31 %, the knob shadow black at 9 %.
-- The check: `grep -n "(Color){" src/main.c src/browser.c src/editor.c src/finder.c src/layers.c src/insight.c src/sample.c src/panel.inc src/gpanel.inc` finds only zero-alpha `{0}` and colours computed from data.
 
 ### Fonts and licences
 
@@ -422,7 +419,18 @@ Both are plain zip files of library files named by their hashes: the pxfm or pxt
 - Each file is kept in its canonical form: a package whose files have CR LF line ends or trailing blanks reads as the same files.
 - Importing adds the files to memory, all or nothing: a file memory has already with the same text is skipped; one memory has under the same hash with another text stops the import, and nothing is added.
 - An import is a change of memory like any other, written by Save; it brings no source file and no font JSON.
-- `tests/test_package.c` checks round trips on the test databases, every rejection rule with a crafted zip, and byte identity with the Python reference when it accepts the files.
+
+### Font files
+
+Export Typeface… and Export Font… also write BDF, PCF, FNT, FON, TrueType, OpenType (CFF) and WOFF, chosen by the save dialog's file type; `.pxtp` and `.pxfp` stay packages.
+
+- A typeface gives `<name>-<Style>.<ext>` per font beside the chosen path (the variant number for an empty or taken style); a FON holds them all.
+- A pixel other than `.` is ink; glyph variants are left out, and colour fonts but in OpenType; FNT leaves symbols out; the default glyph is the sfnt formats' `.notdef`.
+- OpenType keeps a colour font's colours in an SVG table: per glyph a path per colour, traced as outlines, alpha as opacity; the CFF outlines (all ink) are the fallback.
+- Names come from the typeface and its variant; FNT takes the character set of CODEPAGE, else the one covering most glyphs.
+- A symbolic font keeps its codes: `Misc-FontSpecific` in BDF and PCF, `SYMBOL_CHARSET` in FNT, a (3,0) cmap beside the Unicode ones in the sfnt formats.
+- The sfnt formats trace the ink into outlines, 64 units per pixel; kerning goes into a `kern` table.
+- A dialog lists what a format could not hold.
 
 ### Deleting fonts and typefaces
 
@@ -718,7 +726,6 @@ The View area (see "View area", `Editor_ViewPanel`), then the tabs **Glyph | Lay
 - Locked, the partner is shown and the kerning cannot change.
 - The status line adds `kerning A V -1`.
 - The partner fits in the view when it is chosen, unless the zoom was set by hand.
-- Tests: `144_kerning`.
 
 ## Tools of the glyph view
 
@@ -812,14 +819,12 @@ Picking changes neither the glyph nor the undo stack, and a locked font refuses 
 
 - `ras_line` is Bresenham, walked from its smaller end and reversed when needed, so A to B and B to A cover the same cells and the path runs from the first end.
 - `ras_snap` is the constrained angle, `ras_ends` the centre mode, `ras_is_corner` and `ras_pixel_perfect` the L rule, `ras_bezier` the curve sampled at steps under one cell.
-- `ras_box(sx, sy, hx, hy, square, center, box)` normalizes a drag with its modifiers; `ras_rect(out, x0, y0, x1, y1, filled)` is the border or the whole box.
+- `ras_box` normalizes a drag with its modifiers; `ras_rect` is the border or the whole box.
 - `ras_ellipse(out, x0, y0, x1, y1, filled)` is the midpoint ellipse in a box: four mirrored quadrants stepped from the middles of the sides with integer error terms, so it is symmetric for even and odd sizes; sorted and joined without duplicates; a narrow ellipse stops early so the ring touches all four sides.
   The L rule is applied to the set (a cell with exactly two neighbours, a straight step each along different axes, is dropped), so the ring stays whole and one cell thick.
   Filled fills each row from its first to its last ring cell, so it has the ring's outline and no holes; a box one cell thick is a line, two cells a solid band.
-  Very narrow ellipses (a short side of 3 or 4 with a long side of twice that or more) end in a two-cell cap; from a short side of 5 and a ratio under 3 to 1 every ring cell has exactly two neighbours.
 - `ras_flood(out, pix, rx, ry, rw, rh, sx, sy, contiguous, diagonals, clip)`: an explicit stack in 4 or 8 directions, or every cell of the seed's character; the `clip` mask is a wall; cells in row order.
 - `ras_polygon(out, v, n, closed, filled)`: `ras_line` between vertices; filled adds cells whose centres are inside by even-odd, from sorted edge crossings, without duplicates.
-- In the editor `region_pix` builds the region's character grid once for the wand (`sel_wand_at`) and the Fill (`fill_at`).
 
 ### The shortcuts of the glyph view
 

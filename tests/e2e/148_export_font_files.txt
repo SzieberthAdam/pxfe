@@ -1,0 +1,72 @@
+# 148. Export Typeface... and Export Font... write font files: the extension of the path (the dialog's file type) chooses the format.
+# 1 a typeface of two fonts gives a file per font, <name>-<Style>.<ext>; 2 FON holds both in one file; 3 TrueType and WOFF; 4 Export Font...
+# writes the one font under the name given; 5 a .pxtp is still a package.
+wait 16
+assert nav 0
+click @card:0
+wait 3
+click @bside_Typeface
+wait 3
+
+# ---- 1. BDF: Test Sans Regular and Italic
+delete tests/tmp/x148-Regular.bdf
+delete tests/tmp/x148-Italic.bdf
+setdialog save tests/tmp/x148.bdf
+click @Export_Typeface…
+wait 10
+assert file tests/tmp/x148-Regular.bdf exists
+assert file tests/tmp/x148-Italic.bdf exists
+assert file tests/tmp/x148.bdf missing
+assert file tests/tmp/x148-Regular.bdf contains FAMILY_NAME "Test Sans"
+assert file tests/tmp/x148-Italic.bdf contains WEIGHT_NAME "Italic"
+assert toast 2 BDF files written
+
+# ---- 2. FON: both fonts in one file
+delete tests/tmp/x148.fon
+setdialog save tests/tmp/x148.fon
+click @Export_Typeface…
+wait 10
+assert file tests/tmp/x148.fon exists
+assert file tests/tmp/x148-Regular.fon missing
+assert toast FON written
+# Test Sans has glyphs off the code page of FNT: a dialog lists them
+assert modal FON_export:_not_everything_fits
+key enter
+wait 4
+assert modal none
+
+# ---- 3. TrueType and WOFF, a file per font
+delete tests/tmp/x148-Regular.ttf
+delete tests/tmp/x148-Italic.ttf
+delete tests/tmp/x148-Regular.woff
+setdialog save tests/tmp/x148.ttf
+click @Export_Typeface…
+wait 10
+assert file tests/tmp/x148-Regular.ttf exists
+assert file tests/tmp/x148-Italic.ttf exists
+setdialog save tests/tmp/x148.woff
+click @Export_Typeface…
+wait 10
+assert file tests/tmp/x148-Regular.woff exists
+
+# ---- 4. Export Font...: the one font under the name given
+click @bside_Font
+wait 3
+delete tests/tmp/x148f.pcf
+setdialog save tests/tmp/x148f.pcf
+click @Export_Font…
+wait 10
+assert file tests/tmp/x148f.pcf exists
+assert toast PCF written
+
+# ---- 5. a package is still a package
+click @bside_Typeface
+wait 3
+delete tests/tmp/x148.pxtp
+setdialog save tests/tmp/x148.pxtp
+click @Export_Typeface…
+wait 10
+assert file tests/tmp/x148.pxtp exists
+assert toast Typeface package written
+setdialog save none
+assert modal none

@@ -1,0 +1,30 @@
+# 148b. Colour fonts in an export (testdata/lib_colors.pxfdb, its Test Sans: Regular of one colour, Italic of two).
+# OpenType takes the colour font (its colours in an SVG table); BDF leaves it out and says so, writing the one font left under the
+# name given.
+wait 10
+assert nav 0
+click @card:0
+wait 3
+click @bside_Typeface
+wait 3
+
+# ---- OpenType: both fonts, a file each
+delete tests/tmp/x148b-Regular.otf
+delete tests/tmp/x148b-Italic.otf
+setdialog save tests/tmp/x148b.otf
+click @Export_Typeface…
+wait 10
+assert file tests/tmp/x148b-Regular.otf exists
+assert file tests/tmp/x148b-Italic.otf exists
+assert toast 2 OpenType files written
+assert modal none
+
+# ---- BDF: the colour font is left out
+delete tests/tmp/x148b.bdf
+setdialog save tests/tmp/x148b.bdf
+click @Export_Typeface…
+wait 10
+assert file tests/tmp/x148b.bdf exists
+assert file tests/tmp/x148b-Italic.bdf missing
+assert toast 1 colour font left out
+setdialog save none

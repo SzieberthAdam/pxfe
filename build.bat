@@ -1,7 +1,8 @@
 @echo off
 rem Builds pxfe.exe (and the core unit tests) with the w64devkit GCC bundled with raylib (C:\raylib).
 rem   build.bat         - build pxfe.exe
-rem   build.bat test    - build and run the quick core tests (test_pxfont, test_outline, test_bmsrc, test_fit, test_sheet, test_fsettings,
+rem   build.bat test    - build and run the quick core tests (test_pxfont, test_outline, test_bmsrc, test_fit, test_sheet, test_fontwrite,
+rem                       test_fontwrite_sfnt, test_fsettings,
 rem                       test_pxtf with library index and loader, test_store, test_package, test_selection, test_raster, test_colormath)
 rem   build.bat libtest [root] [--quick] - build and run tests\test_library.exe: round trip of a whole real library (text files and
 rem                       store), the store built from the files against the real pxfdb, timings, similarity (slow: minutes)
@@ -57,6 +58,10 @@ gcc tests\test_raster.c src\raster.c -o tests\test_raster.exe -O1 -g %CFLAGS%
 if errorlevel 1 (echo Test build failed & exit /b 1)
 gcc tests\test_colormath.c src\colormath.c -o tests\test_colormath.exe -O1 -g %CFLAGS%
 if errorlevel 1 (echo Test build failed & exit /b 1)
+gcc tests\test_fontwrite.c src\fontwrite.c src\fontwrite_sfnt.c src\pxfont.c src\pxtf.c src\bmsrc.c %ZLIB% -o tests\test_fontwrite.exe -O1 -g %CFLAGS%
+if errorlevel 1 (echo Test build failed & exit /b 1)
+gcc tests\test_fontwrite_sfnt.c src\fontwrite.c src\fontwrite_sfnt.c src\pxfont.c src\pxtf.c src\outline.c src\bmsrc.c %ZLIB% -o tests\test_fontwrite_sfnt.exe -O1 -g %CFLAGS%
+if errorlevel 1 (echo Test build failed & exit /b 1)
 tests\test_colormath.exe
 if errorlevel 1 exit /b 1
 tests\test_pxfont.exe
@@ -72,6 +77,10 @@ if errorlevel 1 exit /b 1
 tests\test_fit.exe
 if errorlevel 1 exit /b 1
 tests\test_sheet.exe
+if errorlevel 1 exit /b 1
+tests\test_fontwrite.exe
+if errorlevel 1 exit /b 1
+tests\test_fontwrite_sfnt.exe
 if errorlevel 1 exit /b 1
 tests\test_fsettings.exe
 if errorlevel 1 exit /b 1

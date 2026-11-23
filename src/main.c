@@ -18,6 +18,7 @@
 #include "library.h"
 #include "browser.h"
 #include "package.h"
+#include "fontwrite.h"
 #include "sample.h"
 #include "theme.h"
 #include "editor.h"

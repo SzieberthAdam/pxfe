@@ -1,4 +1,4 @@
-# pxfe handoff (2026-11-21)
+# pxfe handoff (2026-11-23)
 
 > This file describes the current state only, by topic, without version history.
 > It must stay under 25,000 characters (`wc -m HANDOFF.md`); when adding, shorten something else.
@@ -11,10 +11,9 @@ The files of `handoff/` are old agent reports, kept for history.
 ## State
 
 - `build.bat` and `build.bat e2e` build with no warnings.
-- `build.bat test` passes: 33 colormath, 274 pxfont, 44 selection, 110 raster, 249 outline, 148 bmsrc, 86 fit, 62 sheet, 121 fsettings, 137 pxtf, 230 store and 85 package checks (3 skipped), 0 failed.
-- `tests\e2e\run_all.bat` runs 123 scripts (2026-11-21): `01_grid` and `07d_real` fail (their real font is not in the library).
-  Timing flakes: each of `02_metrics`, `03_selection`, `04_delete`, `05_clone`, `06_editor`, `06b_palette`, `06c_noascent`, `23_modified_prompts`, `27_export_overwrite`, `42_layers_add`, `45_layers_discover`, `53_sample_persist`, `59_navigation`, `70_panel_tabs`, `101_import_font`, `139_many_colours` and `143_shots_picker` has failed in some full run and passed alone, more often while the machine is busy.
-- `tests\e2e\run_reallib.bat` loads `pixelglyphlib\pxfdb.pxfdb` read-only and imports the folder into `tests\tmp\real.pxfdb`.
+- `build.bat test` passes: 33 colormath, 274 pxfont, 44 selection, 110 raster, 249 outline, 148 bmsrc, 86 fit, 62 sheet, 55 fontwrite, 160 fontwrite_sfnt, 121 fsettings, 137 pxtf, 230 store, 85 package (3 skipped), 0 failed.
+- `tests\e2e\run_all.bat` runs 124 scripts (2026-11-23): `01_grid` and `07d_real` fail (their real font is not in the library).
+  Timing flakes: each of `02_metrics`, `03_selection`, `04_delete`, `05_clone`, `06_editor`, `06b_palette`, `06c_noascent`, `23_modified_prompts`, `27_export_overwrite`, `42_layers_add`, `45_layers_discover`, `53_sample_persist`, `59_navigation`, `70_panel_tabs`, `101_import_font`, `139_many_colours`, `143_shots_picker` and `28_export_nobackup` has failed in some full run and passed alone, more often while the machine is busy.
 - Plain `build.bat` fails only at the link step when a running `pxfe.exe` locks the file; closing it is enough.
 
 ## Things to know
@@ -22,7 +21,6 @@ The files of `handoff/` are old agent reports, kept for history.
 - The library and the specs now live in `C:\Users\jnsGEzD3\Documents\GitHub\pxfdb` (`spec/`, `pxtf/`, `pxfm/`, `pxgl/`, `palette/`, `license/`, no `.pxfdb` file); the `pixelglyphlib` folder is gone.
   `prep_real.ps1` reads `pxfdb` but its font `b86206e5…` is not there, so 01_grid and 07d_real fail with a warning; `run_reallib.bat` and the notes below on `pixelglyphlib` are out of date.
 - The real library is never written by pxfe's tests.
-  It holds two user-made fonts of 04b03 that its `pxfdb.pxfdb` lacks, so importing the folder gives more fonts than the file.
 - The agents work only on copies under `tests/tmp/` and on `testdata/`.
 - Every text file is LF; only the `.bat` files are CRLF on disk, because cmd needs it (`.gitattributes` enforces this; a `.bat` saved as LF breaks `call :label`).
 - The scripts run fast: two clicks on one spot within 0.4 s are a double click, and a click right after a layout change needs `wait 6`.
@@ -31,7 +29,6 @@ The files of `handoff/` are old agent reports, kept for history.
 - Every script that edits starts with `click @Unlock`; tools are pressed as `key b shift`, palette slots as `type 3` (slot keys come from `GetCharPressed`, in the e2e build `Play_GetChar`).
 - Shot scripts (60, 62, 64 to 69, 100, 123, 142, 143) are not in `run_all.bat`; they write under `tests\tmp` and run a copy of the executable so a build is never blocked by an open window.
 - `testdata` is made by `tests/make_testdata.exe`; `lib_colors.pxfdb` has real colour fonts, `lib_many.pxfdb` a font of 40 colours (`b6a511be…`).
-- Script 28 has failed once in a full run and passed alone (a timing flake).
 
 ## Design system
 
@@ -101,6 +98,14 @@ The files of `handoff/` are old agent reports, kept for history.
   Tests: `test_package.c` with `tests/pkg_reference.py`, script 70.
 
 ## Locks
+
+## Font files
+
+- `src/fontwrite.c` (BDF, PCF, FNT, FON, helpers), `src/fontwrite_sfnt.c` (TTF, OTF with CFF + `svg_table`, WOFF), after `bitmapfont/tools/writers`; `fw_bytes`, `fw_write`.
+- FNT uses the code pages of `bmsrc_cp.inc`; WOFF needs zlib (`%ZLIB%` in the test builds).
+- `src/panel.inc`: `ExportPackage` sends a font format's extension to `ExportFontFile`.
+- A symbolic sfnt gets a (3,0) cmap beside the Unicode ones.
+- Tests: `test_fontwrite.c` (read back with `bmsrc.c`), `test_fontwrite_sfnt.c` (with `outline.c`), `148_export_font_files`, `148b_export_colour_otf`.
 
 - Every font and typeface has a lock, locked by default; unlocked means edited in place.
 - `src/store.c`: `store_edit_in_place` adds the new font, rewrites the typefaces that name the old one, removes the old font and orphan glyphs, and reports the moved typeface hashes.

@@ -263,6 +263,10 @@ call :fresh
 call :run 146_new_typeface "%DB%"
 call :fresh
 call :run 147_licence "%DB%"
+call :run 148_export_font_files "%DB%"
+call :fresh
+copy /y testdata\lib_colors.pxfdb tests\tmp\e2e.pxfdb >nul
+call :run 148b_export_colour_otf "%DB%"
 call :fresh
 call :run 70_panel_tabs "%DB%"
 
