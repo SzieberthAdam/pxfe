@@ -11,7 +11,7 @@ The files of `handoff/` are old agent reports, kept for history.
 ## State
 
 - `build.bat` and `build.bat e2e` build with no warnings.
-- `build.bat test` passes: 33 colormath, 274 pxfont, 44 selection, 110 raster, 249 outline, 148 bmsrc, 86 fit, 62 sheet, 55 fontwrite, 160 fontwrite_sfnt, 121 fsettings, 137 pxtf, 230 store, 85 package (3 skipped), 0 failed.
+- `build.bat test` passes: 33 colormath, 274 pxfont, 44 selection, 110 raster, 249 outline, 148 bmsrc, 86 fit, 62 sheet, 55 fontwrite, 160 fontwrite_sfnt, 121 fsettings, 137 pxtf, 231 store, 85 package (3 skipped), 0 failed.
 - `tests\e2e\run_all.bat` runs 124 scripts (2026-11-23): `01_grid` and `07d_real` fail (their real font is not in the library).
   Timing flakes: each of `02_metrics`, `03_selection`, `04_delete`, `05_clone`, `06_editor`, `06b_palette`, `06c_noascent`, `23_modified_prompts`, `27_export_overwrite`, `42_layers_add`, `45_layers_discover`, `53_sample_persist`, `59_navigation`, `70_panel_tabs`, `101_import_font`, `139_many_colours`, `143_shots_picker` and `28_export_nobackup` has failed in some full run and passed alone, more often while the machine is busy.
 - Plain `build.bat` fails only at the link step when a running `pxfe.exe` locks the file; closing it is enough.
@@ -62,6 +62,7 @@ The files of `handoff/` are old agent reports, kept for history.
 ## Licence terms
 
 - pxtf "Licence terms" (`TERMS-*`) in `src/pxtf.c`: the text keys are `PxtfText` (`PXTF_TERMS_*`); the word, date and hash keys stay raw in `opts` (`pxtf_opt`, `pxtf_opt_all`); `pxtf_terms_words` and `pxtf_terms_meaning` hold the words with their plain meanings; `check_terms` and `terms_ok` (the cross rules) run in the parser; `pxtf_license_short`; `pxtf_license_canonical` (license.md).
+- Library paths: `px_lib_path` and `px_lib_dir` (pxfont.c); glyph files lie at `pxgl/xx/yy/<hash>.pxgl`, and `list_part` in store.c walks that second level (a glyph file elsewhere is a bad name that stops an Import).
 - `src/store.c`: the `license` table (zlib level 9 when shorter, `z_compress9` and `z_uncompress` since vendor/zlib has no compress.c), `store_license_text`, `license/xx/<hash>.txt` in Import, Export and the scan; a `TERMS-TEXT` without its text stops an Import.
   `StoreTerms` (`store_terms_of_variant`, `list_terms` from the field rows) is in every `StoreEntry` and `LibEntry`.
 - `src/package.c`: a pxtp carries `license/<hash>.txt` for every `TERMS-TEXT`; a pxfp has none.
@@ -84,6 +85,7 @@ The files of `handoff/` are old agent reports, kept for history.
 - The pxfdb is format version 2 (`pxtf.name`, `pxtf_variant.source`); a version 1 database is refused ("import the library folder again").
 - A pxfdb made before hex palettes is refused on open ("made by an older pixelglyphlib … rebuild it"); in `pixelglyphlib`, `pxfdb.pxfdb` opens and the two `pxfdb-with*-symbols.pxfdb` are refused.
 - New Database (`store_create`, `NewDatabase` in main.c): an empty store with no file (path ""), titled "Untitled"; `SaveDb` turns into Save As for it; script 07f.
+- The folder picker (`Win_PickFolder`, winfile.c) is `IFileOpenDialog` with `FOS_PICKFOLDERS` (GUIDs defined there, no uuid library), the old folder tree as a fallback; `DlgFolder` opens it in `[app] lastImportFolder` or `lastExportFolder`.
 - `src/main.c`: the menu items, the Save button, the title and status bar markers, the Save / Discard / Cancel prompts, the export dialog (Update, Overwrite, backup).
 - `src/fsettings.c`: the sidecar `<db>-settings` (SQLite, schema 4: `layer`, `correction` by `PxCode`, `unlocked`; schema 1 to 3 are upgraded on open).
   Save writes it (alone when only settings changed); Save As writes a new one; Import starts empty; Export does not touch it; with nothing to keep it is not written and an old one is deleted.

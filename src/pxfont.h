@@ -176,6 +176,10 @@ void px_hash128_hex(const void *data, size_t len, char out[33], bool upper); /* 
 char *px_canonical(const char *text, size_t len, size_t *outLen);
 /* Create a directory and all missing parents ('/' or '\\' separators). True if it exists afterwards. */
 bool px_mkdir_p(const char *path);
+/* The place of a file in a library (pxfdb README "Layout"): <root>/<sub>/<h2>/<hash>.<ext>; a glyph file (sub "pxgl") lies
+ * a level deeper, at <root>/pxgl/<digits 1-2>/<digits 3-4>/<hash>.pxgl.  px_lib_dir gives the folder, px_lib_path the file. */
+void px_lib_dir(const char *root, const char *sub, const char *hash, char *out, size_t n);
+void px_lib_path(const char *root, const char *sub, const char *hash, const char *ext, char *out, size_t n);
 char *px_read_file(const char *path, size_t *len);      /* malloc'd, NUL-terminated; NULL on failure */
 bool px_write_file(const char *path, const void *data, size_t len);
 bool px_file_exists(const char *path);
@@ -242,7 +246,7 @@ void px_glyph_written_offset(const PxGlyph *g, int *x, int *y);
 bool px_glyph_same_shape(const PxGlyph *a, const PxGlyph *b);
 
 /* ------------------------------------------------------------------ I/O
- * Library layout: <root>/pxfm/<h2>/<hash>.pxfm and <root>/pxgl/<h2>/<hash>.pxgl (and pxtf/<h2>/<hash>.pxtf).
+ * Library layout: <root>/pxfm/<h2>/<hash>.pxfm and <root>/pxgl/<h2>/<h34>/<hash>.pxgl (and pxtf/<h2>/<hash>.pxtf).
  * px_library_root_of: given a path to a file inside a library, derive <root> (three separators up). */
 bool px_library_root_of(const char *filePath, char *root, size_t rootSize);
 
@@ -369,7 +373,7 @@ bool px_load_glyphs(PxFont *f, const char *libRoot, const PxCode *codes, int n, 
 /* Full read = px_read_pxfm_lines + px_load_glyphs(all).  libRoot NULL: found from the path. */
 bool px_read_pxfm(const char *path, const char *libRoot, PxFont *out, char err[PX_ERR_LEN]);
 
-/* Final save: writes every glyph bitmap to <libRoot>/pxgl/xx/<hash>.pxgl if missing, every palette to
+/* Final save: writes every glyph bitmap to <libRoot>/pxgl/xx/yy/<hash>.pxgl if missing, every palette to
  * <libRoot>/palette/xx/<hash>.hex if missing and the pxfm to
  * <libRoot>/pxfm/xx/<hash>.pxfm if missing (an existing file is never touched: same name, same content).
  * Plain writer: the caller (the GUI) decides whether the hash differs from the original's.  Lazy glyphs are not

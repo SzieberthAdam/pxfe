@@ -37,7 +37,7 @@ The edits of an unlocked font are committed into the store when its font view is
 A later commit replaces the earlier one (there are no in-between fonts), and `modified` is then relative to what the store holds.
 
 Import Folder reads a folder of pxtf, pxfm and pxgl files with strict readers into a new `.pxfdb` and loads it.
-Export to Folder writes memory into a folder: Update adds what is missing, Overwrite deletes the contents of `pxtf/`, `pxfm/` and `pxgl/` first, with an optional backup (the folder's current data imported into a `.pxfdb`).
+Export to Folder writes memory into a folder: Update adds what is missing, Overwrite deletes the contents of `pxtf/`, `pxfm/`, `pxgl/`, `palette/` and `license/` first (glyph files lie at `pxgl/xx/yy/`), with an optional backup (the folder's current data imported into a `.pxfdb`).
 
 Glyphs without a code point show as `#n` and are renumbered when one is deleted.
 

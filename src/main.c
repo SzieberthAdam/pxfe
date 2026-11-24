@@ -96,11 +96,18 @@ static bool inFinder = false;          /* the glyph finder view */
 static bool wasLibrary = true;       /* the view the finder was entered from (the library, else the font) */
 static char dlgDbPath[PATH_MAX_LEN];
 
-static bool DlgFolder(char *out, int size, const char *what)
+/* the folder picker; it opens in the folder last chosen for the same purpose (pxfe.ini [app] `iniKey`) */
+static bool IniGetApp(const char *key, char *out, size_t cap);
+static void IniSetApp(const char *key, const char *val);
+static bool DlgFolder(char *out, int size, const char *what, const char *iniKey)
 {
     if (dlgFolderPath[0]) { snprintf(out, (size_t)size, "%s", dlgFolderPath); return true; }
     if (noDialogs) return false;
-    return Win_PickFolder(out, size, what);
+    char last[PATH_MAX_LEN] = "";
+    IniGetApp(iniKey, last, sizeof last);
+    if (!Win_PickFolder(out, size, what, last)) return false;
+    IniSetApp(iniKey, out);
+    return true;
 }
 
 /* the file of a font layer (Add Layer popover) */
@@ -1137,7 +1144,7 @@ static void ImportChooseTarget(const char *folder, const char *targetGiven)
 static void ImportDialog(void)
 {
     char dir[PATH_MAX_LEN];
-    if (DlgFolder(dir, sizeof dir, "Choose the folder to import (it contains pxtf/, pxfm/ and pxgl/)")) ImportChooseTarget(dir, "");
+    if (DlgFolder(dir, sizeof dir, "Choose the folder to import (it contains pxtf/, pxfm/ and pxgl/)", "lastImportFolder")) ImportChooseTarget(dir, "");
 }
 
 static void LoadDialog(void)
@@ -1193,7 +1200,7 @@ static void ExportStart(void)
     if (!store) { Th_Toast(2, "No database is loaded"); return; }
     if (!CommitEdits()) return;
     char dir[PATH_MAX_LEN];
-    if (DlgFolder(dir, sizeof dir, "Choose the folder to export to (the files go to pxtf/, pxfm/ and pxgl/)")) ExportDialogOpen(dir);
+    if (DlgFolder(dir, sizeof dir, "Choose the folder to export to (the files go to pxtf/, pxfm/ and pxgl/)", "lastExportFolder")) ExportDialogOpen(dir);
 }
 
 /* a backup file inside pxtf/ pxfm/ pxgl/ of the folder would be deleted by the overwrite */

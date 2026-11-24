@@ -727,7 +727,7 @@ static void test_colour_fonts(void) {
     char pxgl[600], hexd[600], name[80];
     char gh[33], ph[33];
     px_hash128_hex("10\n", 3, gh, false);
-    snprintf(pxgl, sizeof pxgl, "%s/pxgl/%c%c", L, gh[0], gh[1]);
+    px_lib_dir(L, "pxgl", gh, pxgl, sizeof pxgl);
     snprintf(name, sizeof name, "%s.pxgl", gh);
     write_text_file(pxgl, name, "10\n");
     uint32_t two[2] = {0x808080FFu, 0xFFFFFFFFu};
@@ -746,7 +746,7 @@ static void test_colour_fonts(void) {
 
     /* 37 one-pixel glyphs of 37 colours */
     px_hash128_hex("0\n", 2, gh, false);
-    snprintf(pxgl, sizeof pxgl, "%s/pxgl/%c%c", L, gh[0], gh[1]);
+    px_lib_dir(L, "pxgl", gh, pxgl, sizeof pxgl);
     snprintf(name, sizeof name, "%s.pxgl", gh);
     write_text_file(pxgl, name, "0\n");
     for (int i = 0; i < 33; i++) ug[i] = (char)toupper((unsigned char)gh[i]);

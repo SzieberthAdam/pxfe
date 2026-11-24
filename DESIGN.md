@@ -226,7 +226,7 @@ Exactly two forms, both in Unifont; nothing else prints a hash.
 - `live` false gives no input; the result is true while the bar is hovered or dragged, so the view must not react under it.
 - A menu moves its first row to keep the keyboard highlight in view, and the bar follows (`Th_ScrollRows`).
 - A view that needs the scroll before it draws calls the function before its content; the sample editor and the panels call it after the content they draw under the bar.
-- Every scrolling view uses it (font grid, library views, Glyphs view, side panels, Usage list, sample, Add Layer, long menus, palette bar); none keeps a drag state or bar drawing of its own.
+- Every scrolling view uses it; none keeps a drag state or bar drawing of its own.
 
 #### Colour picker
 
@@ -374,13 +374,14 @@ Each glyph has its own palette, so a font may have any number of colours; a glyp
 
 pxfe works on one database (a `.pxfdb` file) at a time: Load reads it into memory, all work happens in memory, Save writes memory back.
 The text folders (`pxtf/`, `pxfm/`, `pxgl/`, `palette/`, `license/`) are reached only through Import and Export.
+A file lies at `<folder>/xx/<hash>.<ext>`, a glyph file at `pxgl/xx/yy/<hash>.pxgl` (`px_lib_path`).
 
 ### The store
 
 - The library lives in memory as one SQLite database with the pxfdb schema; every view reads it through the store.
 - The open font is a `PxFont` document; the store holds what is committed.
 - A pxfdb made before hex palettes, or with the codes of pxfm version 2 (more `pxfm_glyph` rows with a variant than without), is refused with a message to rebuild it from its files; pxfe never migrates it.
-- The `license` table (made when missing) holds each licence text once: a zlib stream (level 9) when shorter than the text, else the text; `store_license_text` gives the text.
+- The `license` table (made when missing) holds each licence text, zlib-compressed (level 9) when that is shorter (`store_license_text`).
 - `store_glyphs_for_codepoint` (the Glyph usage and the finder) takes every variant of a code point.
 
 ### Load, Save, Save As
@@ -393,7 +394,7 @@ The text folders (`pxtf/`, `pxfm/`, `pxgl/`, `palette/`, `license/`) are reached
 
 ### Import (`Menu ▸ Import Folder…`)
 
-- The user picks a folder with `pxtf/`, `pxfm/`, `pxgl/`, `palette/` and `license/`, then the new database's path (default `<folder>/pxfdb.pxfdb`; an existing file is replaced only after a confirmation).
+- The user picks a folder with `pxtf/`, `pxfm/`, `pxgl/`, `palette/` and `license/` (the Windows folder picker takes a pasted path; it opens in the last folder, `[app] lastImportFolder` or `lastExportFolder`), then the new database's path (default `<folder>/pxfdb.pxfdb`; an existing file is replaced only after a confirmation).
 - Every file is read by the strict readers (with a progress screen); the database is built, written and loaded.
 - The build checks that every named palette exists and has a line for each colour of its glyph, that a glyph of several colours has a palette, `COLORS`, and that every `TERMS-TEXT` names a licence text in its canonical form.
 - A file that fails stops the import with its name and reason; nothing is written.

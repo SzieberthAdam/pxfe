@@ -615,11 +615,10 @@ static int cmp16(const void *a, const void *b) { return memcmp(a, b, 16); }
 
 typedef struct ListCtx { const char *root; const char *sub; const char *ext; HashList parts[256]; } ListCtx;
 
-static void list_part(void *vctx, int idx) {
-    ListCtx *c = (ListCtx *)vctx;
-    HashList *hl = &c->parts[idx];
+/* the files of one folder: <32 lower-case hex>.<ext> whose first byte is idx and, when second >= 0, whose second is that */
+static void list_dir(ListCtx *c, HashList *hl, const char *rel, int idx, int second) {
     char dir[1200];
-    snprintf(dir, sizeof dir, "%s/%s/%02x/*", c->root, c->sub, idx);
+    snprintf(dir, sizeof dir, "%s/%s/%s/*", c->root, c->sub, rel);
     WIN32_FIND_DATAA fd;
     HANDLE h = FindFirstFileExA(dir, FindExInfoBasic, &fd, FindExSearchNameMatch, NULL, FIND_FIRST_EX_LARGE_FETCH);
     if (h == INVALID_HANDLE_VALUE) return;
@@ -635,11 +634,11 @@ static void list_part(void *vctx, int idx) {
             memcpy(stem, fd.cFileName, 32);
             stem[32] = 0;
             for (int i = 0; i < 32 && ok; i++) { char ch = stem[i]; if (!((ch >= '0' && ch <= '9') || (ch >= 'a' && ch <= 'f'))) ok = false; }
-            ok = ok && store_hex_to_blob(stem, b) && b[0] == (uint8_t)idx;
+            ok = ok && store_hex_to_blob(stem, b) && b[0] == (uint8_t)idx && (second < 0 || b[1] == (uint8_t)second);
         }
         if (!ok) {
             hl->bad++;
-            if (!hl->firstBad[0]) snprintf(hl->firstBad, sizeof hl->firstBad, "%s/%s/%02x/%s", c->root, c->sub, idx, fd.cFileName);
+            if (!hl->firstBad[0]) snprintf(hl->firstBad, sizeof hl->firstBad, "%s/%s/%s/%s", c->root, c->sub, rel, fd.cFileName);
             continue;
         }
         if (hl->n == hl->cap) {
@@ -647,6 +646,44 @@ static void list_part(void *vctx, int idx) {
             hl->h = (uint8_t(*)[16])realloc(hl->h, (size_t)hl->cap * 16);
         }
         memcpy(hl->h[hl->n++], b, 16);
+    } while (FindNextFileA(h, &fd));
+    FindClose(h);
+}
+
+static int hex2(const char *s) {   /* two lower-case hex digits and nothing more, else -1 */
+    int v = 0;
+    for (int i = 0; i < 2; i++) {
+        char ch = s[i];
+        if (ch >= '0' && ch <= '9') v = v * 16 + (ch - '0');
+        else if (ch >= 'a' && ch <= 'f') v = v * 16 + (ch - 'a' + 10);
+        else return -1;
+    }
+    return s[2] ? -1 : v;
+}
+
+static void list_part(void *vctx, int idx) {
+    ListCtx *c = (ListCtx *)vctx;
+    HashList *hl = &c->parts[idx];
+    char rel[16];
+    snprintf(rel, sizeof rel, "%02x", idx);
+    if (strcmp(c->sub, "pxgl") != 0) { list_dir(c, hl, rel, idx, -1); return; }
+    /* glyph files lie a level deeper: pxgl/xx/yy/<hash>.pxgl; anything else in pxgl/xx is a bad name */
+    char dir[1200];
+    snprintf(dir, sizeof dir, "%s/%s/%s/*", c->root, c->sub, rel);
+    WIN32_FIND_DATAA fd;
+    HANDLE h = FindFirstFileExA(dir, FindExInfoBasic, &fd, FindExSearchNameMatch, NULL, FIND_FIRST_EX_LARGE_FETCH);
+    if (h == INVALID_HANDLE_VALUE) return;
+    do {
+        if (strcmp(fd.cFileName, ".") == 0 || strcmp(fd.cFileName, "..") == 0) continue;
+        int second = (fd.dwFileAttributes & FILE_ATTRIBUTE_DIRECTORY) ? hex2(fd.cFileName) : -1;
+        if (second < 0) {
+            hl->bad++;
+            if (!hl->firstBad[0]) snprintf(hl->firstBad, sizeof hl->firstBad, "%s/%s/%s/%s", c->root, c->sub, rel, fd.cFileName);
+            continue;
+        }
+        char sub2[16];
+        snprintf(sub2, sizeof sub2, "%02x/%02x", idx, second);
+        list_dir(c, hl, sub2, idx, second);
     } while (FindNextFileA(h, &fd));
     FindClose(h);
 }
@@ -822,7 +859,7 @@ static void set_err(BuildCtx *b, int kind, int i, const char *fmt, ...) {
 static void file_path(const BuildCtx *b, const char *sub, const char *ext, const uint8_t h[16], char *out, size_t n) {
     char hex[33];
     store_blob_to_hex(h, hex);
-    snprintf(out, n, "%s/%s/%c%c/%s.%s", b->root, sub, hex[0], hex[1], hex, ext);
+    px_lib_path(b->root, sub, hex, ext, out, n);
 }
 
 static void tick(BuildCtx *b) { if (b->prog) InterlockedIncrement(&b->prog->done); }
@@ -2611,7 +2648,7 @@ bool store_export_folder(Store *s, const char *folderIn, StoreExportMode mode, S
                     : store_license_text(c, hex, &len, got);
             if (!t) { fail(err, "the %s %s cannot be made from the rows", KIND_SUB[k], hex); ok = false; break; }
             if (strcmp(got, hex) != 0) { fail(err, "the %s %s made from the rows has the hash %s: not written", KIND_SUB[k], hex, got); free(t); ok = false; break; }
-            snprintf(path, sizeof path, "%s/%s/%c%c/%s.%s", folder, KIND_SUB[k], hex[0], hex[1], hex, KIND_EXT[k]);
+            px_lib_path(folder, KIND_SUB[k], hex, KIND_EXT[k], path, sizeof path);
             int w = write_new_file(path, t, len, err);
             free(t);
             if (w < 0) { ok = false; break; }
@@ -3004,7 +3041,7 @@ bool store_add_files(Store *s, const StoreFile *files, int n, StoreCounts *added
     for (int i = 0; i < n; i++) {
         const StoreFile *f = &files[i];
         char path[MAX_PATH + 300], dir[MAX_PATH + 200];
-        snprintf(dir, sizeof dir, "%s/%s/%c%c", root, KIND_SUB[f->kind], f->hash[0], f->hash[1]);
+        px_lib_dir(root, KIND_SUB[f->kind], f->hash, dir, sizeof dir);
         snprintf(path, sizeof path, "%s/%s.%s", dir, f->hash, KIND_EXT[f->kind]);
         if (!px_mkdir_p(dir) || !px_write_file(path, f->data, f->len)) { fail(err, "%s: cannot write", path); goto done; }
     }

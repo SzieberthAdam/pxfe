@@ -128,6 +128,17 @@ char *px_canonical(const char *text, size_t len, size_t *outLen) {
     return out;
 }
 
+void px_lib_dir(const char *root, const char *sub, const char *hash, char *out, size_t n) {
+    if (strcmp(sub, "pxgl") == 0) snprintf(out, n, "%s/%s/%.2s/%.2s", root, sub, hash, hash + 2);
+    else snprintf(out, n, "%s/%s/%.2s", root, sub, hash);
+}
+
+void px_lib_path(const char *root, const char *sub, const char *hash, const char *ext, char *out, size_t n) {
+    char dir[960];
+    px_lib_dir(root, sub, hash, dir, sizeof dir);
+    snprintf(out, n, "%s/%.32s.%.8s", dir, hash, ext);
+}
+
 bool px_mkdir_p(const char *path) {
     char tmp[1024];
     size_t n = strlen(path);
@@ -1625,7 +1636,7 @@ typedef struct PxlJob {
 static void load_pxgl(const char *libRoot, PxlJob *j) {
     char *hash = j->hash;
     char path[1024];
-    snprintf(path, sizeof path, "%s/pxgl/%c%c/%s.pxgl", libRoot, hash[0], hash[1], hash);
+    px_lib_path(libRoot, "pxgl", hash, "pxgl", path, sizeof path);
     j->ok = false;
     size_t rawLen;
     char *raw = px_read_file(path, &rawLen);
@@ -2097,7 +2108,7 @@ bool px_save_final(const PxFont *f, const char *libRoot, char hashOut[33], char 
         if (!g) continue;
         char h[33];
         px_hash128_hex(g, n, h, false);
-        snprintf(dir, sizeof dir, "%s/pxgl/%c%c", libRoot, h[0], h[1]);
+        px_lib_dir(libRoot, "pxgl", h, dir, sizeof dir);
         snprintf(path, sizeof path, "%s/%s.pxgl", dir, h);
         if (!px_file_exists(path)) {
             if (!px_mkdir_p(dir)) { free(g); free(text); return fail(err, "cannot create directory %s", dir); }

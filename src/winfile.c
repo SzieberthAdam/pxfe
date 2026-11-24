@@ -1,7 +1,9 @@
 /* winfile.c - Win32 common dialogs. Does NOT include raylib.h. */
+#define COBJMACROS
 #include <windows.h>
 #include <commdlg.h>
 #include <shlobj.h>
+#include <shobjidl.h>
 #include <string.h>
 #include <stdio.h>
 #include <stdlib.h>
@@ -80,10 +82,58 @@ static int CALLBACK folder_cb(HWND h, UINT msg, LPARAM lp, LPARAM data)
     return 0;
 }
 
-bool Win_PickFolder(char *out, int size, const char *title)
+/* the GUIDs of the folder picker, here so that no uuid library is needed */
+static const GUID kClsidFileOpenDialog = {0xDC1C5A9C, 0xE88A, 0x4DDE, {0xA5, 0xA1, 0x60, 0xF8, 0x2A, 0x20, 0xAE, 0xF7}};
+static const GUID kIidFileOpenDialog = {0xD57C7288, 0xD4AD, 0x4768, {0xBE, 0x02, 0x9D, 0x96, 0x95, 0x32, 0xD9, 0x60}};
+static const GUID kIidShellItem = {0x43826D1E, 0xE718, 0x42EE, {0xBC, 0x55, 0xA1, 0xE2, 0x61, 0xC3, 0x7B, 0xFE}};
+
+/* 1: picked, 0: cancelled, -1: the picker is not there */
+static int pick_folder_modern(char *out, int size, const char *title, const char *start)
+{
+    IFileOpenDialog *d = NULL;
+    if (FAILED(CoCreateInstance(&kClsidFileOpenDialog, NULL, CLSCTX_INPROC_SERVER, &kIidFileOpenDialog, (void **)&d)) || !d) return -1;
+    DWORD opts = 0;
+    IFileOpenDialog_GetOptions(d, &opts);
+    IFileOpenDialog_SetOptions(d, opts | FOS_PICKFOLDERS | FOS_FORCEFILESYSTEM | FOS_PATHMUSTEXIST | FOS_NOCHANGEDIR);
+    WCHAR w[MAX_PATH * 2];
+    if (title && *title && MultiByteToWideChar(CP_ACP, 0, title, -1, w, MAX_PATH * 2)) IFileOpenDialog_SetTitle(d, w);
+    if (start && *start) {
+        char s[MAX_PATH * 2];
+        snprintf(s, sizeof s, "%s", start);
+        for (char *p = s; *p; p++) if (*p == '/') *p = 0x5C;
+        DWORD a = GetFileAttributesA(s);
+        IShellItem *it = NULL;
+        if (a != INVALID_FILE_ATTRIBUTES && (a & FILE_ATTRIBUTE_DIRECTORY) && MultiByteToWideChar(CP_ACP, 0, s, -1, w, MAX_PATH * 2) &&
+            SUCCEEDED(SHCreateItemFromParsingName(w, NULL, &kIidShellItem, (void **)&it)) && it) {
+            IFileOpenDialog_SetFolder(d, it);
+            IShellItem_Release(it);
+        }
+    }
+    int rc = 0;
+    if (SUCCEEDED(IFileOpenDialog_Show(d, GetActiveWindow()))) {
+        IShellItem *it = NULL;
+        PWSTR path = NULL;
+        if (SUCCEEDED(IFileOpenDialog_GetResult(d, &it)) && it && SUCCEEDED(IShellItem_GetDisplayName(it, SIGDN_FILESYSPATH, &path)) && path) {
+            char buf[MAX_PATH * 2];
+            if (WideCharToMultiByte(CP_ACP, 0, path, -1, buf, sizeof buf, NULL, NULL)) {
+                slashes(buf);
+                snprintf(out, (size_t)size, "%s", buf);
+                rc = 1;
+            }
+            CoTaskMemFree(path);
+        }
+        if (it) IShellItem_Release(it);
+    }
+    IFileOpenDialog_Release(d);
+    return rc;
+}
+
+bool Win_PickFolder(char *out, int size, const char *title, const char *start)
 {
     char buf[MAX_PATH] = "";
     CoInitialize(NULL);
+    int m = pick_folder_modern(out, size, title, start);
+    if (m >= 0) return m == 1;
     BROWSEINFOA bi;
     memset(&bi, 0, sizeof bi);
     bi.hwndOwner = GetActiveWindow();

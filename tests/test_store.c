@@ -192,7 +192,7 @@ static void test_text_from_rows(void) {
     int okg = 0;
     for (int i = 0; i < 6; i++) {
         char path[300], h[33];
-        snprintf(path, sizeof path, LIB "/pxgl/%.2s/%s.pxgl", gl[i], gl[i]);
+        snprintf(path, sizeof path, LIB "/pxgl/%.2s/%.2s/%s.pxgl", gl[i], gl[i] + 2, gl[i]);
         size_t fn, tn;
         char *file = px_read_file(path, &fn);
         char *txt = store_pxgl_text(c, gl[i], &tn, h);
@@ -461,13 +461,19 @@ static void test_import(void) {
     snprintf(sub, sizeof sub, "%s", TMP "/store_root_cp");
     rm_rf(sub);
     copy_tree(LIB, sub);
-    px_mkdir_p(TMP "/store_root_cp/pxgl/00");
-    px_write_file(TMP "/store_root_cp/pxgl/00/00000000000000000000000000000000.pxgl", "0\n", 2);
+    px_mkdir_p(TMP "/store_root_cp/pxgl/00/00");
+    px_write_file(TMP "/store_root_cp/pxgl/00/00/00000000000000000000000000000000.pxgl", "0\n", 2);
     CHECK(px_write_file(TMP "/imp_a/old.pxfdb", "OLD", 3), "an old target file");
     c = NULL;
     CHECK(!store_import_folder(sub, TMP "/imp_a/old.pxfdb", NULL, &c, err) && err[0] && strstr(err, "00000000000000000000000000000000"), "a pxgl whose content hash is not its name stops the import, naming the file");
     printf("      error was: %s\n", err);
     { size_t l; char *d = px_read_file(TMP "/imp_a/old.pxfdb", &l); CHECK(d && l == 3 && memcmp(d, "OLD", 3) == 0 && !px_file_exists(TMP "/imp_a/old.pxfdb.tmp"), "the old target file is untouched, no temporary file"); free(d); }
+    rm_rf(sub);   /* a glyph file in the old place, one level deep */
+    copy_tree(LIB, sub);
+    MoveFileA(TMP "/store_root_cp/pxgl/c0/fc/" G_A ".pxgl", TMP "/store_root_cp/pxgl/c0/" G_A ".pxgl");
+    c = NULL;
+    CHECK(!store_import_folder(sub, TMP "/imp_a/old.pxfdb", NULL, &c, err) && strstr(err, "pxgl/c0/" G_A ".pxgl") != NULL, "a glyph file at pxgl/xx/<hash>.pxgl (not pxgl/xx/yy/) stops the import");
+    printf("      error was: %s\n", err);
     rm_rf(sub);   /* a licence text the typeface names is missing */
     copy_tree(LIB, sub);
     DeleteFileA(TMP "/store_root_cp/license/26/" T_LIC ".txt");
@@ -630,7 +636,7 @@ static void test_export(void) {
     rm_rf(TMP "/ex_b");
     copy_tree(LIB, TMP "/ex_b");
     DeleteFileA(TMP "/ex_b/pxfm/3b/" H_EXAMPLE ".pxfm");
-    DeleteFileA(TMP "/ex_b/pxgl/c0/" G_A ".pxgl");
+    DeleteFileA(TMP "/ex_b/pxgl/c0/fc/" G_A ".pxgl");
     px_write_file(TMP "/ex_b/pxfm/89/" H_GREY ".pxfm", "EDITED\n", 7);
     px_write_file(TMP "/ex_b/notes.txt", "mine\n", 5);
     px_mkdir_p(TMP "/ex_b/other");
@@ -639,7 +645,7 @@ static void test_export(void) {
     CHECK(store_export_folder(s, TMP "/ex_b", STORE_EXPORT_APPEND, NULL, &res, err), "Append");
     CHECK(res.written.fonts == 1 && res.written.glyphs == 1 && res.written.typefaces == 0 && res.skipped.fonts == 3 && res.skipped.typefaces == 2 && res.skipped.glyphs == 5 && res.skipped.palettes == 1 && res.deleted.fonts == 0, "Append: wrote the 2 missing files, skipped the 11 that were there, deleted nothing");
     CHECK(snap_changed(&before, NULL, 0) == 0 && snap_count_in(TMP "/ex_b") == before.n + 2, "Append: every earlier file is byte for byte the same (the edited one too); exactly 2 added");
-    CHECK(same_file(TMP "/ex_b/pxfm/3b/" H_EXAMPLE ".pxfm", LIB "/pxfm/3b/" H_EXAMPLE ".pxfm") && same_file(TMP "/ex_b/pxgl/c0/" G_A ".pxgl", LIB "/pxgl/c0/" G_A ".pxgl"), "Append: the new files are the library's bytes");
+    CHECK(same_file(TMP "/ex_b/pxfm/3b/" H_EXAMPLE ".pxfm", LIB "/pxfm/3b/" H_EXAMPLE ".pxfm") && same_file(TMP "/ex_b/pxgl/c0/fc/" G_A ".pxgl", LIB "/pxgl/c0/fc/" G_A ".pxgl"), "Append: the new files are the library's bytes");
     snap_free(&before);
 
     /* Overwrite: only the contents of pxtf/ pxfm/ pxgl/ go */

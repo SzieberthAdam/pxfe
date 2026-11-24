@@ -572,7 +572,7 @@ static void VerifyLib(const char *pxfm, const char *root, int expect)
         px_glyph_free(&c);
         char h[33], path[PATH_MAX_LEN + 64];
         px_glyph_hash(&f.glyphs[i], h);
-        snprintf(path, sizeof path, "%s/pxgl/%c%c/%s.pxgl", root, h[0], h[1], h);
+        px_lib_path(root, "pxgl", h, "pxgl", path, sizeof path);
         if (!FileHas(path)) bad++;
     }
     char hash[33] = "";
