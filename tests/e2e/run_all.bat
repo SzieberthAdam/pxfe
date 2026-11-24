@@ -268,6 +268,8 @@ call :fresh
 copy /y testdata\lib_colors.pxfdb tests\tmp\e2e.pxfdb >nul
 call :run 148b_export_colour_otf "%DB%"
 call :fresh
+call :run 149_repo_sync "%DB%"
+call :fresh
 call :run 70_panel_tabs "%DB%"
 
 echo.

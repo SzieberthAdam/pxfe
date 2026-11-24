@@ -435,7 +435,7 @@ static void DoUndoRedo(bool redo)
  * Modal dialogs
  * ---------------------------------------------------------------------------------------------- */
 enum { M_NONE, M_CONFIRM, M_INPUT };
-enum { A_NONE, A_DELETE, A_CLONE, A_CLONE_REPLACE, A_UNSAVED, A_MESSAGE, A_DELETE_ITEM, A_IMPORT_REPLACE, A_SAVEAS_REPLACE, A_OVERWRITE_NOBACKUP, A_BACKUP_FAILED, A_ADDGLYPH };
+enum { A_NONE, A_DELETE, A_CLONE, A_CLONE_REPLACE, A_UNSAVED, A_MESSAGE, A_DELETE_ITEM, A_IMPORT_REPLACE, A_SAVEAS_REPLACE, A_OVERWRITE_NOBACKUP, A_BACKUP_FAILED, A_ADDGLYPH, A_REPO_APPLY };
 
 static struct {
     int kind, action;
@@ -1026,6 +1026,9 @@ static void CloseBrowser(void)
     browser = NULL;
 }
 
+static void RepoReset(void);
+static void RepoCheck(bool manual);
+static void RepoCheckLater(void);
 /* closes the browser, the finder, the insight and the store, in that order (the browser's loader reads the store) */
 static void CloseLibrary(void)
 {
@@ -1034,6 +1037,7 @@ static void CloseLibrary(void)
     if (insight) { Insight_Destroy(insight); insight = NULL; }
     if (store) { store_close(store); store = NULL; }
     if (fsettings) { fs_close(fsettings); fsettings = NULL; }
+    RepoReset();
     inBrowser = false;
     inFinder = false;
 }
@@ -1287,6 +1291,7 @@ static void JobFinish(void)
     }
     if (startup.pending && hasFont) ApplyStartup();
     startup.pending = false;
+    if (noDialogs) RepoCheck(false); else RepoCheckLater();   /* a script checks at once; the linked folder may have changed since the last session */
 }
 
 static void JobAbort(void)
@@ -1393,6 +1398,280 @@ static void GoBrowser(void)
     ShowTypefaces();
 }
 
+/* ---- a linked library folder (DESIGN.md "A linked library folder"; store.h, fsettings.h) ----
+ * The folder (a git working tree such as pxfdb) is kept equal to the database: Save writes what memory has and the folder lacks and
+ * deletes what memory deleted (a push); a check at Load, when the window gets the focus and from Sync Now reads what the folder
+ * gained or lost into memory (a pull).  With unsaved changes a pull is asked first; without, it is applied and saved at once. */
+static struct {
+    StoreFileSet ignore;        /* files that failed the strict readers this session: not offered again */
+    char laterSig[64];          /* the changes the user put off ("Later"): not asked again until they change */
+    StoreRepoChanges asked;     /* the changes of the open question */
+    bool haveAsked;
+    bool focused;
+} repo;
+
+static bool RepoFolder(char *out, int n)
+{
+    if (out && n > 0) out[0] = 0;
+    return store && fsettings && fs_repo_folder(fsettings, out, n);
+}
+
+static void RepoBase(StoreFileSet *b)
+{
+    memset(b, 0, sizeof *b);
+    for (int k = 0; k < STORE_NFILEKIND; k++) {
+        uint8_t (*h)[16] = NULL;
+        int n = fs_repo_base(fsettings, k, &h);
+        if (n < 0) n = 0;
+        b->k[k].h = h;
+        b->k[k].n = n;
+    }
+}
+
+static void RepoSetBase(const StoreFileSet *b)
+{
+    for (int k = 0; k < STORE_NFILEKIND; k++) fs_set_repo_base(fsettings, k, (const uint8_t(*)[16])b->k[k].h, b->k[k].n);
+}
+
+static void RepoSignature(const StoreRepoChanges *c, char *out, size_t n)
+{
+    uint64_t h = 1469598103934665603ULL;
+    for (int s = 0; s < 2; s++) {
+        const StoreFileSet *f = s ? &c->remove : &c->add;
+        for (int k = 0; k < STORE_NFILEKIND; k++)
+            for (int i = 0; i < f->k[k].n; i++)
+                for (int j = 0; j < 16; j++) h = (h ^ (uint64_t)(f->k[k].h[i][j] + 17 * (s * 5 + k))) * 1099511628211ULL;
+    }
+    snprintf(out, n, "%d:%016llx", store_fileset_count(&c->add) + store_fileset_count(&c->remove), (unsigned long long)h);
+}
+
+/* "wrote 2 fonts; deleted 1 glyph", leaving out a part that is "nothing" (both: "nothing changed") */
+static void RepoTwoParts(char *out, size_t n, const char *v1, const char *t1, const char *v2, const char *t2)
+{
+    bool a = !Same(t1, "nothing"), b = !Same(t2, "nothing");
+    if (a && b) snprintf(out, n, "%s %s; %s %s", v1, t1, v2, t2);
+    else if (a) snprintf(out, n, "%s %s", v1, t1);
+    else if (b) snprintf(out, n, "%s %s", v2, t2);
+    else snprintf(out, n, "nothing changed");
+}
+
+/* Push: called after the database file was written.  The new baseline goes into the sidecar, which the caller writes. */
+static bool RepoPush(bool quiet)
+{
+    char folder[PATH_MAX_LEN], err[PX_ERR_LEN] = "";
+    if (!RepoFolder(folder, sizeof folder)) return true;
+    if (!DirectoryExists(folder)) { ShowError("Cannot write the linked folder", "The linked folder does not exist any more. Link it again, or unlink it (Menu)."); return false; }
+    StoreFileSet base, nb;
+    RepoBase(&base);
+    StoreRepoPush r;
+    bool ok = store_repo_push(store, folder, &base, &nb, &r, err);
+    RepoSetBase(&nb);   /* what was done, also after a failure */
+    store_fileset_free(&base);
+    store_fileset_free(&nb);
+    if (!ok) { ShowError("Cannot write the linked folder", err[0] ? err : "Unknown error."); return false; }
+    char w[200], d[200];
+    store_counts_text(&r.written, w, sizeof w);
+    store_counts_text(&r.deleted, d, sizeof d);
+    bool any = r.written.fonts + r.written.typefaces + r.written.glyphs + r.written.palettes + r.written.licenses +
+               r.deleted.fonts + r.deleted.typefaces + r.deleted.glyphs + r.deleted.palettes + r.deleted.licenses > 0;
+    char both[420];
+    RepoTwoParts(both, sizeof both, "wrote", w, "deleted", d);
+    if (any && !quiet) Th_Toast(1, "Linked folder: %s", both);
+    if (getenv("PXFE_TRACE")) { printf("TRACE repopush written=%s deleted=%s\n", w, d); fflush(stdout); }
+    return true;
+}
+
+static bool SaveDb(void);
+
+/* Pull: the changes into memory; the open document's font and typeface stay even when the folder lost them (the next push writes them back) */
+static void RepoPull(const StoreRepoChanges *ch, bool thenSave)
+{
+    char folder[PATH_MAX_LEN], err[PX_ERR_LEN] = "";
+    if (!RepoFolder(folder, sizeof folder)) return;
+    char keep[2][33];
+    int nk = 0;
+    if (hasFont && docStored && origHash[0]) snprintf(keep[nk++], 33, "%s", origHash);
+    if (hasFont && hasCont && docStored && origContHash[0]) snprintf(keep[nk++], 33, "%s", origContHash);
+    StoreFileSet rep;
+    store_folder_files(folder, &rep, NULL, NULL);
+    StoreRepoPull r;
+    if (!store_repo_pull(store, folder, ch, (const char(*)[33])keep, nk, &r, err)) {
+        store_fileset_free(&rep);
+        ShowError("Cannot read the linked folder", err[0] ? err : "Unknown error.");
+        return;
+    }
+    StoreFileSet nb;
+    store_fileset_minus(&rep, &r.skippedSet, &nb);
+    RepoSetBase(&nb);
+    for (int k = 0; k < STORE_NFILEKIND; k++) {      /* the skipped files are not offered again this session */
+        StoreHashes *l = &repo.ignore.k[k];
+        int n = l->n + r.skippedSet.k[k].n;
+        if (!r.skippedSet.k[k].n) continue;
+        l->h = (uint8_t(*)[16])realloc(l->h, (size_t)n * 16);
+        memcpy(l->h + l->n, r.skippedSet.k[k].h, (size_t)r.skippedSet.k[k].n * 16);
+        l->n = n;
+        store_hashes_sort(l);
+    }
+    store_fileset_free(&nb);
+    store_fileset_free(&rep);
+    if (browser) Browser_Rescan(browser);
+    char a[200], d[200];
+    store_counts_text(&r.added, a, sizeof a);
+    store_counts_text(&r.removed, d, sizeof d);
+    if (getenv("PXFE_TRACE")) { printf("TRACE repopull added=%s removed=%s skipped=%d\n", a, d, r.nSkippedAll); fflush(stdout); }
+    char both[420];
+    RepoTwoParts(both, sizeof both, "added", a, "removed", d);
+    Th_Toast(1, "From the linked folder: %s", both);
+    if (r.nSkippedAll) {
+        char msg[800];
+        size_t o = (size_t)snprintf(msg, sizeof msg, "%d file%s of the linked folder could not be read and %s left out:", r.nSkippedAll, r.nSkippedAll == 1 ? "" : "s", r.nSkippedAll == 1 ? "was" : "were");
+        for (int i = 0; i < r.nSkipped && i < 3 && o < sizeof msg; i++) o += (size_t)snprintf(msg + o, sizeof msg - o, "\n%.240s", r.skipped[i]);
+        store_repo_pull_free(&r);
+        ShowError("Linked folder: files left out", msg);
+        if (thenSave) SaveDb();
+        return;
+    }
+    store_repo_pull_free(&r);
+    if (thenSave) SaveDb();
+}
+
+/* manual: Sync with Folder (says when there is nothing to do, and asks again about changes put off); wasClean: nothing was unsaved
+ * before the caller changed the settings (Link Folder) */
+static void RepoCheckEx(bool manual, bool wasClean, StoreFileSet *listed)
+{
+    char folder[PATH_MAX_LEN], err[PX_ERR_LEN] = "";
+    StoreFileSet rep, mem, base;
+    if (listed) { rep = *listed; memset(listed, 0, sizeof *listed); } else memset(&rep, 0, sizeof rep);
+    if (!RepoFolder(folder, sizeof folder) || job.active || (modal.kind != M_NONE && !manual)) { store_fileset_free(&rep); return; }
+    if (modal.kind != M_NONE) { Th_Toast(2, "Close the dialog first"); store_fileset_free(&rep); return; }
+    if (!DirectoryExists(folder)) {
+        if (manual) ShowError("Cannot read the linked folder", "The linked folder does not exist any more. Link it again, or unlink it (Menu).");
+        store_fileset_free(&rep);
+        return;
+    }
+    if (!listed) store_folder_files(folder, &rep, NULL, NULL);
+    if (!store_memory_files(store, &mem, err)) { store_fileset_free(&rep); return; }
+    RepoBase(&base);
+    StoreRepoChanges ch;
+    store_repo_changes(&rep, &base, &mem, &repo.ignore, &ch);
+    store_fileset_free(&rep);
+    store_fileset_free(&mem);
+    store_fileset_free(&base);
+    bool dirty = !wasClean && DbDirty();
+    if (!store_repo_changes_any(&ch)) {
+        store_repo_changes_free(&ch);
+        if (!manual) return;
+        if (dirty) { Th_Toast(0, "Nothing new in the linked folder; Save writes your changes to it"); return; }
+        if (store_info(store)->path[0]) RepoPush(false);   /* memory is as saved: bring the folder up to it */
+        if (FsDirty()) SaveSidecar(false);
+        Th_Toast(0, "The linked folder is in sync");
+        return;
+    }
+    if (!dirty) { RepoPull(&ch, store_info(store)->path[0] != 0); store_repo_changes_free(&ch); return; }
+    char sig[64];
+    RepoSignature(&ch, sig, sizeof sig);
+    if (!manual && Same(sig, repo.laterSig)) { store_repo_changes_free(&ch); return; }
+    char t[400], msg[PATH_MAX_LEN + 600];
+    store_repo_changes_text(&ch, t, sizeof t);
+    snprintf(msg, sizeof msg, "%.600s\n%s.\nYou have unsaved changes. Apply the folder's changes to memory now? Save then writes both.", folder, t);
+    if (repo.haveAsked) store_repo_changes_free(&repo.asked);
+    repo.asked = ch;
+    repo.haveAsked = true;
+    snprintf(repo.laterSig, sizeof repo.laterSig, "%s", sig);
+    ModalOpen(M_CONFIRM, A_REPO_APPLY, "The linked folder changed", msg, 2, "Later", "Apply", NULL, 1, 0, false);
+}
+
+static void RepoCheck(bool manual) { RepoCheckEx(manual, false, NULL); }
+
+/* the check of the focus and of a load: the folder is listed on a worker thread (the real library takes up to a second), the rest
+ * runs on the UI thread when the list is there (RepoFocusTick) */
+static struct { void *thread; int done; StoreFileSet rep; char folder[PATH_MAX_LEN]; } repoScan;
+
+static void RepoScanThread(void *arg)
+{
+    (void)arg;
+    store_folder_files(repoScan.folder, &repoScan.rep, NULL, NULL);
+    __atomic_store_n(&repoScan.done, 1, __ATOMIC_RELEASE);
+}
+
+static void RepoCheckLater(void)
+{
+    char folder[PATH_MAX_LEN];
+    if (repoScan.thread || !RepoFolder(folder, sizeof folder)) return;
+    snprintf(repoScan.folder, sizeof repoScan.folder, "%s", folder);
+    __atomic_store_n(&repoScan.done, 0, __ATOMIC_RELEASE);
+    repoScan.thread = Win_StartThread(RepoScanThread, NULL);
+}
+
+static void RepoAnswer(bool apply)
+{
+    if (!repo.haveAsked) return;
+    if (apply) { RepoPull(&repo.asked, false); repo.laterSig[0] = 0; }
+    store_repo_changes_free(&repo.asked);
+    repo.haveAsked = false;
+}
+
+static void RepoLink(const char *folderIn)
+{
+    if (!store || !fsettings) { Th_Toast(2, "No database is loaded"); return; }
+    char folder[PATH_MAX_LEN];
+    snprintf(folder, sizeof folder, "%s", folderIn);
+    Slashes(folder);
+    size_t n = strlen(folder);
+    while (n > 3 && folder[n - 1] == '/') folder[--n] = 0;
+    if (!DirectoryExists(folder)) { ShowError("Cannot link the folder", "This folder does not exist."); return; }
+    if (store_info(store)->path[0] && PathInsideLibraryFolders(folder, store_info(store)->path)) {
+        ShowError("Cannot link the folder", "The database file lies inside pxtf, pxfm or pxgl of that folder.");
+        return;
+    }
+    bool wasClean = !DbDirty();
+    if (!fs_set_repo_folder(fsettings, folder)) { ShowError("Cannot link the folder", fs_error(fsettings)); return; }
+    repo.laterSig[0] = 0;
+    store_fileset_free(&repo.ignore);
+    IniSetApp("lastRepoFolder", folder);
+    Th_Toast(1, "Linked %s", folder);
+    RepoCheckEx(true, wasClean, NULL);
+}
+
+static void RepoLinkDialog(void)
+{
+    char dir[PATH_MAX_LEN];
+    if (DlgFolder(dir, sizeof dir, "Choose the library folder to keep in sync (it holds pxtf/, pxfm/, pxgl/, palette/, license/)", "lastRepoFolder")) RepoLink(dir);
+}
+
+static void RepoUnlink(void)
+{
+    char folder[PATH_MAX_LEN];
+    if (!RepoFolder(folder, sizeof folder)) return;
+    fs_set_repo_folder(fsettings, "");
+    store_fileset_free(&repo.ignore);
+    repo.laterSig[0] = 0;
+    Th_Toast(1, "Unlinked %s; its files stay as they are", folder);
+}
+
+/* the window got the focus back (another program may have changed the folder: a git pull) */
+static void RepoReset(void)
+{
+    store_fileset_free(&repo.ignore);
+    if (repo.haveAsked) store_repo_changes_free(&repo.asked);
+    repo.haveAsked = false;
+    repo.laterSig[0] = 0;
+}
+
+static void RepoFocusTick(bool scripted)
+{
+    bool f = IsWindowFocused();
+    if (!scripted && f && !repo.focused) RepoCheckLater();
+    repo.focused = f;
+    if (repoScan.thread && __atomic_load_n(&repoScan.done, __ATOMIC_ACQUIRE)) {
+        Win_JoinThread(repoScan.thread);
+        repoScan.thread = NULL;
+        char folder[PATH_MAX_LEN];
+        if (RepoFolder(folder, sizeof folder) && Same(folder, repoScan.folder)) RepoCheckEx(false, false, &repoScan.rep);   /* still the same link */
+        store_fileset_free(&repoScan.rep);
+    }
+}
+
 /* ---- Save and Save As ---- */
 static bool SaveDb(void)
 {
@@ -1404,6 +1683,7 @@ static bool SaveDb(void)
     if (!dbMod && !FsDirty()) { Th_Toast(0, "No changes to save"); return true; }
     char err[PX_ERR_LEN] = "";
     if (dbMod && !store_save(store, err)) { ShowError("Cannot save", err[0] ? err : "Unknown error."); return false; }
+    RepoPush(false);                         /* the linked folder follows the file; its new baseline goes into the sidecar */
     if (!SaveSidecar(false)) return false;   /* only the settings changed: the .pxfdb is not rewritten */
     Th_Toast(1, "Saved %s", dbMod ? DbName() : "the layer settings");
     return true;
@@ -1423,6 +1703,7 @@ static bool DoSaveAs(const char *path)
     Slashes(libRoot);
     IniSetLastDb(libRoot);
     FlSync();
+    RepoPush(false);
     SaveSidecar(true);     /* the settings go beside the new file; the old sidecar stays */
     Th_Toast(1, "Saved as %s", DbName());
     return true;
@@ -2193,11 +2474,14 @@ static void DrawFileMenu(void)
     if (!fileMenu.open) return;
     const char *nodb = "No database is loaded";
     int off = store ? 0 : TH_MI_OFF;
-    ThMenuItem it[9] = {
+    bool linked = RepoFolder(NULL, 0);
+    ThMenuItem it[11] = {
         {"New Database", NULL, "file.newdb"}, {"New Font\xE2\x80\xA6", NULL, "file.new", nodb, off}, {"Import Font File\xE2\x80\xA6", NULL, "file.importfont", nodb, off | TH_MI_SEP},
         {"Load\xE2\x80\xA6", "Ctrl+O", "file.load"}, {"Save", "Ctrl+S", "file.save", nodb, off}, {"Save As\xE2\x80\xA6", "Ctrl+Shift+S", "file.saveas", nodb, off | TH_MI_SEP},
-        {"Import Folder\xE2\x80\xA6", NULL, "file.import"}, {"Export to Folder\xE2\x80\xA6", NULL, "file.export", nodb, off | TH_MI_SEP}, {"Quit", NULL, "file.quit"}};
-    switch (Th_Menu(&(ThMenu){it, 9, .x = fileMenu.anchor.x, .y = fileMenu.anchor.y + fileMenu.anchor.height + 4, .w = 276, .keep = fileMenu.anchor}, &fileMenu.open)) {
+        {"Import Folder\xE2\x80\xA6", NULL, "file.import"}, {"Export to Folder\xE2\x80\xA6", NULL, "file.export", nodb, off},
+        {linked ? "Unlink Folder" : "Link Folder\xE2\x80\xA6", NULL, "file.link", linked ? "Stop keeping the folder in sync; its files stay" : nodb, linked ? 0 : off},
+        {"Sync with Folder", NULL, "file.sync", linked ? NULL : "No folder is linked", linked ? TH_MI_SEP : (TH_MI_OFF | TH_MI_SEP)}, {"Quit", NULL, "file.quit"}};
+    switch (Th_Menu(&(ThMenu){it, 11, .x = fileMenu.anchor.x, .y = fileMenu.anchor.y + fileMenu.anchor.height + 4, .w = 276, .keep = fileMenu.anchor}, &fileMenu.open)) {
     case 0: Guard(G_NEW_DB, ""); break;
     case 1: NewFontOpen(); break;
     case 2: ImportFontOpen(); break;
@@ -2206,7 +2490,9 @@ static void DrawFileMenu(void)
     case 5: SaveAsDialog(); break;
     case 6: Guard(G_IMPORT_DIALOG, ""); break;
     case 7: ExportStart(); break;
-    case 8: RequestQuit(); break;
+    case 8: if (linked) RepoUnlink(); else RepoLinkDialog(); break;
+    case 9: RepoCheck(true); break;
+    case 10: RequestQuit(); break;
     default: break;
     }
 }
@@ -2249,6 +2535,14 @@ static void DrawStatus(int W, int H)
         snprintf(statusDb, sizeof statusDb, "%s  \xC2\xB7  %s", store_info(store)->path, word);
         l[nl++] = (ThPart){store_info(store)->path, TH_TEXT, 0.4f, TH_SP_TAIL};
         l[nl++] = (ThPart){word, dirty ? TH_ACCENT : TH_TEXT_DIM};
+        static char rf[PATH_MAX_LEN + 16];
+        char f[PATH_MAX_LEN];
+        if (RepoFolder(f, sizeof f)) {
+            snprintf(rf, sizeof rf, "linked: %s", f);
+            size_t o = strlen(statusDb);
+            snprintf(statusDb + o, sizeof statusDb - o, "  \xC2\xB7  %s", rf);
+            l[nl++] = (ThPart){rf, TH_TEXT_DIM, 0.3f, TH_SP_TAIL};
+        }
     }
     if (inFinder && finder) {
         int32_t c = Finder_Code(finder);
@@ -2514,6 +2808,7 @@ static void ModalResult(int b)
     case A_SAVEAS_REPLACE: if (b == 1) DoSaveAs(saveAsPending); break;
     case A_OVERWRITE_NOBACKUP: if (b == 1) ExportRun(xd.folder, STORE_EXPORT_OVERWRITE, ""); break;
     case A_BACKUP_FAILED: if (b == 1) ExportRun(xd.folder, STORE_EXPORT_OVERWRITE, ""); break;
+    case A_REPO_APPLY: RepoAnswer(b == 1); break;
     case A_DELETE_ITEM:
         if (b == 1) DeleteConfirmed();
         store_plan_free(&del.plan);
@@ -2742,6 +3037,7 @@ int main(int argc, char **argv)
         EnsureHashes();
         if (FlPending()) FlSync();       /* the font layers changed: they go into the settings under the font's hash */
         if (!shotPath && !job.active) HandleShortcuts();
+        RepoFocusTick(play.active || shotPath);   /* a script triggers the check itself (repofocus) */
 
         BeginDrawing();
         ClearBackground(TH_BG);

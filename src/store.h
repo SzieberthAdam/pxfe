@@ -306,4 +306,54 @@ typedef struct StoreFile {
  * with the same text is skipped; if memory has a file of that hash with another text, nothing is added and the call fails.
  * The files pass through a temporary folder.  A change when something was added.  added / skipped may be NULL. */
 bool store_add_files(Store *s, const StoreFile *files, int n, StoreCounts *added, StoreCounts *skipped, char err[PX_ERR_LEN]);
+
+/* ------------------------------------------------------------------ a linked library folder (DESIGN.md "A linked library folder")
+ *
+ * Three sets of file names, by kind (STORE_FILE_*): the folder's (R), memory's (M) and the baseline (B: what the folder and memory
+ * both held at the last sync; main.c keeps it in the settings sidecar).  A file is named by the hash of its content, so a name in
+ * two places is the same file, and every change is a file added or a file gone. */
+
+#define STORE_NFILEKIND 5
+#define STORE_REPO_MAXMSG 8
+typedef struct StoreHashes { uint8_t (*h)[16]; int n; } StoreHashes;          /* sorted, distinct */
+typedef struct StoreFileSet { StoreHashes k[STORE_NFILEKIND]; } StoreFileSet;  /* by STORE_FILE_* */
+void store_fileset_free(StoreFileSet *s);
+int  store_fileset_count(const StoreFileSet *s);
+void store_fileset_counts(const StoreFileSet *s, StoreCounts *c);
+bool store_hashes_has(const StoreHashes *l, const uint8_t h[16]);
+void store_fileset_minus(const StoreFileSet *a, const StoreFileSet *b, StoreFileSet *out);   /* a - b (b may be NULL: a copy) */
+void store_hashes_sort(StoreHashes *l);                                         /* sorts and drops repeats */
+/* the files named <hash>.<ext> under their prefix folders of pxgl/ pxfm/ pxtf/ palette/ license/; other: the other entries there
+ * (may be NULL), firstOther the first of them */
+void store_folder_files(const char *folder, StoreFileSet *out, int *other, char firstOther[300]);
+bool store_memory_files(Store *s, StoreFileSet *out, char err[PX_ERR_LEN]);
+
+typedef struct StoreRepoChanges {
+    StoreFileSet add;           /* R - B - M (- ignore): new in the folder, to read in */
+    StoreFileSet remove;        /* (B - R) & M: gone from the folder, to remove from memory */
+} StoreRepoChanges;
+void store_repo_changes(const StoreFileSet *folder, const StoreFileSet *base, const StoreFileSet *mem, const StoreFileSet *ignore, StoreRepoChanges *out);
+bool store_repo_changes_any(const StoreRepoChanges *c);
+void store_repo_changes_text(const StoreRepoChanges *c, char *out, size_t n);  /* "2 fonts, 14 glyphs added; 1 typeface removed" */
+void store_repo_changes_free(StoreRepoChanges *c);
+
+typedef struct StoreRepoPull {
+    StoreCounts added, removed;
+    StoreCounts kept;           /* gone from the folder but kept: named by a row memory keeps, or a font / typeface of `keep` */
+    StoreFileSet skippedSet;    /* files that failed the strict readers (with the files naming them) and were not read */
+    int nSkippedAll, nSkipped;  /* all of them; messages kept */
+    char skipped[STORE_REPO_MAXMSG][PX_ERR_LEN];
+} StoreRepoPull;
+/* Pull: reads ch->add from the folder with the strict readers of Import into memory (a file that fails is left out and reported, and so
+ * is every file that names it), then removes ch->remove from memory: typefaces, then what no row names any more; the pxfm and pxtf
+ * hashes of `keep` (the open document) stay.  A change of memory when anything was added or removed.  Fails only on a database
+ * error.  The new baseline is R minus the skipped files: what was kept is written back by the next push. */
+bool store_repo_pull(Store *s, const char *folder, const StoreRepoChanges *ch, const char (*keep)[33], int nkeep, StoreRepoPull *res, char err[PX_ERR_LEN]);
+void store_repo_pull_free(StoreRepoPull *r);
+
+typedef struct StoreRepoPush { StoreCounts written, deleted; } StoreRepoPush;
+/* Push: writes the files of memory that neither the folder nor the baseline has (M - R - B), deletes those the folder and the baseline
+ * have and memory has not ((R & B) - M), and the prefix folders that leaves empty.  Files outside the five folders, or not named as
+ * library files, are never touched.  newBase gets the new baseline: the names held by two of M, the folder after the push and B. */
+bool store_repo_push(Store *s, const char *folder, const StoreFileSet *base, StoreFileSet *newBase, StoreRepoPush *res, char err[PX_ERR_LEN]);
 #endif

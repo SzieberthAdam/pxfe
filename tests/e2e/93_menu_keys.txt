@@ -1,5 +1,5 @@
 # 93. Version 8: the keyboard in menus (Th_Menu): Down / Up move a highlight, Enter picks it, Escape closes; the keys do not reach the view behind the menu.
-# The menu (New Database, New Font, Import Font File, Load, Save, Save As, Import Folder, Export to Folder, Quit) on the loaded testdata library; a font card is selected, so a leaked Enter would open it.
+# The menu (New Database, New Font, Import Font File, Load, Save, Save As, Import Folder, Export to Folder, Link Folder, Sync with Folder, Quit) on the loaded testdata library; a font card is selected, so a leaked Enter would open it.
 wait 16
 assert inbrowser 1
 click @card:0
@@ -45,7 +45,7 @@ wait 6
 assert menuhi -1
 key up
 wait 3
-assert menuhi 8
+assert menuhi 10
 key home
 wait 3
 assert menuhi 0

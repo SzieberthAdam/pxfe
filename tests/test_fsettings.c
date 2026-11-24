@@ -352,7 +352,7 @@ static void test_errors(void) {
         sqlite3_open(C, &db);
         sqlite3_stmt *st = NULL;
         sqlite3_prepare_v2(db, "SELECT value FROM meta WHERE key='schema_version'", -1, &st, NULL);
-        CHECK(sqlite3_step(st) == SQLITE_ROW && atoi((const char *)sqlite3_column_text(st, 0)) == 4, "the saved file is version 4");
+        CHECK(sqlite3_step(st) == SQLITE_ROW && atoi((const char *)sqlite3_column_text(st, 0)) == 5, "the saved file is version 5");
         sqlite3_finalize(st);
         sqlite3_close(db);
     }
@@ -400,6 +400,37 @@ static void test_locks(void) {
     remove(C);
 }
 
+static void test_repo(void) {
+    char err[FS_ERR_LEN], f[FS_PATH_LEN];
+    const char *C = TMP "/fs_repo.pxfdb-settings";
+    remove(C);
+    FSettings *fs = fs_new_empty();
+    CHECK(!fs_repo_folder(fs, f, sizeof f) && f[0] == 0 && !fs_has_any(fs), "no folder is linked at first");
+    unsigned g0 = fs_changes(fs);
+    CHECK(fs_set_repo_folder(fs, "C:/lib/pxfdb") && fs_repo_folder(fs, f, sizeof f) && strcmp(f, "C:/lib/pxfdb") == 0 && fs_has_any(fs) && fs_changes(fs) != g0,
+          "a linked folder is a setting of its own");
+    uint8_t (*h)[16] = NULL;
+    CHECK(fs_repo_base(fs, 1, &h) == 0, "no baseline yet");
+    free(h);
+    uint8_t b[3][16];
+    for (int i = 0; i < 3; i++) memset(b[i], 0x10 * (i + 1), 16);
+    CHECK(fs_set_repo_base(fs, 1, (const uint8_t(*)[16])b, 3) && fs_set_repo_base(fs, 0, NULL, 0), "baselines set (one of them empty)");
+    unsigned g1 = fs_changes(fs);
+    CHECK(fs_set_repo_base(fs, 1, (const uint8_t(*)[16])b, 3) && fs_set_repo_base(fs, 0, NULL, 0) && fs_changes(fs) == g1, "the same baseline again changes nothing");
+    CHECK(fs_save_as(fs, C), "saved");
+    fs_close(fs);
+    fs = fs_open(C, err);
+    CHECK(fs && fs_repo_folder(fs, f, sizeof f) && strcmp(f, "C:/lib/pxfdb") == 0, "the folder is read back");
+    int n = fs ? fs_repo_base(fs, 1, &h) : -1;
+    CHECK(n == 3 && memcmp(h[0], b[0], 16) == 0 && memcmp(h[2], b[2], 16) == 0, "the baseline is read back");
+    free(h);
+    CHECK(fs && fs_set_repo_folder(fs, "C:/other") && fs_repo_base(fs, 1, &h) == 0, "another folder drops the baseline");
+    free(h);
+    CHECK(fs && fs_set_repo_folder(fs, "") && !fs_repo_folder(fs, f, sizeof f) && !fs_has_any(fs), "unlinking leaves nothing");
+    fs_close(fs);
+    remove(C);
+}
+
 static void test_speed(void) {
     FSettings *fs = fs_new_empty();
     int a = add(fs, HA, 0, HB, "a", -1);
@@ -436,6 +467,7 @@ int main(void) {
     test_files();
     test_errors();
     test_locks();
+    test_repo();
     test_speed();
     printf("\n%d passed, %d failed\n", g_pass, g_fail);
     return g_fail ? 1 : 0;

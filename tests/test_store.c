@@ -1223,6 +1223,184 @@ static void test_lib_many(void) {
     store_close(s);
 }
 
+/* ------------------------------------------------------------------ a linked library folder (pull and push) */
+
+/* a pull as main.c makes it: the changes since the baseline, then the baseline becomes the folder minus the skipped files */
+static bool repo_pull(Store *s, const char *folder, StoreFileSet *base, const char (*keep)[33], int nkeep, StoreRepoPull *pr, StoreRepoChanges *chOut) {
+    char err[PX_ERR_LEN] = "";
+    StoreFileSet rep, mem;
+    store_folder_files(folder, &rep, NULL, NULL);
+    if (!store_memory_files(s, &mem, err)) { store_fileset_free(&rep); return false; }
+    StoreRepoChanges ch;
+    store_repo_changes(&rep, base, &mem, NULL, &ch);
+    bool ok = store_repo_pull(s, folder, &ch, keep, nkeep, pr, err);
+    if (!ok) printf("      pull: %s\n", err);
+    if (ok) { store_fileset_free(base); store_fileset_minus(&rep, &pr->skippedSet, base); }
+    if (chOut) *chOut = ch; else store_repo_changes_free(&ch);
+    store_fileset_free(&rep);
+    store_fileset_free(&mem);
+    return ok;
+}
+
+static bool repo_push(Store *s, const char *folder, StoreFileSet *base, StoreRepoPush *res) {
+    char err[PX_ERR_LEN] = "";
+    StoreFileSet nb;
+    bool ok = store_repo_push(s, folder, base, &nb, res, err);
+    if (!ok) printf("      push: %s\n", err);
+    store_fileset_free(base);
+    *base = nb;
+    return ok;
+}
+
+static int folder_count(const char *folder) {
+    StoreFileSet r;
+    store_folder_files(folder, &r, NULL, NULL);
+    int n = store_fileset_count(&r);
+    store_fileset_free(&r);
+    return n;
+}
+
+static void test_repo(void) {
+    char err[PX_ERR_LEN];
+    const char *R = TMP "/repo_a";
+    rm_rf(R);
+    copy_tree(LIB, R);
+    CopyFileA(DB, TMP "/repo_a.pxfdb", FALSE);
+    Store *s = NULL;
+    CHECK(store_open_pxfdb(TMP "/repo_a.pxfdb", NULL, &s, err), "repo: open a copy of the pxfdb");
+    if (!s) return;
+    StoreFileSet base, mem;
+    memset(&base, 0, sizeof base);
+    store_memory_files(s, &mem, err);
+    int total = store_fileset_count(&mem);
+    store_fileset_free(&mem);
+    CHECK(total > 0 && folder_count(R) == total, "repo: the folder holds the same files as memory");
+
+    /* linking: no baseline; nothing to pull, nothing to write, and the baseline becomes everything */
+    StoreRepoPull pr;
+    StoreRepoPush ps;
+    StoreRepoChanges ch;
+    CHECK(repo_pull(s, R, &base, NULL, 0, &pr, &ch) && !store_repo_changes_any(&ch) && !store_modified(s), "repo link: nothing to pull, memory unchanged");
+    store_repo_changes_free(&ch);
+    store_repo_pull_free(&pr);
+    CHECK(repo_push(s, R, &base, &ps) && ps.written.fonts + ps.written.glyphs + ps.written.typefaces == 0 && ps.deleted.fonts + ps.deleted.glyphs == 0 &&
+          store_fileset_count(&base) == total, "repo link: push writes and deletes nothing; the baseline is every file");
+
+    /* files outside the library layout are never touched */
+    px_write_file(TMP "/repo_a/README.md", "readme\n", 7);
+    px_write_file(TMP "/repo_a/pxfm/3b/notes.txt", "notes\n", 6);
+    int other = 0;
+    StoreFileSet tmp;
+    store_folder_files(R, &tmp, &other, NULL);
+    store_fileset_free(&tmp);
+    CHECK(other == 1, "repo: a stray file inside pxfm/3b counts as other");
+
+    /* memory deletes a typeface with its font: push deletes their files and the glyphs nothing names */
+    StoreDeletePlan p;
+    CHECK(store_plan_delete_typeface(s, T_UNC, &p, err) && p.nFonts == 1, "repo 1: delete Uncoded Mono with its font in memory");
+    int goneGlyphs = p.nGlyphs;
+    store_apply_delete(s, &p, err);
+    store_plan_free(&p);
+    CHECK(repo_push(s, R, &base, &ps) && ps.deleted.typefaces == 1 && ps.deleted.fonts == 1 && ps.deleted.glyphs == goneGlyphs && ps.written.typefaces == 0,
+          "repo 1: push deletes the typeface, the font and their orphan glyphs");
+    CHECK(!px_file_exists(TMP "/repo_a/pxtf/00/" T_UNC ".pxtf") && !px_file_exists(TMP "/repo_a/pxfm/54/" H_UNC ".pxfm"), "repo 1: their files are gone");
+    CHECK(px_file_exists(TMP "/repo_a/README.md") && px_file_exists(TMP "/repo_a/pxfm/3b/notes.txt"), "repo 1: files outside the layout stay");
+    CHECK(store_fileset_count(&base) == folder_count(R), "repo 1: the baseline is the folder");
+
+    /* the folder gets them back (a pull of another clone): a pull reads them in */
+    copy_tree(LIB, R);
+    CHECK(repo_pull(s, R, &base, NULL, 0, &pr, NULL) && pr.added.typefaces == 1 && pr.added.fonts == 1 && pr.added.glyphs == goneGlyphs && pr.nSkippedAll == 0,
+          "repo 2: pull adds the typeface, the font and the glyphs");
+    store_repo_pull_free(&pr);
+    {
+        Store *orig = NULL;
+        CHECK(store_open_pxfdb(DB, NULL, &orig, err) && same_content(s, orig), "repo 2: memory has the same rows as the original database");
+        store_close(orig);
+    }
+    CHECK(store_modified(s), "repo 2: a pull is a change of memory");
+    CHECK(repo_push(s, R, &base, &ps) && ps.written.fonts + ps.written.typefaces + ps.written.glyphs == 0 && ps.deleted.fonts + ps.deleted.glyphs == 0, "repo 2: then push has nothing to do");
+
+    /* the folder loses a typeface file: the pull removes the typeface and keeps its fonts (their files are there) */
+    DeleteFileA(TMP "/repo_a/pxtf/23/" T_SANS ".pxtf");
+    CHECK(repo_pull(s, R, &base, NULL, 0, &pr, NULL) && pr.removed.typefaces == 1 && pr.removed.fonts == 0 && count_rows(s, "pxtf") == 1 && count_rows(s, "pxfm") == 4,
+          "repo 3: pull removes the typeface; its fonts stay");
+    store_repo_pull_free(&pr);
+    /* then a font file: removed, its glyphs stay (their files are there) */
+    long glyphs = count_rows(s, "glyph");
+    DeleteFileA(TMP "/repo_a/pxfm/4f/" H_NOASC ".pxfm");
+    CHECK(repo_pull(s, R, &base, NULL, 0, &pr, NULL) && pr.removed.fonts == 1 && count_rows(s, "pxfm") == 3 && count_rows(s, "glyph") == glyphs, "repo 3: pull removes the font, not the glyphs");
+    store_repo_pull_free(&pr);
+
+    /* the open font is kept even when the folder loses it, and the next push writes it back */
+    DeleteFileA(TMP "/repo_a/pxfm/3b/" H_EXAMPLE ".pxfm");
+    const char keep[1][33] = {H_EXAMPLE};
+    CHECK(repo_pull(s, R, &base, keep, 1, &pr, NULL) && pr.removed.fonts == 0 && pr.kept.fonts == 1 && count_rows(s, "pxfm") == 3, "repo 4: the open font is kept");
+    store_repo_pull_free(&pr);
+    CHECK(repo_push(s, R, &base, &ps) && ps.written.fonts == 1 && px_file_exists(TMP "/repo_a/pxfm/3b/" H_EXAMPLE ".pxfm"), "repo 4: push writes it back");
+
+    /* a font named by a typeface memory keeps is not removed either */
+    {
+        PxtfTypeface t;
+        pxtf_init(&t);
+        StoreConn *c = store_conn_open(s);
+        CHECK(store_load_typeface(c, T_UNC, &t, err), "repo 5: load Uncoded Mono");
+        store_conn_close(c);
+        pxtf_set_name(&t, "Twin");
+        StoreSaveResult r;
+        PxFont fu;
+        px_font_init(&fu);
+        c = store_conn_open(s);
+        store_load_font(c, H_UNC, NULL, 0, &fu, err);
+        store_conn_close(c);
+        CHECK(store_save_to_memory(s, &fu, &t, 1, &r, err) && r.newPxtf, "repo 5: a new typeface in memory naming the font of Uncoded Mono");
+        px_font_free(&fu);
+        pxtf_free(&t);
+        DeleteFileA(TMP "/repo_a/pxtf/00/" T_UNC ".pxtf");
+        DeleteFileA(TMP "/repo_a/pxfm/54/" H_UNC ".pxfm");
+        CHECK(repo_pull(s, R, &base, NULL, 0, &pr, NULL) && pr.removed.typefaces == 1 && pr.removed.fonts == 0 && pr.kept.fonts == 1, "repo 5: the folder's typeface goes, the font named by the new one stays");
+        store_repo_pull_free(&pr);
+        CHECK(repo_push(s, R, &base, &ps) && ps.written.typefaces == 1 && ps.written.fonts == 1 && px_file_exists(TMP "/repo_a/pxfm/54/" H_UNC ".pxfm"),
+              "repo 5: push writes the new typeface and the kept font");
+    }
+
+    /* a damaged file (its content does not hash to its name) is skipped and reported; the good ones are read */
+    copy_tree(LIB, R);   /* Test Sans comes back */
+    const char *bad = TMP "/repo_a/pxgl/00/11/00112233445566778899aabbccddeeff.pxgl";
+    px_mkdir_p(TMP "/repo_a/pxgl/00/11");
+    px_write_file(bad, "not a glyph\n", 12);
+    CHECK(repo_pull(s, R, &base, NULL, 0, &pr, NULL) && pr.nSkippedAll == 1 && strstr(pr.skipped[0], "00112233445566778899aabbccddeeff") && pr.added.typefaces >= 1 && store_has_pxtf(store_main_conn(s), T_SANS),
+          "repo 6: the damaged glyph is skipped and named; Test Sans is read in");
+    store_repo_pull_free(&pr);
+    CHECK(px_file_exists(bad), "repo 6: the damaged file is left alone");
+    uint8_t bh[16];
+    store_hex_to_blob("00112233445566778899aabbccddeeff", bh);
+    CHECK(!store_hashes_has(&base.k[STORE_FILE_PXGL], bh), "repo 6: it is not in the baseline (so it is never deleted as a deletion of memory)");
+    CHECK(repo_push(s, R, &base, &ps) && px_file_exists(bad), "repo 6: push leaves it too");
+
+    /* two clones: memory adds a font while the folder removes another; neither undoes the other */
+    {
+        PxFont f;
+        px_font_init(&f);
+        StoreConn *c = store_conn_open(s);
+        store_load_font(c, H_GREY, NULL, 0, &f, err);
+        store_conn_close(c);
+        f.has[PXM_LINEGAP] = true;
+        f.m[PXM_LINEGAP] = 7;
+        StoreSaveResult r;
+        CHECK(store_save_to_memory(s, &f, NULL, 0, &r, err) && r.newPxfm, "repo 7: a new font in memory");
+        px_font_free(&f);
+        DeleteFileA(TMP "/repo_a/pxfm/89/" H_GREY ".pxfm");   /* the folder drops the grey font (no typeface names it) */
+        CHECK(repo_push(s, R, &base, &ps) && ps.written.fonts == 1 && ps.deleted.fonts == 0, "repo 7: push writes the new font and does not write back the font the folder dropped");
+        char np[300];
+        snprintf(np, sizeof np, TMP "/repo_a/pxfm/%.2s/%s.pxfm", r.pxfm, r.pxfm);
+        CHECK(px_file_exists(np) && !px_file_exists(TMP "/repo_a/pxfm/89/" H_GREY ".pxfm"), "repo 7: the folder has the new font, not the dropped one");
+        CHECK(repo_pull(s, R, &base, NULL, 0, &pr, NULL) && pr.removed.fonts == 1, "repo 7: the next pull removes the dropped font from memory");
+        store_repo_pull_free(&pr);
+    }
+    store_fileset_free(&base);
+    store_close(s);
+}
+
 int main(void) {
     px_mkdir_p(TMP);
     test_open_pxfdb();
@@ -1240,6 +1418,7 @@ int main(void) {
     test_palettes();
     test_lib_colors();
     test_lib_many();
+    test_repo();
     printf("\n%d passed, %d failed\n", g_pass, g_fail);
     return g_fail ? 1 : 0;
 }

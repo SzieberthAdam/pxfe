@@ -1,0 +1,121 @@
+# 149. A linked library folder (DESIGN.md "A linked library folder"): Link Folder keeps a library folder (a git working tree such as
+# pxfdb) equal to the database.  Save writes the new files and deletes the ones memory dropped; a check (the window getting the focus,
+# here `repofocus`, or Sync with Folder) reads what the folder gained or lost, at once when nothing is unsaved, else after a question.
+# The folder is tests/tmp/e2elib, a copy of testdata/lib made by run_all.bat (:fresh).
+waitfor loading = 0 60000
+wait 5
+assert repolinked 0
+writefile tests/tmp/e2elib/README.md not a library file\n
+# linking: the folder holds what memory holds; the link and the baseline go into the sidecar, saved at once
+setdialog folder tests/tmp/e2elib
+click @Menu
+wait 3
+click @file.link
+wait 8
+assert repolinked 1
+assert modal none
+assert toast The linked folder is in sync
+assert dbdirty 0
+assert statusdb linked: tests/tmp/e2elib
+assert sqlfile tests/tmp/e2e.pxfdb-settings "select folder from repo_link" tests/tmp/e2elib
+assert sqlfile tests/tmp/e2e.pxfdb-settings "select count(*) from repo_base" 5
+# memory deletes the grey font (no typeface names it): Save deletes its pxfm, its own glyph and its palette from the folder
+click @Fonts
+wait 4
+click @Filter
+type 894ef8
+wait 4
+assert bvisible 1
+sleep 600
+click @card:0
+wait 3
+key delete
+wait 5
+assert modal Delete_font
+click @Delete
+wait 6
+assert storefonts 3
+key s ctrl
+wait 8
+assert dbdirty 0
+assert file tests/tmp/e2elib/pxfm/89/894ef821e147533c34b39e2131016133.pxfm missing
+assert file tests/tmp/e2elib/pxgl/3a/d2/3ad25ae0043eddcc6bc11e8794fccdd3.pxgl missing
+assert file tests/tmp/e2elib/palette/eb/ebbba94934da6897d86c5e8ea2ac5409.hex missing
+assert file tests/tmp/e2elib/pxfm/3b/3b52125b2e5f6466823baa4fa3186fa0.pxfm exists
+assert file tests/tmp/e2elib/README.md exists
+assert sqlfile tests/tmp/e2e.pxfdb "select count(*) from pxfm" 3
+# the folder gets the grey font back (another clone, a git pull): with nothing unsaved it is read in and saved at once
+copyfile testdata/lib/pxfm/89/894ef821e147533c34b39e2131016133.pxfm tests/tmp/e2elib/pxfm/89/894ef821e147533c34b39e2131016133.pxfm
+copyfile testdata/lib/pxgl/3a/d2/3ad25ae0043eddcc6bc11e8794fccdd3.pxgl tests/tmp/e2elib/pxgl/3a/d2/3ad25ae0043eddcc6bc11e8794fccdd3.pxgl
+copyfile testdata/lib/palette/eb/ebbba94934da6897d86c5e8ea2ac5409.hex tests/tmp/e2elib/palette/eb/ebbba94934da6897d86c5e8ea2ac5409.hex
+repofocus
+wait 8
+assert modal none
+assert storefonts 4
+assert dbdirty 0
+assert toast From the linked folder: added 1 font
+assert sqlfile tests/tmp/e2e.pxfdb "select count(*) from pxfm" 4
+# the folder loses the typeface Test Sans: it goes from memory, its fonts stay (their files are there)
+delete tests/tmp/e2elib/pxtf/23/236dc4b75338cd1dfd6af2da597df169.pxtf
+repofocus
+wait 8
+assert storetypefaces 1
+assert storefonts 4
+assert dbdirty 0
+assert sqlfile tests/tmp/e2e.pxfdb "select count(*) from pxtf" 1
+# with unsaved changes a change of the folder is asked about first: Later leaves memory alone and is not asked again
+copyfile testdata/lib/pxtf/23/236dc4b75338cd1dfd6af2da597df169.pxtf tests/tmp/e2elib/pxtf/23/236dc4b75338cd1dfd6af2da597df169.pxtf
+click @nav.0
+wait 6
+click @NewTypeface
+wait 6
+assert storetypefaces 2
+assert dbdirty 1
+repofocus
+wait 6
+assert modal The_linked_folder_changed
+shot tests/tmp/shots/149_repo_ask.png
+click @Later
+wait 6
+assert modal none
+assert storetypefaces 2
+repofocus
+wait 6
+assert modal none
+# Sync with Folder asks again; Apply reads it in and leaves it unsaved
+click @Menu
+wait 3
+shot tests/tmp/shots/149_repo_menu.png
+click @file.sync
+wait 6
+assert modal The_linked_folder_changed
+click @Apply
+wait 6
+assert modal none
+assert storetypefaces 3
+assert dbdirty 1
+# Save writes the new typeface to the folder
+key s ctrl
+wait 8
+assert dbdirty 0
+assert toast Linked folder: wrote 1 typeface
+assert file tests/tmp/e2elib/pxtf/23/236dc4b75338cd1dfd6af2da597df169.pxtf exists
+assert sqlfile tests/tmp/e2e.pxfdb "select count(*) from pxtf" 3
+# a damaged file (its content is not its name) is left out and named, and never deleted
+writefile tests/tmp/e2elib/pxgl/00/11/00112233445566778899aabbccddeeff.pxgl not a glyph\n
+click @Menu
+wait 3
+click @file.sync
+wait 8
+assert modal Linked_folder:_files_left_out
+key enter
+wait 6
+assert modal none
+assert file tests/tmp/e2elib/pxgl/00/11/00112233445566778899aabbccddeeff.pxgl exists
+# unlinking: the folder stays as it is; Save no longer touches it
+click @Menu
+wait 3
+click @file.link
+wait 6
+assert repolinked 0
+assert toast Unlinked

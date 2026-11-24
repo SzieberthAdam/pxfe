@@ -50,7 +50,7 @@ One command per line, `#` starts a comment.
 - `click`, `dblclick`, `drag`, `move`, `wheel`, `mousedown`, `mouseup`, `key`, `type`, `closewindow` send input.
 - Targets: `@Name` (a widget registered by the frame, spaces become `_`), `@cell:U+0041`, `@cell:#0` (an uncoded glyph), `@cellorigin:U+0041`, `@ecell:x,y` (y is a row of the font box, 0 is its top), `@card:N`, `@fcell:N` (a result of the glyph finder), or two numbers as screen coordinates.
 - `assert <name> [op] <value>` checks state: `glyphs`, `selected`, `modified` (the font differs from what the store holds), `unsaved` (memory differs from the file, or the open font has edits that are not in the store), `dbmodified` (the change counter), `editpending`, `readonly`, `hascont`, `m.<metric>`, `has.<metric>`, `ratioa`, `ratiob`, `mono`, `default`, `kerncount`, `undo`, `redo`, `editor`, `inbrowser`, `btotal`, `bvisible`, `c.italic`, and more.
-- Database state: `hasstore`, `storeimported` (1 when it was just imported), `storefonts`, `storeglyphs`, `storetypefaces`, `loading`, `opentime` (ms), `infont`, `infinder`, `uncoded`.
+- Database state: `hasstore`, `storeimported` (1 when it was just imported), `storefonts`, `storeglyphs`, `storetypefaces`, `loading`, `opentime` (ms), `infont`, `infinder`, `uncoded`, `repolinked` (a library folder is linked).
 - Insight and finder state:
   `usage` (fonts that hold the selected glyphs), `usagevar` (typeface variants that name them), `usagecode` (fonts that hold the single selected glyph under its code, -1 when none), `similar` (entries of the similar list), `insightbusy`.
   `finder_count` (bitmaps found for the code), `finder_code`, `fcellfonts` (the "N fonts" of the first finder cell).
@@ -129,8 +129,9 @@ One command per line, `#` starts a comment.
   `$GHASH` and `$GOHASH` in a script are the pxgl hash of the glyph being edited, now and when the font was opened.
   A value may be written `0xRRGGBB`.
 - `setdialog folder|pxfdb|save <path>` overrides the native dialogs (`none` clears them): the folder pickers of Import and Export, the Load dialog, and the Save dialogs of Save As, the import target and the backup.
-- Menu (formerly File) and export dialog: `@Menu`, `@file.load`, `@file.save`, `@file.saveas`, `@file.import`, `@file.export`, `@file.quit`, `@Save`; `assert filemenu`; the dialog has `xdopen`, `xfound_fonts|typefaces|glyphs`, `xbackup`, the widgets `@xd.backup`, `@xd.change`, `@Update`, `@Overwrite`, `@Cancel`; after an export `xw_*` (written), `xs_*` (skipped), `xd_*` (deleted) and `xbackupfailed`.
+- Menu (formerly File) and export dialog: `@Menu`, `@file.load`, `@file.save`, `@file.saveas`, `@file.import`, `@file.export`, `@file.link` (Link Folder, or Unlink Folder when one is linked), `@file.sync`, `@file.quit`, `@Save`; `assert filemenu`; the dialog has `xdopen`, `xfound_fonts|typefaces|glyphs`, `xbackup`, the widgets `@xd.backup`, `@xd.change`, `@Update`, `@Overwrite`, `@Cancel`; after an export `xw_*` (written), `xs_*` (skipped), `xd_*` (deleted) and `xbackupfailed`.
 - `copyfile`, `writefile`, `delete`, `verifylib <pxfm> <libroot> [N]`, `shot <png>`, `expectquit`.
+- `repofocus`: the check of the linked folder that the window runs when it gets the focus (a script never gets it from the focus itself).
 
 Command line options for the console build: `--ini <file>`, `--font <hash>`, `--typeface <hash>`, `--unlock`, `--import-to <pxfdb>`, `--job-hold-ms N` (keep the progress screen at least that long), `--shot-job <png>` with `--shot-job-ms N` (a screenshot of the progress screen), `--play <script>`.
 

@@ -120,9 +120,8 @@ Exactly two forms, both in Unifont; nothing else prints a hash.
 - `Th_HashShort(kind, hash, x, y, flags, copyName)`: a dim kind word (`Font`, `Typeface`, `Glyph`, or none) and the first 8 characters.
   `TH_HASH_ACCENT` marks a changed state, `TH_HASH_RIGHT` right-aligns, `TH_HASH_MEASURE` only measures, `TH_HASH_SMALL` fits a line of small text; with `copyName` a click copies the full hash.
 - `Th_HashField(x, &y, w, caption, hash, name, what, flags)`: a caption and a 28 px box with the full hash, never wrapped or cut, on the panel's margins (16 px, as the caption and the rows); a click copies it with the toast "`what` hash copied"; an empty hash reads "no ink", a NULL hash "not known".
-- The clipboard, the toast and the hint live in `theme.c` (hooks `Th_HoverFn`, `Th_NoticeFn` set by `main.c`).
 - A font or typeface without a name shows its short hash; a name is never built from a hash.
-- The short form is used by cards, rows, headings, the selection block, the info bar, the status bar, the glyph bar, and the Usage, Similar and Layers lists; the full form by the Font, Typeface and Glyph tabs and the glyph view's Glyph tab.
+- The short form is used by cards, rows, headings, the status bar, the glyph bar, and the Usage, Similar and Layers lists; the full form by the Font, Typeface and Glyph tabs and the glyph view's Glyph tab.
 
 #### Buttons
 
@@ -171,8 +170,8 @@ Exactly two forms, both in Unifont; nothing else prints a hash.
 
 - `Th_Row(x, &y, w, label, value, flags)`: the dim label in a `TH_ROW_LABEL_W` (108) column, the value right-aligned with an ellipsis; `TH_ROW_UNI` for Unifont.
 - With `value` NULL it returns the rectangle where the caller draws a control (text field, dropdown, segmented control, stepper or number box); a control row is `TH_ROW_H` plus half a gap high.
-- Used by the Font, Typeface and Glyph tabs, the font view's selection block, the browser's Style, Zoom, Columns and Sort by rows, the Glyphs view's Zoom and Sort by, and the Layers cards (Opacity, Offset X, Offset Y).
-- Not rows: switches and checks, the status line, and the pinned selection block of the browser.
+- Used by the Font, Typeface and Glyph tabs, the browser's Style, Zoom, Columns and Sort by rows, the Glyphs view's Zoom and Sort by, and the Layers cards (Opacity, Offset X, Offset Y).
+- Not rows: switches and checks, and the status line.
 
 #### List row and card
 
@@ -207,7 +206,7 @@ Exactly two forms, both in Unifont; nothing else prints a hash.
   `Th_MenuHi` is the highlighted index.
 - `Th_Dropdown` is the closed box of a dropdown.
 - An item registers `.name`, else its label (`@file.save`, `@Edit_Glyph`, `@Ctx_Open`).
-- Used by the top Menu button, the font view's "..." menu, the context menus of the glyph grid and of the library views, and the Style dropdown.
+- Used by the top Menu button and the Style dropdown.
 
 #### Status bar
 
@@ -300,23 +299,20 @@ This file and `HANDOFF.md` follow the author's Markdown protocol: a heading has 
 - Files are named by their hashes; storage is content-addressed, so an edit changes the hash of what it touches, and a glyph's pxgl is never changed in place.
 - A font is modified exactly when the canonical hash of its current state differs from the hash the store holds, so an undone edit leaves it unmodified.
 - Reader and writer round-trip: every pxfm, pxtf, pxgl, palette and licence text, read and written unchanged, gives the bytes and hash of its name; the text writer and the converter from rows agree byte for byte.
-- A short hash (8 digits) is shown where space is tight, the full hash in the panels' info blocks; every label names its owner: "Font 3b52125b", "Typeface 236dc4b7", "Glyph c0fc54c2".
 
 ### Typefaces
 
 - A pxtf (`pxtf/xx/<hash>.pxtf`, version 2) is a typeface: an optional `NAME` top line (its name; `PxtfTypeface.name`) and its variants.
-  Each variant has `PXFM`, `SOURCE-FORMAT`, `SOURCE-HASH` and `SOURCE-TYPE` (`PxtfVariant.format`, `.source`, `.type`), text fields (style, `NAME` the font's name, weight name, slant, copyright, designer, licence…) and the italic, underlined and struck-out flags; `CODEPAGE` is a text key.
-- In the code the names follow the keys: `PXTF_NAME` is the variant's `NAME`; a library entry has `typefaceName` (the typeface's `NAME`) and `fontName` (the variant's).
+  Each variant has `PXFM`, `SOURCE-FORMAT`, `SOURCE-HASH` and `SOURCE-TYPE`, text fields (style, `NAME` the font's name, weight name, slant, copyright, designer, licence…) and the italic, underlined and struck-out flags; `CODEPAGE` is a text key.
 - The UI shows no source format, neither at a typeface nor on a font card.
 - A font that no typeface names is "Orphaned".
 - A typeface with no variant must have a `NAME`; New Typeface makes one ("New Typeface", "New Typeface 2"…, since two of one name would be one file).
-  The store has no `pxtf_variant` row for it; `store_list_typefaces` lists it as one entry of variant 0 and pxfm "", and its text is the `NAME` line alone.
-- A font made in pxfe follows the spec's "A font made in an editor": `SOURCE-FORMAT PXFE`, `SOURCE-TYPE pxfe` (`PXTF_EDITOR_FORMAT`, `PXTF_EDITOR_TYPE`), a random `SOURCE-HASH` (`pxtf_set_editor_source`), no reading options.
+  The store has no `pxtf_variant` row for it, and its text is the `NAME` line alone.
+- A font made in pxfe follows the spec's "A font made in an editor": `SOURCE-FORMAT PXFE`, `SOURCE-TYPE pxfe`, a random `SOURCE-HASH`, no reading options.
 
 ### Drafts
 
-The core reads and writes the draft format `PXFEDRAFT 4` (`PALETTE <HASH> <RRGGBBAA,...>` lines, a GLYPH line with the code in the file form, the read palette hash or `-` and the glyph's own palette, `SYMBOLIC`); the UI has no drafts.
-A draft of version 2 or 3 (the codes of pxfm version 2) is refused with a message.
+The core reads and writes the draft format `PXFEDRAFT 4` (palettes, glyph lines with codes in the file form, `SYMBOLIC`); the UI has no drafts, and a draft of version 2 or 3 is refused.
 
 ## Palettes and colours
 
@@ -327,8 +323,7 @@ A draft of version 2 or 3 (the codes of pxfm version 2) is refused with a messag
 - A colour font's pxfm has `COLORS n` (n ≥ 2) and the palette's hash as a fifth field on every glyph line with a glyph file; a font of one colour has neither.
   `COLORS` is the number of distinct colours over the first k lines of each glyph's palette, k being the colours the glyph uses.
 - A `COLOR` line is refused: "a COLOR line: the colours of a pxfm file before hex palettes (the file was made by an older pixelglyphlib)".
-- The pxfdb (format_version 2) has the tables `pxtf` (`hash`, `name`) and `pxtf_variant` (with `source`, `format`, `type`); a version 1 database is refused ("import the library folder again").
-  It has the table `palette` (`hash`, `colors`, `colorset`) with the index `palette_by_colorset`, and the columns `pxfm.symbolic`, `pxfm.colors` (NULL for one colour) and `pxfm_glyph.palette`; the schema in `src/store.c` is copied verbatim from `pxfdb.md`.
+- The pxfdb has the table `palette` (`hash`, `colors`, `colorset`) with the index `palette_by_colorset`, and the columns `pxfm.symbolic`, `pxfm.colors` (NULL for one colour) and `pxfm_glyph.palette`; the schema in `src/store.c` is copied verbatim from `pxfdb.md`.
 
 ### In memory: shared palettes
 
@@ -348,7 +343,7 @@ Each glyph has its own palette, so a font may have any number of colours; a glyp
 - The glyph view canonicalizes the open glyph at the end of every frame without a drag, and compacts the table when it changed something.
 - A new colour is appended while the palette has fewer than 36 entries; a palette of 36 gives an unused entry to it; when all 36 are used the colour is refused with the toast "This glyph has 36 colours: drop the colour onto a slot of the palette bar to replace one".
   An inkless glyph on the default palette starts a palette with the new colour alone.
-- `px_glyph_add_color(s)` (a 37th colour returns `PX_COLOR_FULL`), `px_glyph_set_colors`, `px_glyph_set_palette`, `px_glyph_used_colors`, `px_glyph_add_slot` (an unused slot), `px_glyph_replace_color` (a slot gets another colour; a colour the glyph has already merges the two slots), `px_glyph_trim_palette` (cut to the used colours).
+- Replacing a slot's colour with one the glyph has already merges the two slots.
 
 ### The font's colour list
 
@@ -373,7 +368,7 @@ Each glyph has its own palette, so a font may have any number of colours; a glyp
 ## Storage: Load, Save, Import, Export
 
 pxfe works on one database (a `.pxfdb` file) at a time: Load reads it into memory, all work happens in memory, Save writes memory back.
-The text folders (`pxtf/`, `pxfm/`, `pxgl/`, `palette/`, `license/`) are reached only through Import and Export.
+The text folders (`pxtf/`, `pxfm/`, `pxgl/`, `palette/`, `license/`) are reached only through Import, Export and a linked folder.
 A file lies at `<folder>/xx/<hash>.<ext>`, a glyph file at `pxgl/xx/yy/<hash>.pxgl` (`px_lib_path`).
 
 ### The store
@@ -407,6 +402,19 @@ A file lies at `<folder>/xx/<hash>.<ext>`, a glyph file at `pxgl/xx/yy/<hash>.px
 - Overwrite offers "Make a backup first", on by default: the folder's data is imported into `<folder>-backup-<YYYYMMDD-HHMM>.pxfdb` beside it first; if that fails, nothing is deleted, and overwriting without a backup needs a second confirmation.
 - A summary says what was written, skipped and deleted; the sidecar is not touched.
 
+### A linked library folder
+
+Menu ▸ Link Folder… links a library folder (a git working tree such as `pxfdb`) to the database, which stays beside it; pxfe keeps the two equal and leaves git to the user.
+
+- The sidecar keeps the link and the baseline: the file names the folder and the database both held at the last sync.
+- A name is the hash of the content, so every change is a file added or gone, and nothing is merged.
+- Save also writes what memory has and neither the folder nor the baseline has, and deletes what the folder and the baseline have and memory has not, with the prefix folders this empties.
+- A check (at Load and when the window gets the focus, listing on a worker thread; Menu ▸ Sync with Folder) reads the files new since the baseline with Import's strict readers, and removes from memory those gone since (typefaces first, then what no row names).
+- With nothing unsaved the changes are applied and saved at once; else pxfe asks (Later or Apply), once per set of changes.
+- The open font and typeface, and what a kept row names, stay when the folder loses them; Save writes them back.
+- A file that fails the strict readers is left out and named, with the files naming it, and is never deleted.
+- Nothing outside the five folders, or not named as a library file, is touched; Unlink Folder leaves the folder as it is.
+
 ### Packages (pxfp, pxtp)
 
 A font package (`.pxfp`) carries one font, a typeface package (`.pxtp`) a typeface with all its fonts, from one library to another.
@@ -435,7 +443,7 @@ Export Typeface… and Export Font… also write BDF, PCF, FNT, FON, TrueType, O
 
 ### Deleting fonts and typefaces
 
-- A font or a whole typeface can be deleted from the library views (`Del`, the context menu, the red buttons of the pinned selection) and from the font view.
+- A font or a whole typeface can be deleted from the library views (`Del`, the Typeface and Font tabs) and from the font view.
 - A deleted font's typefaces lose that variant and are rewritten under new hashes; a typeface left with no variant goes.
 - Deleting a typeface deletes its pxtf and every font of it that no other typeface names.
 - Glyphs and palettes that the deletion leaves unnamed go too; earlier orphans are left alone.
@@ -449,9 +457,9 @@ The name is only the session's title: an orphaned font has no name in the databa
 
 ### The settings sidecar
 
-`<db>-settings` (`fsettings.h`, SQLite) holds program settings by hash beside the database: the font layers, their per-glyph corrections, and the locks.
+`<db>-settings` (`fsettings.h`, SQLite) holds program settings beside the database: the font layers, their per-glyph corrections and the locks by hash, and the linked folder.
 
-- Schema version 4: the `layer` table (with `em`, `aspect`, `follow`, `mode`, `threshold`), `correction` keyed by the code of pxfm version 3, and `unlocked(kind, hash)` (0 font, 1 typeface; only unlocked things have a row); older files are upgraded in memory and on disk at the next save.
+- Schema version 5: the `layer` table (with `em`, `aspect`, `follow`, `mode`, `threshold`), `correction` keyed by the code of pxfm version 3, `unlocked(kind, hash)` (0 font, 1 typeface; only unlocked things have a row), `repo_link` and `repo_base` (the baseline: per kind, the sorted 16-byte hashes in one blob); older files are upgraded in memory and on disk at the next save.
   The upgrade from 3 turns the correction codes into codes of version 3 (`FFFFFF` the default glyph, `F0000n` the symbol n, any other a code point).
 - It is read at Load and written at Save; a settings-only change makes the document unsaved without changing the store's change counter, and Save then writes only the sidecar.
 - Save As writes a new sidecar; with no settings at all nothing is written and an old sidecar is deleted.
@@ -511,7 +519,7 @@ The style segment carries the "*" modified marker.
 ### Transitions
 
 - Typefaces, Fonts and Glyphs reach each other by their segments.
-- Opening a box header (double click, `Enter`, Open, the context menu) shows the Typeface view; the box stays selected for the way back; the browser switches view itself.
+- Opening a box header (double click, `Enter`) shows the Typeface view; the box stays selected for the way back; the browser switches view itself.
 - The blue typeface-name segment of the Typeface view returns to the list.
 - Opening a variant row, a Typeface view row or a Fonts card shows the Font view.
 - In the Font and Glyph views the first segment goes to the Typeface view; for an orphaned font it leads to the Typefaces list, and the style segment shows the font's own name.
@@ -554,7 +562,6 @@ The library views are Typefaces, Typeface and Fonts (`src/browser.c`).
 - Fonts: one card per font: typeface name and style (or the hash) in the first row, details (size `ASCENT + DESCENT`, glyph count, Mono, Symbolic, ratio) and the font hash in the second, and the sample, pixel perfect.
 - The lists are virtualized; fonts load lazily on worker threads (the pxfm and the glyphs of the sample's characters, cached, reloaded when the sample changes); a 1,200-font library shows its cards within a second.
 - A press selects; a press on the entry that is selected already, or Enter, opens it.
-  There is no context menu.
 - Coming back from a font (Alt+Left or a segment) finds the list with its scroll, filters and selection as they were.
 - Counts are in the side panel ("N of M variants", "N of M", "N fonts") and the status line ("N of M typefaces").
 
@@ -566,7 +573,6 @@ The library views are Typefaces, Typeface and Fonts (`src/browser.c`).
   The counts are in the status line; the library is rescanned after a commit, a deletion or a load.
 - Typeface and Font: see "The Typeface and Font tabs".
 - Similar: the similar fonts or typefaces of the selection, else "Select a font to see similar ones".
-- Nothing is pinned over the panel: every command is in a tab.
 
 ### The Colours switch
 
@@ -630,7 +636,7 @@ The library views are Typefaces, Typeface and Fonts (`src/browser.c`).
 
 ## Font view
 
-- Top: the toolbar: Menu, the navigation, Undo, Redo and Save; no command bar and no info bar.
+- Top: the toolbar: Menu, the navigation, Undo, Redo and Save.
 - Center: the glyph grid, as in FontLab's font window: each cell shows the glyph at the zoom inside its font box, the advance wide (at least a minimum cell width), with the projected metric lines and a caption strip; Ctrl+wheel zooms.
 - Right: the panel.
 - Bottom: the sample strip: the shared sample in the current state of the font at 1x to 8x, with kerning, updated as the font is edited, resized by dragging its top edge and folded by its header; then the status bar (file, glyph count, selection count, the stored hash, the current hash when it differs, the modified marker).
@@ -646,7 +652,6 @@ Under it the tabs **Font | Glyph | Similar | Layers**, remembered; selecting a g
 - Auto Spacing: every selected glyph with ink gets its ink from the pen (x offset 0 for a cropped bitmap) and the advance one past its last ink column, so one empty column follows it; glyphs without ink stay as they are; one undo step; a toast counts the glyphs changed.
 - Similar: the similar fonts and typefaces.
 - Layers: the font layers.
-- Every section caption folds (`Th_Section`), and the state lasts for the session.
 
 ### Selection and commands
 
@@ -655,7 +660,6 @@ Under it the tabs **Font | Glyph | Similar | Layers**, remembered; selecting a g
 - Delete (`Del`) after a confirmation; Clone (`Ctrl+D`) to a code typed in a dialog (`U+XXXX`, hex, a character, `-V` for a variant); Add Glyph adds an empty glyph with or without a code; Set Default.
 - `Enter` or a double click opens the glyph view.
 - Every editing command refuses on a locked font.
-- There is no context menu.
 
 ### The baseline
 
@@ -1103,7 +1107,7 @@ A focused text field takes its keys unless a modal dialog or popover blocks the 
 
 - `Th_SetInputBlocked` (mouse and keyboard): modal dialogs, the progress screen, the frame after a document opened (`swallowMouse`), open popovers and menus, the colour picker, and in `main.c` while a panel field is edited (the canvas then ignores mouse and keys).
   Every call in `browser.c`, `main.c`, `fitdoc.inc` and `sample.c` is of these kinds.
-- `Th_SetMouseBlocked` (the mouse only; `Th_MouseBlocked` reads both gates, `Th_MouseOnly` this one): for widgets outside the visible part of a scrolled region or under a pinned block (the browser panel, the Usage and Similar lists).
+- `Th_SetMouseBlocked` (the mouse only; `Th_MouseBlocked` reads both gates, `Th_MouseOnly` this one): for widgets outside the visible part of a scrolled region (the browser panel, the Usage and Similar lists).
 - The mouse-only readers (`hov` in `browser.c`, the editor's `hit`, the layers' `hov`, `cx_hover`) read `Th_MouseBlocked`.
 
 ### Typing while the mouse is away

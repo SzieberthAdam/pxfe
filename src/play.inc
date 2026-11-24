@@ -422,6 +422,7 @@ static bool GetInt(const char *name, long *v)
     else if (!strcmp(name, "hasstore")) *v = store != NULL;
     else if (!strcmp(name, "storeimported")) *v = store ? store_info(store)->imported : -1;     /* 1 when the database was just imported from a folder */
     else if (!strcmp(name, "storefonts")) *v = store ? store_info(store)->nPxfm : -1;
+    else if (!strcmp(name, "repolinked")) *v = RepoFolder(NULL, 0);                               /* a library folder is linked */
     else if (!strcmp(name, "storeglyphs")) *v = store ? store_info(store)->nGlyph : -1;
     else if (!strcmp(name, "storetypefaces")) *v = store ? store_info(store)->nPxtf : -1;
     else if (!strcmp(name, "uncoded")) *v = hasFont ? px_font_uncoded_count(&font) : 0;
@@ -1243,6 +1244,9 @@ static void PlayExecLine(const char *line)
         if (!fp) PLAY_FAIL("writefile failed"); else { fputs(rest + strlen(t[1]) + 1, fp); fclose(fp); }
     } else if (!strcmp(c, "delete")) {
         if (na < 2) PLAY_FAIL("delete <path>"); else remove(t[1]);
+    } else if (!strcmp(c, "repofocus")) {   /* as if the window got the focus back: the linked folder is checked */
+        RepoCheck(false);
+        QWait(2);
     } else if (!strcmp(c, "expectquit")) play.expectQuit = true;
     else if (!strcmp(c, "fps")) { play.fps = na > 1 ? atoi(t[1]) : 240; SetTargetFPS(play.fps); }
     else if (!strcmp(c, "sleep")) play.sleepUntil = GetTime() + (na > 1 ? atof(t[1]) : 500) / 1000.0; /* wall-clock wait, ms */

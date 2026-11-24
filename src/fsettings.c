@@ -15,9 +15,13 @@ struct FSettings {
     unsigned gen, savedGen;
 };
 
+#define REPO_TABLES \
+"CREATE TABLE IF NOT EXISTS repo_link (id INTEGER PRIMARY KEY CHECK (id = 1), folder TEXT NOT NULL);\n" \
+"CREATE TABLE IF NOT EXISTS repo_base (kind INTEGER PRIMARY KEY, hashes BLOB NOT NULL);\n"
+
 static const char SCHEMA[] =
 "CREATE TABLE meta (key TEXT PRIMARY KEY, value TEXT NOT NULL) WITHOUT ROWID;\n"
-"INSERT INTO meta VALUES ('format', 'pxfe-settings'), ('schema_version', '4');\n"
+"INSERT INTO meta VALUES ('format', 'pxfe-settings'), ('schema_version', '5');\n"
 "CREATE TABLE layer (id INTEGER PRIMARY KEY AUTOINCREMENT, font TEXT NOT NULL, pos INTEGER NOT NULL, kind INTEGER NOT NULL,\n"
 "  source TEXT NOT NULL, face INTEGER NOT NULL, file_size INTEGER NOT NULL, file_mtime INTEGER NOT NULL, scale REAL NOT NULL,\n"
 "  dx REAL NOT NULL, dy REAL NOT NULL, r INTEGER NOT NULL, g INTEGER NOT NULL, b INTEGER NOT NULL, opacity INTEGER NOT NULL,\n"
@@ -29,7 +33,8 @@ static const char SCHEMA[] =
 "CREATE TABLE correction (font TEXT NOT NULL, layer INTEGER NOT NULL REFERENCES layer, code INTEGER NOT NULL,\n"
 "  dx REAL NOT NULL, dy REAL NOT NULL, dsize REAL NOT NULL, hidden INTEGER NOT NULL,\n"
 "  PRIMARY KEY (layer, code)) WITHOUT ROWID;\n"
-"CREATE TABLE unlocked (kind INTEGER NOT NULL, hash TEXT NOT NULL, PRIMARY KEY (kind, hash)) WITHOUT ROWID;\n";
+"CREATE TABLE unlocked (kind INTEGER NOT NULL, hash TEXT NOT NULL, PRIMARY KEY (kind, hash)) WITHOUT ROWID;\n"
+REPO_TABLES;
 
 static bool seterr(FSettings *fs, const char *fmt, ...) {
     va_list ap;
@@ -246,13 +251,21 @@ FSettings *fs_open(const char *path, char err[FS_ERR_LEN]) {
             return NULL;
         }
     }
+    if (pr == PROBE_OK && query_int(fs, prep(fs, "SELECT value FROM meta WHERE key='schema_version'"), 0) < 5) {
+        /* version 4 -> 5: the linked library folder and its baseline (DESIGN.md "A linked library folder") */
+        if (!exec(fs, REPO_TABLES "UPDATE meta SET value='5' WHERE key='schema_version';")) {
+            if (err) snprintf(err, FS_ERR_LEN, "%.100s: cannot upgrade the settings: %.100s", path, fs->err);
+            fs_close(fs);
+            return NULL;
+        }
+    }
     snprintf(fs->path, sizeof fs->path, "%s", path);
     return fs;
 }
 
 bool fs_has_any(const FSettings *fs) {
     FSettings *m = (FSettings *)fs;
-    return query_int(m, prep(m, "SELECT EXISTS (SELECT 1 FROM layer) OR EXISTS (SELECT 1 FROM unlocked)"), 0) != 0;
+    return query_int(m, prep(m, "SELECT EXISTS (SELECT 1 FROM layer) OR EXISTS (SELECT 1 FROM unlocked) OR EXISTS (SELECT 1 FROM repo_link)"), 0) != 0;
 }
 
 /* VACUUM INTO path.tmp, then rename over path */
@@ -552,6 +565,80 @@ fail:
     sqlite3_exec(fs->db, "ROLLBACK", NULL, NULL, NULL);
     free(ids);
     return false;
+}
+
+/* ------------------------------------------------------------------ the linked library folder */
+
+bool fs_repo_folder(FSettings *fs, char *out, int n) {
+    if (out && n > 0) out[0] = 0;
+    sqlite3_stmt *st = prep(fs, "SELECT folder FROM repo_link WHERE id = 1");
+    if (!st) return false;
+    bool has = sqlite3_step(st) == SQLITE_ROW;
+    if (has && out && n > 0) snprintf(out, (size_t)n, "%s", (const char *)sqlite3_column_text(st, 0));
+    sqlite3_finalize(st);
+    return has;
+}
+
+bool fs_set_repo_folder(FSettings *fs, const char *folder) {
+    char cur[FS_PATH_LEN];
+    bool has = fs_repo_folder(fs, cur, sizeof cur);
+    if (!folder || !*folder) {
+        if (!has) return true;
+        if (!exec(fs, "DELETE FROM repo_link; DELETE FROM repo_base;")) return false;
+        fs->gen++;
+        return true;
+    }
+    if (strlen(folder) >= FS_PATH_LEN) return seterr(fs, "bad path");
+    if (has && strcmp(cur, folder) == 0) return true;
+    if (!exec(fs, "DELETE FROM repo_base;")) return false;   /* another folder: no baseline yet */
+    sqlite3_stmt *st = prep(fs, "INSERT OR REPLACE INTO repo_link VALUES (1, ?)");
+    if (!st) return false;
+    txt(st, 1, folder);
+    if (!finish(fs, st)) return false;
+    fs->gen++;
+    return true;
+}
+
+int fs_repo_base(FSettings *fs, int kind, uint8_t (**out)[16]) {
+    *out = NULL;
+    sqlite3_stmt *st = prep(fs, "SELECT hashes FROM repo_base WHERE kind = ?");
+    if (!st) return -1;
+    sqlite3_bind_int(st, 1, kind);
+    int n = 0;
+    if (sqlite3_step(st) == SQLITE_ROW) {
+        int bytes = sqlite3_column_bytes(st, 0);
+        const void *b = sqlite3_column_blob(st, 0);
+        n = bytes / 16;
+        *out = (uint8_t(*)[16])malloc((size_t)(n ? n : 1) * 16);
+        if (!*out) n = -1;
+        else if (n) memcpy(*out, b, (size_t)n * 16);
+    }
+    sqlite3_finalize(st);
+    return n;
+}
+
+bool fs_set_repo_base(FSettings *fs, int kind, const uint8_t (*h)[16], int n) {
+    uint8_t (*cur)[16] = NULL;
+    int cn = fs_repo_base(fs, kind, &cur);
+    bool same = cn == n && (n == 0 || memcmp(cur, h, (size_t)n * 16) == 0);
+    free(cur);
+    if (same && cn > 0) return true;
+    if (same && n == 0) {   /* an empty baseline: a row of no bytes, written once */
+        sqlite3_stmt *q = prep(fs, "SELECT 1 FROM repo_base WHERE kind = ?");
+        if (!q) return false;
+        sqlite3_bind_int(q, 1, kind);
+        bool has = sqlite3_step(q) == SQLITE_ROW;
+        sqlite3_finalize(q);
+        if (has) return true;
+    }
+    sqlite3_stmt *st = prep(fs, "INSERT OR REPLACE INTO repo_base VALUES (?, ?)");
+    if (!st) return false;
+    sqlite3_bind_int(st, 1, kind);
+    sqlite3_bind_zeroblob(st, 2, 0);
+    if (n) sqlite3_bind_blob(st, 2, (const void *)h, n * 16, SQLITE_TRANSIENT);
+    if (!finish(fs, st)) return false;
+    fs->gen++;
+    return true;
 }
 
 /* ------------------------------------------------------------------ locks and renames */

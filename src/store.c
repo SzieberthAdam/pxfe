@@ -1063,7 +1063,7 @@ static void progress_set(StoreProgress *p, long phase, long total) {
 /* Reads the files of `lists` (pxgl, pxfm, pxtf, palette) with the strict readers and inserts them into Memory.  fresh: Memory is
  * empty and has no schema yet (the schema, meta and indexes are made); else the rows are added to a loaded database
  * (a pxfm may name glyphs, a pxtf fonts, that Memory has). */
-static bool build_from_files(Store *s, const char *root, HashList lists[NKIND], bool fresh, StoreProgress *prog, char err[PX_ERR_LEN]) {
+static bool build_from_files_ex(Store *s, const char *root, HashList lists[NKIND], bool fresh, StoreProgress *prog, int *badKind, int *badIdx, char err[PX_ERR_LEN]) {
     sqlite3 *db = s->main->db;
     BuildCtx b;
     memset(&b, 0, sizeof b);
@@ -1088,19 +1088,19 @@ static bool build_from_files(Store *s, const char *root, HashList lists[NKIND], 
 
     progress_set(prog, 3, (long)ng + nm + nt + np + nl);
     par_run(nl, work_license, &b, 16);
-    for (int i = 0; i < nl; i++) if (b.errs[K_LICENSE][i]) { fail(err, "%s", b.errs[K_LICENSE][i]); goto done; }
+    for (int i = 0; i < nl; i++) if (b.errs[K_LICENSE][i]) { fail(err, "%s", b.errs[K_LICENSE][i]); if (badKind) { *badKind = K_LICENSE; *badIdx = i; } goto done; }
     if (prog && prog->cancel) { fail(err, "cancelled"); goto done; }
     par_run(np, work_palette, &b, 16);
-    for (int i = 0; i < np; i++) if (b.errs[3][i]) { fail(err, "%s", b.errs[3][i]); goto done; }
+    for (int i = 0; i < np; i++) if (b.errs[3][i]) { fail(err, "%s", b.errs[3][i]); if (badKind) { *badKind = 3; *badIdx = i; } goto done; }
     if (prog && prog->cancel) { fail(err, "cancelled"); goto done; }
     par_run(ng, work_glyph, &b, 32);
-    for (int i = 0; i < ng; i++) if (b.errs[0][i]) { fail(err, "%s", b.errs[0][i]); goto done; }
+    for (int i = 0; i < ng; i++) if (b.errs[0][i]) { fail(err, "%s", b.errs[0][i]); if (badKind) { *badKind = 0; *badIdx = i; } goto done; }
     if (prog && prog->cancel) { fail(err, "cancelled"); goto done; }
     par_run(nm, work_pxfm, &b, 16);
-    for (int i = 0; i < nm; i++) if (b.errs[1][i]) { fail(err, "%s", b.errs[1][i]); goto done; }
+    for (int i = 0; i < nm; i++) if (b.errs[1][i]) { fail(err, "%s", b.errs[1][i]); if (badKind) { *badKind = 1; *badIdx = i; } goto done; }
     if (prog && prog->cancel) { fail(err, "cancelled"); goto done; }
     par_run(nt, work_pxtf, &b, 16);
-    for (int i = 0; i < nt; i++) if (b.errs[2][i]) { fail(err, "%s", b.errs[2][i]); goto done; }
+    for (int i = 0; i < nt; i++) if (b.errs[2][i]) { fail(err, "%s", b.errs[2][i]); if (badKind) { *badKind = 2; *badIdx = i; } goto done; }
     if (prog && prog->cancel) { fail(err, "cancelled"); goto done; }
 
     progress_set(prog, 4, (long)ng + nm + nt + np + nl);
@@ -1157,6 +1157,10 @@ done:
     free(b.glyphs); free(b.fonts); free(b.tfs); free(b.pals);
     DeleteCriticalSection(&b.dbCs);
     return ok;
+}
+
+static bool build_from_files(Store *s, const char *root, HashList lists[NKIND], bool fresh, StoreProgress *prog, char err[PX_ERR_LEN]) {
+    return build_from_files_ex(s, root, lists, fresh, prog, NULL, NULL, err);
 }
 
 /* ------------------------------------------------------------------ writing the database file */
@@ -3109,5 +3113,305 @@ done:
         if (addedOut) *addedOut = added;
         if (skippedOut) *skippedOut = skipped;
     }
+    return ok;
+}
+
+/* ================================================================== a linked library folder (DESIGN.md "A linked library folder")
+ * The folder (R), memory (M) and the baseline (B: what both held at the last sync, kept in the settings sidecar) are sets of
+ * file names per kind.  Pull: R - B - M is read in (strict readers, incremental build), (B - R) & M is removed when nothing
+ * left names it.  Push: M - R - B is written, (R & B) - M is deleted.  A name says its content, so there is nothing to merge. */
+
+void store_fileset_free(StoreFileSet *s) {
+    for (int k = 0; k < STORE_NFILEKIND; k++) free(s->k[k].h);
+    memset(s, 0, sizeof *s);
+}
+
+int store_fileset_count(const StoreFileSet *s) {
+    int n = 0;
+    for (int k = 0; k < STORE_NFILEKIND; k++) n += s->k[k].n;
+    return n;
+}
+
+bool store_hashes_has(const StoreHashes *l, const uint8_t h[16]) {
+    return l->n > 0 && bsearch(h, l->h, (size_t)l->n, 16, cmp16) != NULL;
+}
+
+static void hl_push(StoreHashes *l, int *cap, const uint8_t h[16]) {
+    if (l->n == *cap) { *cap = *cap ? *cap * 2 : 64; l->h = (uint8_t(*)[16])realloc(l->h, (size_t)*cap * 16); }
+    memcpy(l->h[l->n++], h, 16);
+}
+
+void store_fileset_minus(const StoreFileSet *a, const StoreFileSet *b, StoreFileSet *out) {
+    memset(out, 0, sizeof *out);
+    for (int k = 0; k < STORE_NFILEKIND; k++) {
+        int cap = 0;
+        for (int i = 0; i < a->k[k].n; i++) if (!b || !store_hashes_has(&b->k[k], a->k[k].h[i])) hl_push(&out->k[k], &cap, a->k[k].h[i]);
+    }
+}
+
+void store_hashes_sort(StoreHashes *l) {
+    if (l->n > 1) qsort(l->h, (size_t)l->n, 16, cmp16);
+    int m = 0;
+    for (int i = 0; i < l->n; i++) if (m == 0 || memcmp(l->h[m - 1], l->h[i], 16) != 0) memcpy(l->h[m++], l->h[i], 16);
+    l->n = m;
+}
+
+void store_folder_files(const char *folderIn, StoreFileSet *out, int *other, char firstOther[300]) {
+    char folder[1100];
+    snprintf(folder, sizeof folder, "%s", folderIn);
+    trim_slashes(folder);
+    memset(out, 0, sizeof *out);
+    if (other) *other = 0;
+    if (firstOther) firstOther[0] = 0;
+    for (int k = 0; k < NKIND; k++) {
+        HashList l;
+        list_names(folder, KIND_SUB[k], KIND_EXT[k], &l);
+        out->k[k].h = l.h;
+        out->k[k].n = l.n;
+        if (other) *other += l.bad;
+        if (firstOther && l.bad && !firstOther[0]) snprintf(firstOther, 300, "%s", l.firstBad);
+    }
+}
+
+bool store_memory_files(Store *s, StoreFileSet *out, char err[PX_ERR_LEN]) {
+    memset(out, 0, sizeof *out);
+    sqlite3 *db = s->main->db;
+    bool ok = true;
+    AcquireSRWLockShared(&s->lock);
+    for (int k = 0; k < NKIND && ok; k++) {
+        char sql[80];
+        snprintf(sql, sizeof sql, "SELECT hash FROM %s ORDER BY hash", KIND_TABLE[k]);
+        sqlite3_stmt *st;
+        if (sqlite3_prepare_v2(db, sql, -1, &st, NULL) != SQLITE_OK) { ok = fail(err, "sqlite: %s", sqlite3_errmsg(db)); break; }
+        int cap = 0;
+        while (sqlite3_step(st) == SQLITE_ROW)
+            if (sqlite3_column_bytes(st, 0) == 16) hl_push(&out->k[k], &cap, (const uint8_t *)sqlite3_column_blob(st, 0));
+        sqlite3_finalize(st);
+    }
+    ReleaseSRWLockShared(&s->lock);
+    if (!ok) store_fileset_free(out);
+    return ok;
+}
+
+void store_repo_changes(const StoreFileSet *folder, const StoreFileSet *base, const StoreFileSet *mem, const StoreFileSet *ignore, StoreRepoChanges *out) {
+    memset(out, 0, sizeof *out);
+    for (int k = 0; k < NKIND; k++) {
+        int ca = 0, cr = 0;
+        for (int i = 0; i < folder->k[k].n; i++) {
+            const uint8_t *h = folder->k[k].h[i];
+            if (!store_hashes_has(&base->k[k], h) && !store_hashes_has(&mem->k[k], h) && !(ignore && store_hashes_has(&ignore->k[k], h)))
+                hl_push(&out->add.k[k], &ca, h);
+        }
+        for (int i = 0; i < base->k[k].n; i++) {
+            const uint8_t *h = base->k[k].h[i];
+            if (!store_hashes_has(&folder->k[k], h) && store_hashes_has(&mem->k[k], h)) hl_push(&out->remove.k[k], &cr, h);
+        }
+    }
+}
+
+bool store_repo_changes_any(const StoreRepoChanges *c) {
+    return store_fileset_count(&c->add) + store_fileset_count(&c->remove) > 0;
+}
+
+void store_repo_changes_free(StoreRepoChanges *c) {
+    store_fileset_free(&c->add);
+    store_fileset_free(&c->remove);
+}
+
+void store_fileset_counts(const StoreFileSet *s, StoreCounts *c) {
+    memset(c, 0, sizeof *c);
+    for (int k = 0; k < NKIND; k++) *count_of(c, k) = s->k[k].n;
+}
+
+void store_repo_changes_text(const StoreRepoChanges *c, char *out, size_t n) {
+    StoreCounts a, r;
+    char ta[200], tr[200];
+    store_fileset_counts(&c->add, &a);
+    store_fileset_counts(&c->remove, &r);
+    store_counts_text(&a, ta, sizeof ta);
+    store_counts_text(&r, tr, sizeof tr);
+    bool ad = store_fileset_count(&c->add) > 0, rm = store_fileset_count(&c->remove) > 0;
+    if (ad && rm) snprintf(out, n, "%s added; %s removed", ta, tr);
+    else if (ad) snprintf(out, n, "%s added", ta);
+    else if (rm) snprintf(out, n, "%s removed", tr);
+    else snprintf(out, n, "nothing");
+}
+
+/* the name is still used by a row memory keeps */
+static bool still_named(sqlite3 *db, int k, const uint8_t h[16]) {
+    static const char *const sql[NKIND] = {
+        "SELECT 1 FROM pxfm_glyph WHERE glyph = ? LIMIT 1",
+        "SELECT 1 FROM pxtf_variant WHERE pxfm = ? LIMIT 1",
+        NULL,
+        "SELECT 1 FROM pxfm_glyph WHERE palette = ? LIMIT 1",
+        "SELECT 1 FROM pxtf_field WHERE key = 'TERMS-TEXT' AND lower(value) = ? LIMIT 1"};
+    if (!sql[k]) return false;
+    sqlite3_stmt *st;
+    if (sqlite3_prepare_v2(db, sql[k], -1, &st, NULL) != SQLITE_OK) return true;   /* when in doubt, keep */
+    char hex[33];
+    store_blob_to_hex(h, hex);
+    if (k == K_LICENSE) sqlite3_bind_text(st, 1, hex, -1, SQLITE_TRANSIENT);
+    else sqlite3_bind_blob(st, 1, h, 16, SQLITE_STATIC);
+    bool named = sqlite3_step(st) == SQLITE_ROW;
+    sqlite3_finalize(st);
+    return named;
+}
+
+bool store_repo_pull(Store *s, const char *folderIn, const StoreRepoChanges *ch, const char (*keep)[33], int nkeep, StoreRepoPull *res, char err[PX_ERR_LEN]) {
+    memset(res, 0, sizeof *res);
+    char folder[1100];
+    snprintf(folder, sizeof folder, "%s", folderIn);
+    trim_slashes(folder);
+    if (!dir_exists(folder)) return fail(err, "%s: no such folder", folder);
+    sqlite3 *db = s->main->db;
+    bool ok = false, changed = false;
+    HashList lists[NKIND];
+    memset(lists, 0, sizeof lists);
+    int skCap[NKIND] = {0, 0, 0, 0, 0};
+    for (int k = 0; k < NKIND; k++) {
+        lists[k].n = lists[k].cap = ch->add.k[k].n;
+        lists[k].h = (uint8_t(*)[16])malloc((size_t)(lists[k].n ? lists[k].n : 1) * 16);
+        if (lists[k].n) memcpy(lists[k].h, ch->add.k[k].h, (size_t)lists[k].n * 16);
+    }
+    /* adding: a file that fails the strict readers is left out and reported, and the build runs again without it (a file that
+     * names it then fails in turn) */
+    for (;;) {
+        int total = 0;
+        for (int k = 0; k < NKIND; k++) total += lists[k].n;
+        if (!total) break;
+        int bk = -1, bi = -1;
+        char e2[PX_ERR_LEN] = "";
+        AcquireSRWLockExclusive(&s->lock);
+        bool good = build_from_files_ex(s, folder, lists, false, NULL, &bk, &bi, e2);
+        ReleaseSRWLockExclusive(&s->lock);
+        if (good) {
+            changed = true;
+            for (int k = 0; k < NKIND; k++) *count_of(&res->added, k) = lists[k].n;
+            for (int i = 0; i < lists[K_PXFM].n; i++) { char hex[33]; store_blob_to_hex(lists[K_PXFM].h[i], hex); store_sim_font_added(s, hex); }
+            break;
+        }
+        if (bk < 0 || bi < 0 || bi >= lists[bk].n) { fail(err, "%s", e2); goto done; }
+        if (res->nSkipped < STORE_REPO_MAXMSG) snprintf(res->skipped[res->nSkipped++], sizeof res->skipped[0], "%s", e2);
+        res->nSkippedAll++;
+        hl_push(&res->skippedSet.k[bk], &skCap[bk], lists[bk].h[bi]);
+        memmove(lists[bk].h[bi], lists[bk].h[bi + 1], (size_t)(lists[bk].n - bi - 1) * 16);
+        lists[bk].n--;
+    }
+    for (int k = 0; k < NKIND; k++) store_hashes_sort(&res->skippedSet.k[k]);
+    /* removing: typefaces first, then what nothing names any more; the kept fonts and typefaces stay */
+    {
+        static const int order[NKIND] = {K_PXTF, K_PXFM, K_GLYPH, K_PALETTE, K_LICENSE};
+        static const char *const del[NKIND][3] = {
+            {"DELETE FROM glyph WHERE hash = ?", NULL, NULL},
+            {"DELETE FROM pxfm_glyph WHERE pxfm = ?", "DELETE FROM pxfm_kerning WHERE pxfm = ?", "DELETE FROM pxfm WHERE hash = ?"},
+            {"DELETE FROM pxtf_field WHERE pxtf = ?", "DELETE FROM pxtf_variant WHERE pxtf = ?", "DELETE FROM pxtf WHERE hash = ?"},
+            {"DELETE FROM palette WHERE hash = ?", NULL, NULL},
+            {"DELETE FROM license WHERE hash = ?", NULL, NULL}};
+        uint8_t (*gone)[16] = (uint8_t(*)[16])malloc((size_t)(ch->remove.k[K_PXFM].n + 1) * 16);
+        int nGone = 0;
+        AcquireSRWLockExclusive(&s->lock);
+        bool inTx = exec_sql(db, "BEGIN IMMEDIATE", err), good = inTx;
+        for (int o = 0; o < NKIND && good; o++) {
+            int k = order[o];
+            for (int i = 0; i < ch->remove.k[k].n && good; i++) {
+                const uint8_t *h = ch->remove.k[k].h[i];
+                bool kept = false;
+                if (k == K_PXFM || k == K_PXTF) {
+                    char hex[33];
+                    store_blob_to_hex(h, hex);
+                    for (int j = 0; j < nkeep && !kept; j++) if (strcmp(keep[j], hex) == 0) kept = true;
+                }
+                if (!kept) kept = still_named(db, k, h);
+                if (kept) { (*count_of(&res->kept, k))++; continue; }
+                for (int q = 0; q < 3 && good; q++) if (del[k][q]) good = del_where(db, del[k][q], h, err);
+                if (good) { (*count_of(&res->removed, k))++; if (k == K_PXFM) memcpy(gone[nGone++], h, 16); }
+            }
+        }
+        if (good) good = exec_sql(db, "COMMIT", err);
+        else if (inTx) sqlite3_exec(db, "ROLLBACK", NULL, NULL, NULL);
+        ReleaseSRWLockExclusive(&s->lock);
+        if (good && nGone) store_sim_fonts_removed(s, gone, nGone);
+        free(gone);
+        if (!good) goto done;
+        for (int k = 0; k < NKIND; k++) if (*count_of(&res->removed, k)) changed = true;
+    }
+    ok = true;
+done:
+    if (changed) { InterlockedIncrement(&s->gen); count_rows(s); }
+    for (int k = 0; k < NKIND; k++) free(lists[k].h);
+    return ok;
+}
+
+void store_repo_pull_free(StoreRepoPull *r) { store_fileset_free(&r->skippedSet); }
+
+bool store_repo_push(Store *s, const char *folderIn, const StoreFileSet *base, StoreFileSet *newBase, StoreRepoPush *res, char err[PX_ERR_LEN]) {
+    memset(res, 0, sizeof *res);
+    memset(newBase, 0, sizeof *newBase);
+    char folder[1100];
+    snprintf(folder, sizeof folder, "%s", folderIn);
+    trim_slashes(folder);
+    if (!dir_exists(folder)) return fail(err, "%s: no such folder", folder);
+    StoreFileSet mem, rep;
+    if (!store_memory_files(s, &mem, err)) return false;
+    store_folder_files(folder, &rep, NULL, NULL);
+    bool ok = true;
+    StoreConn *c = store_conn_open(s);
+    if (!c) { store_fileset_free(&mem); store_fileset_free(&rep); return fail(err, "cannot open a store connection"); }
+    /* writing: what memory has and neither the folder nor the baseline has (in the baseline and gone from the folder: the
+     * folder removed it, and the next pull removes it from memory) */
+    for (int k = NKIND - 1; k >= 0 && ok; k--) {
+        for (int i = 0; i < mem.k[k].n && ok; i++) {
+            const uint8_t *h = mem.k[k].h[i];
+            if (store_hashes_has(&rep.k[k], h) || store_hashes_has(&base->k[k], h)) continue;
+            char hex[33], got[33], path[1400];
+            store_blob_to_hex(h, hex);
+            size_t len = 0;
+            char *t = k == K_GLYPH ? store_pxgl_text(c, hex, &len, got) : k == K_PXFM ? store_pxfm_text(c, hex, &len, got)
+                    : k == K_PXTF ? store_pxtf_text(c, hex, &len, got) : k == K_PALETTE ? store_palette_text(c, hex, &len, got)
+                    : store_license_text(c, hex, &len, got);
+            if (!t) { ok = fail(err, "the %s %s cannot be made from the rows", KIND_SUB[k], hex); break; }
+            if (strcmp(got, hex) != 0) { free(t); ok = fail(err, "the %s %s made from the rows has the hash %s: not written", KIND_SUB[k], hex, got); break; }
+            px_lib_path(folder, KIND_SUB[k], hex, KIND_EXT[k], path, sizeof path);
+            int w = write_new_file(path, t, len, err);
+            free(t);
+            if (w < 0) { ok = false; break; }
+            if (w > 0) (*count_of(&res->written, k))++;
+        }
+    }
+    store_conn_close(c);
+    /* deleting: what the folder and the baseline have and memory has not (memory deleted it); then the emptied prefix folders */
+    for (int k = 0; k < NKIND && ok; k++) {
+        for (int i = 0; i < rep.k[k].n && ok; i++) {
+            const uint8_t *h = rep.k[k].h[i];
+            if (!store_hashes_has(&base->k[k], h) || store_hashes_has(&mem.k[k], h)) continue;
+            char hex[33], path[1400], dir[1400];
+            store_blob_to_hex(h, hex);
+            px_lib_path(folder, KIND_SUB[k], hex, KIND_EXT[k], path, sizeof path);
+            SetFileAttributesA(path, FILE_ATTRIBUTE_NORMAL);
+            if (!DeleteFileA(path)) { ok = fail(err, "%s: cannot delete", path); break; }
+            (*count_of(&res->deleted, k))++;
+            dir_of(path, dir, sizeof dir);
+            if (RemoveDirectoryA(dir) && k == K_GLYPH) { char up[1400]; dir_of(dir, up, sizeof up); RemoveDirectoryA(up); }   /* only when empty */
+        }
+    }
+    /* the new baseline: what two of memory, the folder now and the old baseline hold (a change of either side not yet carried
+     * over stays pending) */
+    StoreFileSet now;
+    store_folder_files(folder, &now, NULL, NULL);
+    for (int k = 0; k < NKIND; k++) {
+        int cap = 0;
+        const StoreHashes *sets[3] = {&mem.k[k], &now.k[k], &base->k[k]};
+        for (int a = 0; a < 3; a++)
+            for (int i = 0; i < sets[a]->n; i++) {
+                const uint8_t *h = sets[a]->h[i];
+                int votes = 0;
+                for (int b = 0; b < 3; b++) votes += store_hashes_has(sets[b], h);
+                if (votes >= 2) hl_push(&newBase->k[k], &cap, h);
+            }
+        store_hashes_sort(&newBase->k[k]);
+    }
+    store_fileset_free(&now);
+    store_fileset_free(&mem);
+    store_fileset_free(&rep);
     return ok;
 }

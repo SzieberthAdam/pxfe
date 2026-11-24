@@ -7,7 +7,7 @@
  * Key of everything: the font's pxfm hash, 32 lowercase hex characters.  Layer ids are unique in the file and never reused
  * (AUTOINCREMENT), a layer's corrections belong to its id.
  *
- * Schema, schema_version = 3 (a version 1 or 2 file is upgraded in memory when it is opened, and on disk at the next save):
+ * Schema, schema_version = 5 (an older file is upgraded in memory when it is opened, and on disk at the next save):
  *   meta(key TEXT PRIMARY KEY, value TEXT NOT NULL)              'format' = 'pxfe-settings', 'schema_version' = '1'
  *   layer(id INTEGER PRIMARY KEY AUTOINCREMENT,
  *         font TEXT NOT NULL,                  pxfm hash of the edited font
@@ -32,6 +32,10 @@
  *              dsize REAL NOT NULL,              factor multiplied onto the layer's scale, 1.0 = none
  *              hidden INTEGER NOT NULL, PRIMARY KEY (layer, code))
  *   A correction row exists only if it differs from the defaults (dx = dy = 0, dsize = 1, hidden = 0).
+ *   repo_link(id INTEGER PRIMARY KEY CHECK (id = 1), folder TEXT NOT NULL)     version 5.  The linked library folder (DESIGN.md
+ *            "A linked library folder"), one row or none.
+ *   repo_base(kind INTEGER PRIMARY KEY, hashes BLOB NOT NULL)     version 5.  The baseline: per kind (store.h STORE_FILE_*), the
+ *            16-byte hashes of the files the folder and the database both held at the last sync, sorted, concatenated.
  *
  * Empty policy: fs_save on a handle with no layers writes NOTHING and deletes an existing sidecar at that path (only if it is a
  * settings database), so a user without font layers never gets a stray file.  fs_save_as on an empty handle does the same at
@@ -45,7 +49,7 @@
 #include <stdint.h>
 #include "pxfont.h"   /* PxCode */
 
-#define FS_SCHEMA_VERSION 4
+#define FS_SCHEMA_VERSION 5
 #define FS_ERR_LEN 256
 #define FS_HASH_LEN 33         /* 32 hex characters + NUL */
 #define FS_PATH_LEN 1100
@@ -101,7 +105,7 @@ bool fs_save_as(FSettings *fs, const char *newPath);   /* writes there and switc
 bool fs_dirty(const FSettings *fs);            /* changed since opened / last saved */
 unsigned fs_changes(const FSettings *fs);      /* the change counter */
 
-bool fs_has_any(const FSettings *fs);          /* any layer at all */
+bool fs_has_any(const FSettings *fs);          /* any layer, unlocked row or linked folder */
 bool fs_has_font(const FSettings *fs, const char *hash);
 bool fs_remove_font(FSettings *fs, const char *hash);                    /* layers and corrections of the font */
 bool fs_copy_font(FSettings *fs, const char *fromHash, const char *toHash);   /* new ids; replaces what toHash had; from == to is an error */
@@ -113,6 +117,13 @@ bool fs_set_unlocked(FSettings *fs, int kind, const char *hash, bool unlocked);
  * use it as their source (what `to` had is replaced).  The same for a typeface's unlocked row. */
 bool fs_rename_font(FSettings *fs, const char *from, const char *to);
 bool fs_rename_typeface(FSettings *fs, const char *from, const char *to);
+
+/* the linked library folder: fs_repo_folder says whether there is one (out gets it); "" unlinks; a new folder drops the baseline */
+bool fs_repo_folder(FSettings *fs, char *out, int n);
+bool fs_set_repo_folder(FSettings *fs, const char *folder);
+/* the baseline of one kind: a malloc'd array of 16-byte hashes in *out (free it), the count (0 when none), -1 on error */
+int fs_repo_base(FSettings *fs, int kind, uint8_t (**out)[16]);
+bool fs_set_repo_base(FSettings *fs, int kind, const uint8_t (*h)[16], int n);
 
 /* layers.  list: fills out[0..max) sorted by position, returns the number of layers the font has (can be > max), -1 on error */
 int fs_list_layers(FSettings *fs, const char *hash, FsLayer *out, int max);

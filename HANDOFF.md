@@ -11,17 +11,16 @@ The files of `handoff/` are old agent reports, kept for history.
 ## State
 
 - `build.bat` and `build.bat e2e` build with no warnings.
-- `build.bat test` passes: 33 colormath, 274 pxfont, 44 selection, 110 raster, 249 outline, 148 bmsrc, 86 fit, 62 sheet, 55 fontwrite, 160 fontwrite_sfnt, 121 fsettings, 137 pxtf, 231 store, 85 package (3 skipped), 0 failed.
-- `tests\e2e\run_all.bat` runs 124 scripts (2026-11-23): `01_grid` and `07d_real` fail (their real font is not in the library).
-  Timing flakes: each of `02_metrics`, `03_selection`, `04_delete`, `05_clone`, `06_editor`, `06b_palette`, `06c_noascent`, `23_modified_prompts`, `27_export_overwrite`, `42_layers_add`, `45_layers_discover`, `53_sample_persist`, `59_navigation`, `70_panel_tabs`, `101_import_font`, `139_many_colours`, `143_shots_picker` and `28_export_nobackup` has failed in some full run and passed alone, more often while the machine is busy.
+- `build.bat test` passes: 33 colormath, 274 pxfont, 44 selection, 110 raster, 249 outline, 148 bmsrc, 86 fit, 62 sheet, 55 fontwrite, 160 fontwrite_sfnt, 131 fsettings, 137 pxtf, 261 store, 85 package (3 skipped), 0 failed.
+- `tests\e2e\run_all.bat` runs 126 scripts (2026-11-23): `01_grid` and `07d_real` fail (their real font is not in the library).
+  Timing flakes (each failed in some full run and passed alone, more often on a busy machine): `02_metrics`, `03_selection`, `04_delete`, `05_clone`, `06_editor`, `06b_palette`, `06c_noascent`, `23_modified_prompts`, `27_export_overwrite`, `42_layers_add`, `45_layers_discover`, `53_sample_persist`, `59_navigation`, `70_panel_tabs`, `101_import_font`, `139_many_colours`, `143_shots_picker` and `28_export_nobackup`.
 - Plain `build.bat` fails only at the link step when a running `pxfe.exe` locks the file; closing it is enough.
 
 ## Things to know
 
 - The library and the specs now live in `C:\Users\jnsGEzD3\Documents\GitHub\pxfdb` (`spec/`, `pxtf/`, `pxfm/`, `pxgl/`, `palette/`, `license/`, no `.pxfdb` file); the `pixelglyphlib` folder is gone.
-  `prep_real.ps1` reads `pxfdb` but its font `b86206e5…` is not there, so 01_grid and 07d_real fail with a warning; `run_reallib.bat` and the notes below on `pixelglyphlib` are out of date.
-- The real library is never written by pxfe's tests.
-- The agents work only on copies under `tests/tmp/` and on `testdata/`.
+  `prep_real.ps1` reads `pxfdb`, which lacks the font of 01_grid and 07d_real; `run_reallib.bat` and the notes below on `pixelglyphlib` are out of date.
+- pxfe's tests never write the real library; agents work only on copies under `tests/tmp/` and on `testdata/`.
 - Every text file is LF; only the `.bat` files are CRLF on disk, because cmd needs it (`.gitattributes` enforces this; a `.bat` saved as LF breaks `call :label`).
 - The scripts run fast: two clicks on one spot within 0.4 s are a double click, and a click right after a layout change needs `wait 6`.
 - A single script is run like this, after copying `testdata\lib.pxfdb` to `tests\tmp\e2e.pxfdb`: `tests\tmp\pxfe_e2e.exe tests\tmp\e2e.pxfdb --font 3b52125b2e5f6466823baa4fa3186fa0 --ini tests\tmp\e2e.ini --play tests\e2e\98_fl_locked.txt`.
@@ -35,14 +34,12 @@ The files of `handoff/` are old agent reports, kept for history.
 - `src/theme.c` and `theme.h`: one component is one function, and a view never draws a second variant; the owner table is in DESIGN.md.
 - Menus are all `Th_Menu`; popovers, dialogs and the toast use `Th_Raised`; `main.c` and `editor.c` both call `Th_StatusBar`; the lock is `Th_Lock` everywhere (`@Unlock`, `@Lock`).
 - `Th_Stepper` is every zoom; `Th_FitText` takes `TH_F_TAIL`; `Th_HashShort` takes `TH_HASH_SMALL`; `Th_NumberF` takes any typed value.
-- Fonts: Noto Sans v2.015 (`assets/fonts/noto-sans`, OFL 1.1) and GNU Unifont 18.0.01 (`assets/fonts/unifont`, OFL 1.1 or GPLv2+ with the font exception).
-  Unifont glyphs are rasterised on demand into a 1024 x 1024 atlas that is flushed and refilled when full.
-  The fonts are looked up beside the exe, then two folders up, then in the working folder; a missing file raises an error toast.
+- Fonts (DESIGN.md "Fonts and licences") are looked up beside the exe, then two folders up, then in the working folder; a missing file raises an error toast.
 - Tests: `70_unifont`, `93_menu_keys`, the shot scripts 64 to 69.
 
 ## The font model
 
-- `src/pxfont.c` and `.h`: the font, glyphs, the reader and writer of the pixelglyphlib formats (pxfm version 3: the spec working tree after commit 5dd97ca2c4), drafts (`px_save_draft`, `px_load_draft`: unused by the application, still tested by `test_pxtf.c`).
+- `src/pxfont.c` and `.h`: the font, glyphs, the reader and writer of the pixelglyphlib formats (pxfm version 3), drafts (`px_save_draft`, `px_load_draft`: unused by the application, still tested by `test_pxtf.c`).
 - Codes are `PxCode` (`int64_t`, the number `GCCCCCCVVV` of the spec): `px_code_cp`, `px_code_symbol`, `px_code_variant`, `px_code_text`, `px_code_parse`, `px_code_label`, `px_code_parse_user`, `px_font_find_code`, `px_font_find_cp`, `px_font_free_variant`.
   Version 2 texts, version 2 and 3 drafts and a pxfdb with version 2 codes are refused with a message.
 - The default glyph is a glyph of its own with code `I+DEFA00-000` (`PX_CODE_DEFAULT`): `px_font_default_index`, `px_font_set_default_from`.
@@ -83,11 +80,11 @@ The files of `handoff/` are old agent reports, kept for history.
 
 - `src/store.c`: an in-memory SQLite database that Load fills from a `.pxfdb`; Save writes a temp file with `VACUUM INTO` and replaces the file; a change counter tells whether memory differs from the file; Import and Export work on folders; the `palette` table, `pxfm.symbolic`, `pxfm.colors`, `store_palette_text`.
 - The pxfdb is format version 2 (`pxtf.name`, `pxtf_variant.source`); a version 1 database is refused ("import the library folder again").
-- A pxfdb made before hex palettes is refused on open ("made by an older pixelglyphlib … rebuild it"); in `pixelglyphlib`, `pxfdb.pxfdb` opens and the two `pxfdb-with*-symbols.pxfdb` are refused.
+- A pxfdb made before hex palettes is refused on open ("made by an older pixelglyphlib … rebuild it").
 - New Database (`store_create`, `NewDatabase` in main.c): an empty store with no file (path ""), titled "Untitled"; `SaveDb` turns into Save As for it; script 07f.
 - The folder picker (`Win_PickFolder`, winfile.c) is `IFileOpenDialog` with `FOS_PICKFOLDERS` (GUIDs defined there, no uuid library), the old folder tree as a fallback; `DlgFolder` opens it in `[app] lastImportFolder` or `lastExportFolder`.
 - `src/main.c`: the menu items, the Save button, the title and status bar markers, the Save / Discard / Cancel prompts, the export dialog (Update, Overwrite, backup).
-- `src/fsettings.c`: the sidecar `<db>-settings` (SQLite, schema 4: `layer`, `correction` by `PxCode`, `unlocked`; schema 1 to 3 are upgraded on open).
+- `src/fsettings.c`: the sidecar `<db>-settings` (SQLite, schema 5: `layer`, `correction` by `PxCode`, `unlocked`, `repo_link`, `repo_base`; schema 1 to 4 are upgraded on open).
   Save writes it (alone when only settings changed); Save As writes a new one; Import starts empty; Export does not touch it; with nothing to keep it is not written and an old one is deleted.
 - Save runs on the UI thread; on the real library it freezes the window for the length of `TRACE saveas`.
 - SQLite gets Windows ANSI paths; a path with characters outside the code page is not supported.
@@ -96,10 +93,7 @@ The files of `handoff/` are old agent reports, kept for history.
 - Font and typeface packages (`.pxfp`, `.pxtp`): `src/package.c` and `.h` (API in the header, DESIGN.md "Packages (pxfp, pxtp)"); zlib 1.4 vendored in `vendor/zlib`, linked by `build.bat`; `store_add_files` at the end of `store.c`.
   Export Font… and Export Typeface… of the Font and Typeface tabs write one (`ExportPackage`, panel.inc; `setdialog save` answers its dialog).
   Not in the UI yet: Import Package (`pkg_import`, then rescan; a store change, saved by Save).
-- Open: package bytes depend on the deflate implementation (zlib, as pxfe uses, against zlib-ng in Windows Python); importing is not affected.
-  Tests: `test_package.c` with `tests/pkg_reference.py`, script 70.
-
-## Locks
+- Tests: `test_package.c` with `tests/pkg_reference.py`, script 70.
 
 ## Font files
 
@@ -108,6 +102,17 @@ The files of `handoff/` are old agent reports, kept for history.
 - `src/panel.inc`: `ExportPackage` sends a font format's extension to `ExportFontFile`.
 - A symbolic sfnt gets a (3,0) cmap beside the Unicode ones.
 - Tests: `test_fontwrite.c` (read back with `bmsrc.c`), `test_fontwrite_sfnt.c` (with `outline.c`), `148_export_font_files`, `148b_export_colour_otf`.
+
+## Linked library folder
+
+- `src/store.c` (the end): file-name sets `StoreFileSet`; `store_folder_files`, `store_memory_files`, `store_repo_changes`, `store_repo_pull` (`build_from_files_ex` names a failing file, left out on the next try), `store_repo_push` (the new baseline: what two of memory, the folder and the old baseline hold).
+- `src/fsettings.c`: `fs_repo_folder`, `fs_repo_base` and their setters.
+- `src/main.c`: `RepoLink`, `RepoUnlink`, `RepoCheckEx`, `RepoPull`, `RepoPush` (from `SaveDb`, `DoSaveAs`), `RepoFocusTick` and `RepoCheckLater` (the listing on a worker thread; 0.3 to 0.9 s on the real library), the question `A_REPO_APPLY`.
+- No git command is run; only names are compared, so a file changed in place under its name is not noticed.
+- Scripts never get the focus check; `repofocus` runs it at once, so the worker-thread path is untested.
+- Tests: `test_repo` in `test_store.c` and `test_fsettings.c`, `149_repo_sync`.
+
+## Locks
 
 - Every font and typeface has a lock, locked by default; unlocked means edited in place.
 - `src/store.c`: `store_edit_in_place` adds the new font, rewrites the typefaces that name the old one, removes the old font and orphan glyphs, and reports the moved typeface hashes.
@@ -139,7 +144,7 @@ The files of `handoff/` are old agent reports, kept for history.
 - Add Font… (ACTIONS of the Typeface tab, `LC_ADDFONT`, the `af` dialog, `AddFontToTypeface`) adds a font of the library as a new variant with the source lines and reading options of its old variant (the editor's when it has none); the font stays in its other typefaces.
 - META's Name field (`@c.typeface`) edits the open document's typeface, or renames another unlocked one at once (`LC_RENAME`, `RenameTypeface`).
   The two variants share the font until one is edited: `CommitEdits` points only the open variant at the new font and `store_edit_in_place` keeps the old font for the other.
-- The Colours count is of palette entries other than `.`; a font that states no ascent or descent has its info loaded when the list opens or a count is chosen.
+- The Colours count is of palette entries other than `.`.
 - While a field has the keyboard the browser reads no keys (`extTyping`).
 - Tests: `109_color_filter`, `12_typeface`, `70_panel_tabs`.
 
@@ -149,7 +154,7 @@ The files of `handoff/` are old agent reports, kept for history.
 - There is no command bar, no info bar, no "..." menu and no grid context menu; the toolbar keeps Menu, the navigation, Undo, Redo and Save.
 - The Baseline row (`CmdBaseline`, `BaselineRow`); `GlyphFacts` (editable in the glyph view, text in the font view); `ParseHexCode`, `ParseCharCode`, `SetGlyphCode`.
 - `src/main.c`: `baseShift`, `undoBase`, `undoCode`; `DoUndoRedo` moves the font layers by the difference and follows the glyph by its code.
-- The font layers are not in the undo snapshots; the baseline's effect on them is undone through `baseShift`, so a layer added after a step also moves when that step is undone.
+- The font layers are not in the undo snapshots; the baseline's effect on them is undone through `baseShift`.
 - New Font (Menu, first item) makes an empty orphan font; Add Glyph adds a glyph.
 - Tests: `107_baseline`, `108_glyph_fields`.
 
@@ -175,7 +180,7 @@ The files of `handoff/` are old agent reports, kept for history.
 - `src/raster.c` and `.h` (no raylib): lines, curves, `ras_box`, `ras_rect`, `ras_ellipse`, `ras_flood`, `ras_polygon`.
 - `src/editor.c`: the tool table `kTool[]` (groups 0 draw, 1 shapes, 2 fill, 3 selection; a new tool is a row there plus a branch in `canvas_input`, no layout code), `kStrip[]` (the strip's order), `draw_strip`; `put` clips to the selection; `stroke_cell`, `stroke_to`, `stroke_end`, `shape_ends`, `plot_shape`, `curve_*`, `poly_*`, `cont_*`, `fill_at`, `region_pix`, `pick_at`, `alt_picks`.
 - `src/editor.h`: `Editor_ToolCols`, `Editor_PixelPerfect`, `Editor_Filled`, `Editor_CurveStage`, `Editor_PolyVertices`, `Editor_Contiguous`, `Editor_StripTool`.
-- `pxfe.ini [app]` keeps `pixelPerfect` and `filled`; Contiguous is not kept.
+- Contiguous is not kept in `pxfe.ini`.
 - Curves and polygons being made are not in the undo stack; undo and redo clear the selection.
 - `src/play.inc`: `resize` clears the window's minimum size first, so a script can test below 1110 x 600; `mousedown` and `mouseup` take `right` and `middle`.
 - Tests: `test_raster.c`, scripts 117 to 122, 124 to 136.
@@ -204,11 +209,11 @@ The files of `handoff/` are old agent reports, kept for history.
 
 ## Importing a font file
 
-- `src/fit.c` (no raylib): `fit_find_grid` (a port of `pixelglyphlib/readers/ttf.py`, agreeing with it on the 621 files of `pixelglyphlib\sourcefiles`), `fit_find_size`, drawing a glyph as pixels.
+- `src/fit.c` (no raylib): `fit_find_grid`, `fit_find_size`, drawing a glyph as pixels.
 - `src/fitdoc.inc`: the follow engine, the Layers tab of the font view, the import dialog, `FitTick`.
 - A glyph follows the layer while it is exactly what the layer draws; nothing is stored for that.
 - The searches and the redraw run on the UI thread (Noto Sans Regular: about a second); a redraw is one undo step.
-- A change of the followed layer's face or file makes every glyph count as edited by hand; serif faces get sizes near 19 px per em.
+- Serif faces get sizes near 19 px per em.
 - Tools: `tests\fit_tool.exe grid|size|show <font>` (build line in `tests/fit_tool.c`), `tests/gen_pixel_fonts.py`.
 - Tests: `test_fit.c`.
 
@@ -216,7 +221,7 @@ The files of `handoff/` are old agent reports, kept for history.
 
 - `src/sheet.c` (the analysis; no raylib), `src/sheetref.c` (reference glyphs drawn from `assets/fonts`), `src/bmsrc.c` (`bm_load_rgba`, JPEG on), `src/fitdoc.inc` (`ImportSheetCreate`, `DrawImportSheetDialog`).
 - The first picture of a run takes about two seconds (the reference glyphs are made then).
-- On `C:\Users\jnsGEzD3\Documents\GitHub\bitmapfont\color` (49 pictures, not in this repository) every layout is found and 97.4 % of the known characters are right; the truth and the scorer were scratch files.
+- On `C:\Users\jnsGEzD3\Documents\GitHub\bitmapfont\color` (49 pictures, not in this repository) every layout is found and 97.4 % of the known characters are right.
 - Tools: `tests\sheet_tool.exe <picture> [-v]`, `tests/gen_sheet_fonts.py`; `testdata/sheet` (CC0 pictures and two generated ones).
 - Tests: `test_sheet.c`, `106_import_sheet`.
 
